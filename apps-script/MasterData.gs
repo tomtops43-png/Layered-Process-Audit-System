@@ -31,7 +31,11 @@ function getChecklist(payload, currentUser) {
       var sortOrderDifference = toNumber_(a.SortOrder) - toNumber_(b.SortOrder);
       return sortOrderDifference || cleanString_(a.ChecklistID).localeCompare(cleanString_(b.ChecklistID));
     }).map(function (row) {
-      return projectToSheetSchema_(SHEET_NAMES.CHECKLIST, sanitizeForClient_(row));
+      var checklist = {};
+      SHEET_HEADERS[SHEET_NAMES.CHECKLIST].forEach(function (header) {
+        checklist[header] = row[header] === undefined ? '' : row[header];
+      });
+      return checklist;
     });
     return jsonResponse(true, 'Checklist loaded.', { checklist: rows, count: rows.length });
   } catch (error) {
