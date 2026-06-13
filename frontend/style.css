@@ -129,6 +129,7 @@ label{display:flex;flex-direction:column;gap:7px;font-size:.88rem;font-weight:70
 .modal-head h3{margin:0}
 .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
 .full-width{grid-column:1/-1}
+.form-error{margin-bottom:14px;padding:11px 13px;border:1px solid #e7a8a8;border-radius:8px;background:var(--red-bg);color:var(--red-dark);font-weight:700}
 .admin-access{margin-top:22px;padding-top:18px;border-top:1px solid var(--border)}
 .admin-access h4{margin:18px 0 10px}
 .permission-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}

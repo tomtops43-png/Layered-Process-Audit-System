@@ -69,6 +69,10 @@ function bindEvents() {
   $('#rejectFindingButton').addEventListener('click', () => verifyFinding('Reject'));
   $('#addUserButton').addEventListener('click', () => openUserEditor());
   $('#searchUsersButton').addEventListener('click', loadUsers);
+  $('#adminUsersTable').addEventListener('click', event => {
+    const button = event.target.closest('[data-user-id]');
+    if (button) openUserEditor(button.dataset.userId);
+  });
   $('#userForm').addEventListener('submit', event => { event.preventDefault(); saveUser(); });
   $('#closeUserDialog').addEventListener('click', () => $('#userDialog').close());
   $('#cancelUserEdit').addEventListener('click', () => $('#userDialog').close());
@@ -579,14 +583,19 @@ async function loadUsers() {
 function renderAdminUsers() {
   const rows = state.adminUsers;
   if (!rows.length) return $('#adminUsersTable').innerHTML = emptyHtml('ไม่พบผู้ใช้');
-  $('#adminUsersTable').innerHTML = `<table class="data-table"><thead><tr><th>User</th><th>Full Name</th><th>Role</th><th>Line Access</th><th>Status</th><th>Last Login</th><th></th></tr></thead><tbody>${rows.map(user => `<tr><td>${escapeHtml(user.Username)}</td><td>${escapeHtml(user.FullName)}</td><td>${escapeHtml(user.Role)}</td><td>${escapeHtml((user.LineAccess || []).map(line => line.LineName || line.LineID).join(', ') || user.LineDefault || '-')}</td><td><span class="status-badge ${String(user.ActiveStatus).toLowerCase() === 'active' ? 'status-closed' : 'status-na'}">${escapeHtml(user.ActiveStatus || '-')}</span></td><td>${escapeHtml(user.LastLogin || '-')}</td><td><button class="btn btn-outline" data-edit-user="${escapeAttr(user.UserID)}">Edit</button></td></tr>`).join('')}</tbody></table>`;
-  $$('[data-edit-user]', $('#adminUsersTable')).forEach(button => button.addEventListener('click', () => openUserEditor(button.dataset.editUser)));
+  $('#adminUsersTable').innerHTML = `<table class="data-table"><thead><tr><th>User</th><th>Full Name</th><th>Role</th><th>Line Access</th><th>Status</th><th>Last Login</th><th></th></tr></thead><tbody>${rows.map(user => `<tr><td>${escapeHtml(user.Username)}</td><td>${escapeHtml(user.FullName)}</td><td>${escapeHtml(user.Role)}</td><td>${escapeHtml((user.LineAccess || []).map(line => line.LineName || line.LineID).join(', ') || user.LineDefault || '-')}</td><td><span class="status-badge ${String(user.ActiveStatus).toLowerCase() === 'active' ? 'status-closed' : 'status-na'}">${escapeHtml(user.ActiveStatus || '-')}</span></td><td>${escapeHtml(user.LastLogin || '-')}</td><td><button type="button" class="btn btn-outline" data-user-id="${escapeAttr(user.UserID)}">Edit</button></td></tr>`).join('')}</tbody></table>`;
 }
 
 async function openUserEditor(userId = '') {
   const user = state.adminUsers.find(item => item.UserID === userId) || null;
+  if (userId && !user) {
+    showToast(`ไม่พบผู้ใช้ ${userId}`, 'error');
+    return;
+  }
   state.editingUser = user;
-  $('#userDialogTitle').textContent = user ? `Edit ${user.Username}` : 'Add User';
+  $('#userDialogTitle').textContent = user ? 'Edit User' : 'Add User';
+  $('#userFormError').textContent = '';
+  $('#userFormError').classList.add('hidden');
   $('#adminEditUserId').value = user ? user.UserID : '';
   $('#adminEmployeeId').value = user ? user.EmployeeID || '' : '';
   $('#adminUsername').value = user ? user.Username || '' : '';
@@ -599,12 +608,22 @@ async function openUserEditor(userId = '') {
   $('#adminPhone').value = user ? user.Phone || '' : '';
   $('#adminActiveStatus').value = user ? user.ActiveStatus || 'Active' : 'Active';
   $('#adminPassword').value = '';
+  $('#adminPassword').required = !user;
   $('#adminPasswordLabel').classList.toggle('hidden', Boolean(user));
   $('#adminAccessEditor').classList.toggle('hidden', !user || !hasPermission('users.managePermission'));
   $('#resetPasswordButton').classList.toggle('hidden', !user || !hasPermission('users.resetPassword'));
   $('#deactivateUserButton').classList.toggle('hidden', !user || !hasPermission('users.deactivate') || user.UserID === state.user.UserID);
-  if (user && hasPermission('users.managePermission')) await loadUserAccessEditors(user.UserID);
   $('#userDialog').showModal();
+  if (user && hasPermission('users.managePermission')) {
+    try {
+      await loadUserAccessEditors(user.UserID);
+    } catch (error) {
+      const message = error && error.message ? error.message : 'ไม่สามารถโหลดสิทธิ์ผู้ใช้ได้';
+      $('#userFormError').textContent = message;
+      $('#userFormError').classList.remove('hidden');
+      showToast(message, 'error');
+    }
+  }
 }
 
 async function loadUserAccessEditors(userId) {
@@ -642,6 +661,8 @@ async function saveUser() {
     phone: $('#adminPhone').value.trim(), activeStatus: $('#adminActiveStatus').value
   };
   if (!userId) payload.password = $('#adminPassword').value;
+  $('#userFormError').textContent = '';
+  $('#userFormError').classList.add('hidden');
   showLoading('กำลังบันทึกผู้ใช้...');
   try {
     const result = await apiCall(userId ? 'updateUser' : 'createUser', userId ? { ...payload, userId } : payload);
@@ -651,7 +672,10 @@ async function saveUser() {
     showToast('บันทึกผู้ใช้สำเร็จ', 'success');
     await loadUsers();
   } catch (error) {
-    showToast(error.message, 'error');
+    const message = error && error.message ? error.message : 'ไม่สามารถบันทึกผู้ใช้ได้';
+    $('#userFormError').textContent = message;
+    $('#userFormError').classList.remove('hidden');
+    showToast(message, 'error');
   } finally {
     hideLoading();
   }
