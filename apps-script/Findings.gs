@@ -6,7 +6,7 @@ function getFindings(payload, currentUser) {
         (!payload.stationId || valuesEqual_(row.StationID, payload.stationId)) &&
         (!payload.category || valuesEqual_(row.Category, payload.category)) &&
         (!payload.status || valuesEqual_(row.Status, payload.status)) &&
-        (!payload.pic || valuesEqual_(row.PIC, payload.pic) || valuesEqual_(row.PICUserID, payload.pic)) &&
+        (!payload.pic || valuesEqual_(row.PICName, payload.pic) || valuesEqual_(row.PICUserID, payload.pic)) &&
         (!payload.periodMonth || valuesEqual_(row.PeriodMonth, payload.periodMonth)) &&
         (!payload.overdueOnly || valuesEqual_(row.OverdueFlag, 'Yes'));
     });
@@ -25,10 +25,10 @@ function updateFinding(payload, currentUser) {
     if (!finding) throw new Error('Finding not found: ' + payload.findingId);
     if (!canAccessFinding_(currentUser, finding)) return jsonResponse(false, 'You can update only findings assigned to you.', {});
 
-    var allowed = ['CorrectiveAction', 'RootCause', 'PIC', 'PICUserID', 'DueDate', 'Status', 'AfterPhotoURL', 'CloseRemark'];
+    var allowed = ['CorrectiveAction', 'RootCause', 'PICName', 'PICUserID', 'DueDate', 'Status', 'Priority', 'AfterPhotoURL', 'CloseRemark'];
     var aliases = {
-      correctiveAction: 'CorrectiveAction', rootCause: 'RootCause', pic: 'PIC', picUserId: 'PICUserID',
-      dueDate: 'DueDate', status: 'Status', afterPhotoUrl: 'AfterPhotoURL', closeRemark: 'CloseRemark'
+      correctiveAction: 'CorrectiveAction', rootCause: 'RootCause', picName: 'PICName', picUserId: 'PICUserID',
+      dueDate: 'DueDate', status: 'Status', priority: 'Priority', afterPhotoUrl: 'AfterPhotoURL', closeRemark: 'CloseRemark'
     };
     var updates = {};
     allowed.forEach(function (field) { if (Object.prototype.hasOwnProperty.call(payload, field)) updates[field] = payload[field]; });
@@ -48,7 +48,7 @@ function updateFinding(payload, currentUser) {
     updates.UpdatedAt = timestamp;
     updates.UpdatedBy = currentUser.UserID;
     var updated = updateObjectById(SHEET_NAMES.FINDINGS, 'FindingID', payload.findingId, updates);
-    appendActionLog_(payload.findingId, 'Update', oldStatus, newStatus, updates, payload.comment || '', currentUser, timestamp);
+    appendActionLog_(payload.findingId, oldStatus, newStatus, updates, payload.remark || '', payload.evidenceUrl || '', currentUser, timestamp);
     return jsonResponse(true, 'Finding updated successfully.', { finding: sanitizeForClient_(updated) });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
@@ -72,19 +72,20 @@ function closeFinding(payload, currentUser) {
       UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
     };
     var updated = updateObjectById(SHEET_NAMES.FINDINGS, 'FindingID', payload.findingId, updates);
-    appendActionLog_(payload.findingId, 'Close', finding.Status, 'Closed', updates, payload.comment || closeRemark || '', currentUser, timestamp);
+    appendActionLog_(payload.findingId, finding.Status, 'Closed', updates, payload.remark || closeRemark || '', payload.evidenceUrl || '', currentUser, timestamp);
     return jsonResponse(true, 'Finding closed successfully.', { finding: sanitizeForClient_(updated) });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
 }
 
-function appendActionLog_(findingId, actionType, oldStatus, newStatus, changes, comment, currentUser, timestamp) {
+function appendActionLog_(findingId, oldStatus, newStatus, changes, remark, evidenceUrl, currentUser, timestamp) {
   var periodMonth = getPeriodMonth(new Date());
   appendObject(SHEET_NAMES.ACTION_LOGS, {
-    ActionLogID: generateId('LOG', SHEET_NAMES.ACTION_LOGS, 'ActionLogID', periodMonth),
-    FindingID: findingId, ActionType: actionType, OldStatus: oldStatus || '', NewStatus: newStatus || '',
-    ChangeDetail: JSON.stringify(changes || {}), Comment: comment || '', CreatedAt: timestamp, CreatedBy: currentUser.UserID
+    LogID: generateId('LOG', SHEET_NAMES.ACTION_LOGS, 'LogID', periodMonth), FindingID: findingId,
+    ActionDate: timestamp, ActionByUserID: currentUser.UserID, ActionByName: currentUser.FullName,
+    OldStatus: oldStatus || '', NewStatus: newStatus || '', ActionDetail: JSON.stringify(changes || {}),
+    EvidenceURL: evidenceUrl || '', Remark: remark || '', CreatedAt: timestamp
   });
 }
 

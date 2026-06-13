@@ -24,12 +24,14 @@ function getDashboard(payload, currentUser) {
     var byLine = {};
     audits.forEach(function (row) {
       var key = cleanString_(row.LineID) || 'Unassigned';
-      if (!byLine[key]) byLine[key] = { LineID: key, TotalAudit: 0, TotalNG: 0, OpenFinding: 0 };
+      if (!byLine[key]) byLine[key] = { LineID: key, LineName: cleanString_(row.LineName), TotalAudit: 0, TotalNG: 0, OpenFinding: 0 };
+      if (!byLine[key].LineName) byLine[key].LineName = cleanString_(row.LineName);
       byLine[key].TotalAudit++; byLine[key].TotalNG += toNumber_(row.TotalNG);
     });
     findings.forEach(function (row) {
       var key = cleanString_(row.LineID) || 'Unassigned';
-      if (!byLine[key]) byLine[key] = { LineID: key, TotalAudit: 0, TotalNG: 0, OpenFinding: 0 };
+      if (!byLine[key]) byLine[key] = { LineID: key, LineName: cleanString_(row.LineName), TotalAudit: 0, TotalNG: 0, OpenFinding: 0 };
+      if (!byLine[key].LineName) byLine[key].LineName = cleanString_(row.LineName);
       if (!isClosedStatus_(row.Status)) byLine[key].OpenFinding++;
     });
     var today = parseDate_(formatDateBangkok_(now));

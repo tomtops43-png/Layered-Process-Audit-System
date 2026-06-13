@@ -79,7 +79,7 @@ function testSaveAudit() {
     stationId: checklist.StationID === 'ALL' ? 'TEST-STATION' : checklist.StationID,
     auditLayer: checklist.AuditLayer === 'ALL' ? 'L1' : checklist.AuditLayer,
     shift: 'TEST', remark: 'Created by testSaveAudit',
-    records: [{ checklistId: checklist.ChecklistID, category: checklist.Category, question: checklist.Question, result: 'OK', comment: 'Backend smoke test' }]
+    records: [{ checklistId: checklist.ChecklistID, category: checklist.Category, checkItem: checklist.CheckItem, standardCriteria: checklist.StandardCriteria, result: 'OK', remark: 'Backend smoke test' }]
   };
   var response = saveAudit(payload, { UserID: admin.UserID, Username: admin.Username, FullName: admin.FullName, Role: admin.Role });
   var result = JSON.parse(response.getContent());

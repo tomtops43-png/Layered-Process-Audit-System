@@ -124,9 +124,9 @@ Tokens expire after six hours. Session data is cached in `CacheService` and back
       {
         "checklistId": "CK0001",
         "result": "NG",
-        "comment": "Guard label is missing",
+        "findingDetail": "Guard label is missing",
         "beforePhotoUrl": "https://drive.google.com/...",
-        "pic": "Somchai",
+        "picName": "Somchai",
         "picUserId": "U0002",
         "dueDate": "2026-06-19"
       }
@@ -139,7 +139,7 @@ A session row and all record rows are created. Every `NG` record creates a findi
 
 ## File upload
 
-Upload payloads carry raw base64 **without** a data-URL prefix. The API decodes the content, writes the file to the configured Drive folder, and stores only file metadata, `DriveFileID`, and `DriveFileURL` in `Attachments`. The backend enforces a 10 MB decoded-file limit.
+Upload payloads carry raw base64 **without** a data-URL prefix. The API decodes the content, writes the file to the configured Drive folder, and stores only the template attachment fields, including `DriveFileID`, `DriveFileURL`, and `FolderID`, in `Attachments`. The backend enforces a 10 MB decoded-file limit.
 
 ```json
 {
@@ -169,6 +169,7 @@ Supported `fileType` values are `BeforePhoto`, `AfterPhoto`, `Evidence`, `Report
 ## Operational notes
 
 - Keep sheet header names unchanged. All reads and writes map by header text rather than fixed column numbers.
+- The backend uses the existing template headers exactly, including `CheckItem`, `StandardCriteria`, `RecordID`, `PICName`, and `LogID`; `setupHeaders()` only appends genuinely missing template columns and never renames or removes existing columns.
 - Set the spreadsheet locale/date formats consistently. API date input should use `YYYY-MM-DD`; report periods use `YYYYMM`.
 - Drive folder IDs are configuration values, not full folder URLs.
 - Passwords are compared as lowercase SHA-256 hexadecimal digests.

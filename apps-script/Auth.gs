@@ -87,5 +87,5 @@ function canAccessFinding_(user, finding) {
   if (['Admin', 'Manager', 'Supervisor', 'Engineer'].indexOf(user.Role) !== -1) return true;
   var identityValues = [user.UserID, user.Username, user.FullName].map(function (value) { return cleanString_(value).toLowerCase(); });
   return identityValues.indexOf(cleanString_(finding.PICUserID).toLowerCase()) !== -1 ||
-    identityValues.indexOf(cleanString_(finding.PIC).toLowerCase()) !== -1;
+    identityValues.indexOf(cleanString_(finding.PICName).toLowerCase()) !== -1;
 }

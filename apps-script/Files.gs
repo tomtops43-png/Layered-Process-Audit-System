@@ -35,8 +35,8 @@ function uploadFile(payload, currentUser) {
     appendObject(SHEET_NAMES.ATTACHMENTS, {
       AttachmentID: attachmentId, RelatedType: payload.relatedType, RelatedID: payload.relatedId,
       FileType: fileType, FileName: safeName, MimeType: payload.mimeType,
-      DriveFileID: file.getId(), DriveFileURL: fileUrl, FileSize: bytes.length,
-      CreatedAt: timestamp, CreatedBy: currentUser.UserID
+      DriveFileID: file.getId(), DriveFileURL: fileUrl, FolderID: folderId,
+      UploadedBy: currentUser.UserID, UploadedAt: timestamp, Remark: payload.remark || ''
     });
     return jsonResponse(true, 'File uploaded successfully.', {
       AttachmentID: attachmentId, DriveFileID: file.getId(), DriveFileURL: fileUrl,

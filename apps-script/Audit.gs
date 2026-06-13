@@ -11,7 +11,13 @@ function saveAudit(payload, currentUser) {
     var now = new Date();
     var timestamp = formatDateTimeBangkok(now);
     var auditDate = formatDateBangkok_(payload.auditDate);
+    var auditTime = cleanString_(payload.auditTime) || Utilities.formatDate(now, APP_TIMEZONE, 'HH:mm:ss');
     var periodMonth = getPeriodMonth(parseDate_(auditDate) || now);
+    var line = findById_(SHEET_NAMES.LINES, 'LineID', payload.lineId) || {};
+    var station = findById_(SHEET_NAMES.STATIONS, 'StationID', payload.stationId) || {};
+    var lineName = cleanString_(payload.lineName) || cleanString_(line.LineName) || cleanString_(station.LineName);
+    var stationName = cleanString_(payload.stationName) || cleanString_(station.StationName);
+    var area = cleanString_(payload.area) || cleanString_(station.Area) || cleanString_(line.Area);
     var auditId = generateId('LPA', SHEET_NAMES.AUDIT_SESSIONS, 'AuditID', periodMonth);
     var totals = { OK: 0, NG: 0, NA: 0 };
     payload.records.forEach(function (record) { totals[cleanString_(record.result).toUpperCase()]++; });
@@ -20,46 +26,57 @@ function saveAudit(payload, currentUser) {
     var resultSummary = totals.NG > 0 ? 'NG' : (totals.OK > 0 ? 'OK' : 'NA');
 
     appendObject(SHEET_NAMES.AUDIT_SESSIONS, {
-      AuditID: auditId, PeriodMonth: periodMonth, AuditDate: auditDate,
-      LineID: payload.lineId, StationID: payload.stationId, AuditLayer: payload.auditLayer,
-      AuditorUserID: currentUser.UserID, AuditorName: currentUser.FullName,
-      Shift: payload.shift || '', TotalCheck: payload.records.length, TotalOK: totals.OK,
-      TotalNG: totals.NG, TotalNA: totals.NA, ResultSummary: resultSummary, NGRate: ngRate,
-      Remark: payload.remark || '', Status: payload.status || 'Completed',
-      CreatedAt: timestamp, CreatedBy: currentUser.UserID, UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
+      AuditID: auditId, AuditDate: auditDate, AuditTime: auditTime, PeriodMonth: periodMonth,
+      LineID: payload.lineId, LineName: lineName, StationID: payload.stationId, StationName: stationName,
+      Area: area, Shift: payload.shift || '', AuditorUserID: currentUser.UserID,
+      AuditorName: currentUser.FullName, AuditorRole: currentUser.Role, AuditLayer: payload.auditLayer,
+      TotalCheck: payload.records.length, TotalOK: totals.OK, TotalNG: totals.NG, TotalNA: totals.NA,
+      ResultSummary: resultSummary, NGRate: ngRate, SubmitStatus: payload.submitStatus || 'Submitted',
+      Remark: payload.remark || '', CreatedAt: timestamp, CreatedBy: currentUser.UserID,
+      UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
     });
 
     var findingIds = [];
     payload.records.forEach(function (record) {
       var checklist = findById_(SHEET_NAMES.CHECKLIST, 'ChecklistID', record.checklistId) || {};
-      var auditRecordId = generateId('AR', SHEET_NAMES.AUDIT_RECORDS, 'AuditRecordID', periodMonth);
+      var recordId = generateId('AR', SHEET_NAMES.AUDIT_RECORDS, 'RecordID', periodMonth);
+      var result = cleanString_(record.result).toUpperCase();
+      var defaultDays = toNumber_(getSetting('DEFAULT_DUE_DAYS')) || 7;
+      var dueDate = record.dueDate ? formatDateBangkok_(record.dueDate) : (result === 'NG' ? addDays_(parseDate_(auditDate) || now, defaultDays) : '');
+      var findingDetail = cleanString_(record.findingDetail);
       var auditRecord = {
-        AuditRecordID: auditRecordId, AuditID: auditId, ChecklistID: record.checklistId,
-        Category: record.category || checklist.Category || '', Question: record.question || checklist.Question || '',
-        Result: cleanString_(record.result).toUpperCase(), Comment: record.comment || '',
-        BeforePhotoURL: record.beforePhotoUrl || record.BeforePhotoURL || '', EvidenceURL: record.evidenceUrl || record.EvidenceURL || '',
-        FindingID: '', CreatedAt: timestamp, CreatedBy: currentUser.UserID, UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
+        RecordID: recordId, AuditID: auditId, AuditDate: auditDate, PeriodMonth: periodMonth,
+        LineID: payload.lineId, LineName: lineName, StationID: payload.stationId, StationName: stationName,
+        Category: record.category || checklist.Category || '', ChecklistID: record.checklistId,
+        CheckItemSnapshot: record.checkItem || checklist.CheckItem || '',
+        StandardCriteriaSnapshot: record.standardCriteria || checklist.StandardCriteria || '',
+        ChecklistRevision: record.checklistRevision || checklist.Revision || '', Result: result,
+        FindingDetail: findingDetail, CorrectiveAction: record.correctiveAction || '',
+        ResponsiblePerson: record.responsiblePerson || record.picName || '', DueDate: dueDate,
+        Status: record.status || (result === 'NG' ? 'Open' : 'Completed'),
+        BeforePhotoURL: record.beforePhotoUrl || '', AfterPhotoURL: record.afterPhotoUrl || '',
+        Remark: record.remark || '', FindingID: '', CreatedAt: timestamp, CreatedBy: currentUser.UserID,
+        UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
       };
       appendObject(SHEET_NAMES.AUDIT_RECORDS, auditRecord);
 
-      if (auditRecord.Result === 'NG') {
+      if (result === 'NG') {
         var findingId = generateId('F', SHEET_NAMES.FINDINGS, 'FindingID', periodMonth);
-        var defaultDays = toNumber_(getSetting('DEFAULT_DUE_DAYS')) || 7;
-        var dueDate = record.dueDate ? formatDateBangkok_(record.dueDate) : addDays_(parseDate_(auditDate) || now, defaultDays);
-        var pic = record.pic || '';
-        var picUserId = record.picUserId || '';
         appendObject(SHEET_NAMES.FINDINGS, {
-          FindingID: findingId, PeriodMonth: periodMonth, AuditID: auditId, AuditRecordID: auditRecordId,
-          ChecklistID: record.checklistId, LineID: payload.lineId, StationID: payload.stationId,
-          AuditLayer: payload.auditLayer, Category: auditRecord.Category,
-          FindingDetail: record.findingDetail || record.comment || auditRecord.Question,
-          BeforePhotoURL: auditRecord.BeforePhotoURL, CorrectiveAction: record.correctiveAction || '',
-          RootCause: record.rootCause || '', PIC: pic, PICUserID: picUserId, DueDate: dueDate,
-          Status: record.findingStatus || 'Open', AfterPhotoURL: '', CloseRemark: '', ClosedDate: '', ClosedBy: '',
-          OverdueFlag: 'No', DaysOverdue: 0, CreatedAt: timestamp, CreatedBy: currentUser.UserID,
-          UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
+          FindingID: findingId, AuditID: auditId, RecordID: recordId, FoundDate: auditDate,
+          PeriodMonth: periodMonth, LineID: payload.lineId, LineName: lineName,
+          StationID: payload.stationId, StationName: stationName, Area: area,
+          Category: auditRecord.Category,
+          ProblemDetail: findingDetail || auditRecord.Remark || auditRecord.CheckItemSnapshot,
+          StandardCriteria: auditRecord.StandardCriteriaSnapshot,
+          CorrectiveAction: auditRecord.CorrectiveAction, RootCause: record.rootCause || '',
+          PICUserID: record.picUserId || '', PICName: record.picName || auditRecord.ResponsiblePerson,
+          DueDate: dueDate, Status: record.findingStatus || 'Open', Priority: record.priority || checklist.Severity || '',
+          BeforePhotoURL: auditRecord.BeforePhotoURL, AfterPhotoURL: auditRecord.AfterPhotoURL,
+          ClosedDate: '', ClosedBy: '', CloseRemark: '', OverdueFlag: 'No', DaysOverdue: 0,
+          CreatedAt: timestamp, CreatedBy: currentUser.UserID, UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
         });
-        updateObjectById(SHEET_NAMES.AUDIT_RECORDS, 'AuditRecordID', auditRecordId, { FindingID: findingId });
+        updateObjectById(SHEET_NAMES.AUDIT_RECORDS, 'RecordID', recordId, { FindingID: findingId });
         findingIds.push(findingId);
       }
     });
@@ -77,10 +94,10 @@ function getAuditList(payload, currentUser) {
         (!payload.lineId || valuesEqual_(row.LineID, payload.lineId)) &&
         (!payload.stationId || valuesEqual_(row.StationID, payload.stationId)) &&
         (!payload.auditLayer || valuesEqual_(row.AuditLayer, payload.auditLayer)) &&
-        (!payload.status || valuesEqual_(row.Status, payload.status));
+        (!payload.status || valuesEqual_(row.SubmitStatus, payload.status));
     });
     if (currentUser.Role === 'User') rows = rows.filter(function (row) { return valuesEqual_(row.AuditorUserID, currentUser.UserID); });
-    rows.sort(function (a, b) { return cleanString_(b.AuditDate).localeCompare(cleanString_(a.AuditDate)); });
+    rows.sort(function (a, b) { return (cleanString_(b.AuditDate) + cleanString_(b.AuditTime)).localeCompare(cleanString_(a.AuditDate) + cleanString_(a.AuditTime)); });
     var limit = Math.min(Math.max(toNumber_(payload.limit) || 100, 1), 500);
     return jsonResponse(true, 'Audit list loaded.', { audits: rows.slice(0, limit).map(sanitizeForClient_), count: rows.length });
   } catch (error) {
