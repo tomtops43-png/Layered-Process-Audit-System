@@ -211,7 +211,7 @@ function renderAuditChecklist() {
     container.innerHTML = emptyHtml('ไม่พบ Checklist');
     return;
   }
-  container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>Standard Criteria</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>Example OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>Example NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="NA">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid"><label>Finding Detail *<textarea data-field="findingDetail" rows="2"></textarea></label><label>Corrective Action *<textarea data-field="correctiveAction" rows="2"></textarea></label><label>Responsible Person *<input data-field="responsiblePerson"></label><label>PIC User ID<input data-field="picUserId" placeholder="ถ้ามี"></label><label>Due Date *<input data-field="dueDate" type="date"></label><label>Status<select data-field="findingStatus"><option>Open</option><option>On going</option></select></label><label>Before Photo *<input data-field="beforePhoto" type="file" accept="image/*" capture="environment"></label><label>Remark<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
+  container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>Standard Criteria</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>Example OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>Example NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="N/A">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid"><label>Finding Detail *<textarea data-field="findingDetail" rows="2"></textarea></label><label>Corrective Action *<textarea data-field="correctiveAction" rows="2"></textarea></label><label>Responsible Person *<input data-field="responsiblePerson"></label><label>PIC User ID<input data-field="picUserId" placeholder="ถ้ามี"></label><label>Due Date *<input data-field="dueDate" type="date"></label><label>Status<select data-field="findingStatus"><option>Open</option><option>On going</option></select></label><label>Before Photo *<input data-field="beforePhoto" type="file" accept="image/*" capture="environment"></label><label>Remark<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
   $$('.checklist-card', container).forEach(card => {
     $$('.result-button', card).forEach(button => button.addEventListener('click', () => selectAuditResult(card, button.dataset.result)));
   });
@@ -299,7 +299,8 @@ async function loadFindings() {
     const payload = {
       lineId: $('#findingLine').value, stationId: $('#findingStation').value,
       category: $('#findingCategory').value.trim(), status: $('#findingStatus').value,
-      picName: $('#findingPicName').value.trim(), periodMonth: monthToPeriod($('#findingMonth').value),
+      pic: $('#findingPicName').value.trim(), picName: $('#findingPicName').value.trim(),
+      periodMonth: monthToPeriod($('#findingMonth').value),
       overdueOnly: $('#findingOverdue').checked
     };
     Object.keys(payload).forEach(key => { if (payload[key] === '' || payload[key] === false) delete payload[key]; });
@@ -542,8 +543,13 @@ function fileToBase64(file) { return new Promise((resolve, reject) => { const re
 function fieldValue(root, field) { const element = $(`[data-field="${field}"]`, root); return element ? element.value.trim() : ''; }
 function fieldFile(root, field) { const element = $(`[data-field="${field}"]`, root); return element && element.files ? element.files[0] : null; }
 function selectedText(selector) { const select = $(selector); return select.selectedIndex >= 0 ? select.options[select.selectedIndex].text : ''; }
-function monthToPeriod(value) { return value ? value.replace('-', '') : ''; }
-function formatPeriod(value) { const text = String(value || ''); return /^\d{6}$/.test(text) ? `${text.slice(4, 6)}/${text.slice(0, 4)}` : text || '-'; }
+function monthToPeriod(value) { return value || ''; }
+function formatPeriod(value) {
+  const text = String(value || '');
+  if (/^\d{4}-\d{2}$/.test(text)) return `${text.slice(5, 7)}/${text.slice(0, 4)}`;
+  if (/^\d{6}$/.test(text)) return `${text.slice(4, 6)}/${text.slice(0, 4)}`;
+  return text || '-';
+}
 function formatDate(value) { const text = String(value || ''); const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/); return match ? `${match[3]}/${match[2]}/${match[1]}` : text || '-'; }
 function dateInputValue(value) { const match = String(value || '').match(/^\d{4}-\d{2}-\d{2}/); return match ? match[0] : ''; }
 function localDateInput(date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; }
