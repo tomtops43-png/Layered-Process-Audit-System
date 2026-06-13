@@ -301,15 +301,15 @@ async function loadFindings() {
   showLoading('กำลังโหลด Finding...');
   try {
     const payload = {
-      lineId: $('#findingLine').value, stationId: $('#findingStation').value,
-      category: $('#findingCategory').value.trim(), status: $('#findingStatus').value,
-      pic: $('#findingPicName').value.trim(), picName: $('#findingPicName').value.trim(),
+      lineId: optionalFilterValue($('#findingLine').value), stationId: optionalFilterValue($('#findingStation').value),
+      category: optionalFilterValue($('#findingCategory').value), status: optionalFilterValue($('#findingStatus').value),
+      pic: optionalFilterValue($('#findingPicName').value), picName: optionalFilterValue($('#findingPicName').value),
       periodMonth: monthToPeriod($('#findingMonth').value),
       overdueOnly: $('#findingOverdue').checked
     };
     Object.keys(payload).forEach(key => { if (payload[key] === '' || payload[key] === false) delete payload[key]; });
     const data = await apiCall('getFindings', payload);
-    state.findings = data.findings || [];
+    state.findings = Array.isArray(data.findings) ? data.findings : [];
     renderFindings();
   } catch (error) {
     showToast(error.message, 'error');
@@ -539,7 +539,7 @@ function setDefaultDates() {
   $('#auditDate').value = localDateInput(now);
   $('#auditTime').value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  $('#findingMonth').value = month;
+  $('#findingMonth').value = '';
   $('#reportMonth').value = month;
 }
 
@@ -548,6 +548,10 @@ function fieldValue(root, field) { const element = $(`[data-field="${field}"]`, 
 function fieldFile(root, field) { const element = $(`[data-field="${field}"]`, root); return element && element.files ? element.files[0] : null; }
 function selectedText(selector) { const select = $(selector); return select.selectedIndex >= 0 ? select.options[select.selectedIndex].text : ''; }
 function monthToPeriod(value) { return value || ''; }
+function optionalFilterValue(value) {
+  const normalized = String(value ?? '').trim();
+  return ['', 'all', 'ทั้งหมด', 'null', 'undefined'].includes(normalized.toLowerCase()) ? '' : normalized;
+}
 function formatPeriod(value) {
   const text = String(value || '');
   if (/^\d{4}-\d{2}$/.test(text)) return `${text.slice(5, 7)}/${text.slice(0, 4)}`;

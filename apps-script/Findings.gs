@@ -1,15 +1,25 @@
 /** Finding search, update, and closure APIs. */
 function getFindings(payload, currentUser) {
   try {
+    var lineId = findingFilterValue_(payload.lineId);
+    var stationId = findingFilterValue_(payload.stationId);
+    var category = findingFilterValue_(payload.category);
+    var status = findingFilterValue_(payload.status);
+    var picName = findingFilterValue_(payload.picName || payload.pic);
+    var picUserId = findingFilterValue_(payload.picUserId);
+    var periodMonth = normalizeFindingPeriod_(payload.periodMonth);
+    var overdueOnly = payload.overdueOnly === true ||
+      ['true', 'yes', '1'].indexOf(cleanString_(payload.overdueOnly).toLowerCase()) !== -1;
     var rows = getRowsAsObjects(SHEET_NAMES.FINDINGS).map(refreshOverdueForRead_).filter(function (row) {
-      return (!payload.lineId || valuesEqual_(row.LineID, payload.lineId)) &&
-        (!payload.stationId || valuesEqual_(row.StationID, payload.stationId)) &&
-        (!payload.category || valuesEqual_(row.Category, payload.category)) &&
-        (!payload.status || valuesEqual_(row.Status, payload.status)) &&
-        (!payload.picName || valuesEqual_(row.PICName, payload.picName)) &&
-        (!payload.picUserId || valuesEqual_(row.PICUserID, payload.picUserId)) &&
-        (!payload.periodMonth || valuesEqual_(row.PeriodMonth, payload.periodMonth)) &&
-        (!payload.overdueOnly || valuesEqual_(row.OverdueFlag, 'Yes'));
+      var rowPeriodMonth = normalizeFindingPeriod_(row.PeriodMonth) || normalizeFindingPeriod_(row.FoundDate);
+      return (!lineId || valuesEqual_(row.LineID, lineId)) &&
+        (!stationId || valuesEqual_(row.StationID, stationId)) &&
+        (!category || valuesEqual_(row.Category, category)) &&
+        (!status || valuesEqual_(row.Status, status)) &&
+        (!picName || valuesEqual_(row.PICName, picName)) &&
+        (!picUserId || valuesEqual_(row.PICUserID, picUserId)) &&
+        (!periodMonth || rowPeriodMonth === periodMonth) &&
+        (!overdueOnly || valuesEqual_(row.OverdueFlag, 'Yes'));
     });
     if (['Leader', 'User'].indexOf(currentUser.Role) !== -1) rows = rows.filter(function (row) { return canAccessFinding_(currentUser, row); });
     rows.sort(function (a, b) { return cleanString_(a.DueDate).localeCompare(cleanString_(b.DueDate)); });
@@ -17,6 +27,16 @@ function getFindings(payload, currentUser) {
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
+}
+
+function findingFilterValue_(value) {
+  var normalized = cleanString_(value);
+  return ['', 'all', 'ทั้งหมด', 'null', 'undefined'].indexOf(normalized.toLowerCase()) !== -1 ? '' : normalized;
+}
+
+function normalizeFindingPeriod_(value) {
+  var digits = cleanString_(value).replace(/\D/g, '');
+  return digits.length >= 6 ? digits.slice(0, 6) : '';
 }
 
 function updateFinding(payload, currentUser) {
