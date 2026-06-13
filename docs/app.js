@@ -547,7 +547,14 @@ async function loadMasterChecklist() {
 }
 
 async function loadUsers() {
-  if (!hasPermission('users.view')) return;
+  const container = $('#adminUsersTable');
+  if (!hasPermission('users.view')) {
+    const message = 'คุณไม่มีสิทธิ์ดูรายชื่อผู้ใช้';
+    container.innerHTML = emptyHtml(message);
+    showToast(message, 'error');
+    return;
+  }
+  container.innerHTML = emptyHtml('กำลังโหลดผู้ใช้...');
   showLoading('กำลังโหลดผู้ใช้...');
   try {
     const data = await apiCall('listUsers', {
@@ -559,7 +566,11 @@ async function loadUsers() {
     state.adminUsers = data.users || [];
     renderAdminUsers();
   } catch (error) {
-    showToast(error.message, 'error');
+    state.adminUsers = [];
+    const message = error && error.message ? error.message : 'ไม่สามารถโหลดรายชื่อผู้ใช้ได้';
+    container.innerHTML = emptyHtml(message);
+    console.error('loadUsers failed:', error);
+    showToast(message, 'error');
   } finally {
     hideLoading();
   }
@@ -787,7 +798,10 @@ function statusClass(status) {
 }
 
 function hasPermission(permissionKey) {
-  return state.user && (state.user.Role === 'Admin' || (state.user.permissions || []).includes('*') || (state.user.permissions || []).includes(permissionKey));
+  if (!state.user) return false;
+  const permissions = state.user.permissions || [];
+  if (state.user.Role === 'Admin' || permissions.includes('*') || permissions.includes(permissionKey)) return true;
+  return permissionKey === 'users.view' && permissions.includes('users.managePermission');
 }
 
 function hasAnyPermission(keys) {

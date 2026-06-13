@@ -20,7 +20,7 @@ function listUsers(payload, currentUser) {
     var role = cleanString_(payload.role);
     var status = cleanString_(payload.status);
     var lineId = cleanString_(payload.lineId);
-    var lineRows = getRowsAsObjects(SHEET_NAMES.USER_LINE_ACCESS);
+    var lineRows = safeRowsAsObjects_(SHEET_NAMES.USER_LINE_ACCESS);
     var users = getRowsAsObjects(SHEET_NAMES.USERS).filter(function (user) {
       var searchText = [user.Username, user.FullName, user.EmployeeID, user.Email].join(' ').toLowerCase();
       var hasLine = isAllFilter_(lineId) || lineRows.some(function (row) {

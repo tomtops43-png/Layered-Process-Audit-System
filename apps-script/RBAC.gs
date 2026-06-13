@@ -77,7 +77,7 @@ function isAllFilter_(value) {
 }
 
 function isAllowed_(value) {
-  return value === true || ['yes', 'true', '1', 'allowed'].indexOf(cleanString_(value).toLowerCase()) !== -1;
+  return value === true || ['yes', 'y', 'true', '1', 'allowed'].indexOf(cleanString_(value).toLowerCase()) !== -1;
 }
 
 function hasApiAccess_(user, action) {
