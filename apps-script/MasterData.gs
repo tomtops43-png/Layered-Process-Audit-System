@@ -22,12 +22,15 @@ function getChecklist(payload, currentUser) {
     var layer = cleanString_(payload.auditLayer);
     var category = cleanString_(payload.category);
     var rows = getRowsAsObjects(SHEET_NAMES.CHECKLIST).filter(function (row) {
-      return isActive_(row.ActiveStatus) &&
-        (valuesEqual_(row.LineID, lineId) || valuesEqual_(row.LineID, 'ALL')) &&
-        (valuesEqual_(row.StationID, stationId) || valuesEqual_(row.StationID, 'ALL')) &&
-        (valuesEqual_(row.AuditLayer, layer) || valuesEqual_(row.AuditLayer, 'ALL')) &&
-        (!category || valuesEqual_(row.Category, category));
-    }).sort(function (a, b) { return toNumber_(a.SortOrder) - toNumber_(b.SortOrder); }).map(function (row) {
+      var lineMatches = valuesEqual_(row.LineID, lineId) || valuesEqual_(row.LineID, 'ALL');
+      var stationMatches = valuesEqual_(row.StationID, stationId) || valuesEqual_(row.StationID, 'ALL');
+      var layerMatches = valuesEqual_(row.AuditLayer, layer) || valuesEqual_(row.AuditLayer, 'ALL');
+      var categoryMatches = !category || valuesEqual_(row.Category, category);
+      return isActive_(row.ActiveStatus) && lineMatches && stationMatches && layerMatches && categoryMatches;
+    }).sort(function (a, b) {
+      var sortOrderDifference = toNumber_(a.SortOrder) - toNumber_(b.SortOrder);
+      return sortOrderDifference || cleanString_(a.ChecklistID).localeCompare(cleanString_(b.ChecklistID));
+    }).map(function (row) {
       return projectToSheetSchema_(SHEET_NAMES.CHECKLIST, sanitizeForClient_(row));
     });
     return jsonResponse(true, 'Checklist loaded.', { checklist: rows, count: rows.length });
