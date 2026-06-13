@@ -36,6 +36,7 @@ function getRowsAsObjects(sheetName) {
 }
 
 function appendObject(sheetName, object) {
+  validateObjectFields_(sheetName, object);
   var sheet = getSheet(sheetName);
   var headers = getHeaders_(sheet);
   if (!headers.length) throw new Error('Sheet has no header row: ' + sheetName);
@@ -45,6 +46,7 @@ function appendObject(sheetName, object) {
 }
 
 function updateObjectById(sheetName, idColumnName, idValue, updateObject) {
+  validateObjectFields_(sheetName, updateObject);
   var sheet = getSheet(sheetName);
   var headers = getHeaders_(sheet);
   var idColumn = headers.indexOf(idColumnName);
@@ -66,6 +68,28 @@ function updateObjectById(sheetName, idColumnName, idValue, updateObject) {
   var result = {};
   headers.forEach(function (header, index) { result[header] = normalizeCellValue_(current[index]); });
   return result;
+}
+
+
+function validateObjectFields_(sheetName, object) {
+  var configuredHeaders = SHEET_HEADERS[sheetName];
+  if (!configuredHeaders) throw new Error('No configured schema for sheet: ' + sheetName);
+  var unknownFields = Object.keys(object || {}).filter(function (field) {
+    return configuredHeaders.indexOf(field) === -1;
+  });
+  if (unknownFields.length) {
+    throw new Error('Unsupported field(s) for ' + sheetName + ': ' + unknownFields.join(', '));
+  }
+}
+
+function projectToSheetSchema_(sheetName, object) {
+  var configuredHeaders = SHEET_HEADERS[sheetName];
+  if (!configuredHeaders) throw new Error('No configured schema for sheet: ' + sheetName);
+  var projected = {};
+  configuredHeaders.forEach(function (header) {
+    if (Object.prototype.hasOwnProperty.call(object, header)) projected[header] = object[header];
+  });
+  return projected;
 }
 
 function generateId(prefix, sheetName, idColumnName, periodMonth) {

@@ -6,7 +6,8 @@ function getFindings(payload, currentUser) {
         (!payload.stationId || valuesEqual_(row.StationID, payload.stationId)) &&
         (!payload.category || valuesEqual_(row.Category, payload.category)) &&
         (!payload.status || valuesEqual_(row.Status, payload.status)) &&
-        (!payload.pic || valuesEqual_(row.PICName, payload.pic) || valuesEqual_(row.PICUserID, payload.pic)) &&
+        (!payload.picName || valuesEqual_(row.PICName, payload.picName)) &&
+        (!payload.picUserId || valuesEqual_(row.PICUserID, payload.picUserId)) &&
         (!payload.periodMonth || valuesEqual_(row.PeriodMonth, payload.periodMonth)) &&
         (!payload.overdueOnly || valuesEqual_(row.OverdueFlag, 'Yes'));
     });

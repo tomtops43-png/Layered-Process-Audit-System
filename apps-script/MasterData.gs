@@ -27,7 +27,9 @@ function getChecklist(payload, currentUser) {
         (valuesEqual_(row.StationID, stationId) || valuesEqual_(row.StationID, 'ALL')) &&
         (valuesEqual_(row.AuditLayer, layer) || valuesEqual_(row.AuditLayer, 'ALL')) &&
         (!category || valuesEqual_(row.Category, category));
-    }).sort(function (a, b) { return toNumber_(a.SortOrder) - toNumber_(b.SortOrder); }).map(sanitizeForClient_);
+    }).sort(function (a, b) { return toNumber_(a.SortOrder) - toNumber_(b.SortOrder); }).map(function (row) {
+      return projectToSheetSchema_(SHEET_NAMES.CHECKLIST, sanitizeForClient_(row));
+    });
     return jsonResponse(true, 'Checklist loaded.', { checklist: rows, count: rows.length });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
