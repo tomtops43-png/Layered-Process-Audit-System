@@ -21,6 +21,7 @@ function getChecklist(payload, currentUser) {
     var stationId = cleanString_(payload.stationId);
     var layer = cleanString_(payload.auditLayer);
     var category = cleanString_(payload.category);
+    var language = cleanString_(payload.language).toUpperCase() === 'EN' ? 'EN' : 'TH';
     var rows = getRowsAsObjects(SHEET_NAMES.CHECKLIST).filter(function (row) {
       var lineMatches = valuesEqual_(row.LineID, lineId) || valuesEqual_(row.LineID, 'ALL');
       var stationMatches = valuesEqual_(row.StationID, stationId) || valuesEqual_(row.StationID, 'ALL');
@@ -35,6 +36,17 @@ function getChecklist(payload, currentUser) {
       SHEET_HEADERS[SHEET_NAMES.CHECKLIST].forEach(function (header) {
         checklist[header] = row[header] === undefined ? '' : row[header];
       });
+      if (language === 'EN') {
+        checklist.CheckItem = cleanString_(row.CheckItemEN) || checklist.CheckItem;
+        checklist.StandardCriteria = cleanString_(row.StandardCriteriaEN) || checklist.StandardCriteria;
+        checklist.ExampleOK = cleanString_(row.ExampleOKEN) || checklist.ExampleOK;
+        checklist.ExampleNG = cleanString_(row.ExampleNGEN) || checklist.ExampleNG;
+      } else {
+        checklist.CheckItem = cleanString_(row.CheckItemTH) || checklist.CheckItem;
+        checklist.StandardCriteria = cleanString_(row.StandardCriteriaTH) || checklist.StandardCriteria;
+        checklist.ExampleOK = cleanString_(row.ExampleOKTH) || checklist.ExampleOK;
+        checklist.ExampleNG = cleanString_(row.ExampleNGTH) || checklist.ExampleNG;
+      }
       return checklist;
     });
     return jsonResponse(true, 'Checklist loaded.', { checklist: rows, count: rows.length });

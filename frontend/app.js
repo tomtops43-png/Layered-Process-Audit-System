@@ -189,10 +189,11 @@ async function loadChecklist() {
   const lineId = $('#auditLine').value;
   const stationId = $('#auditStation').value;
   const auditLayer = $('#auditLayer').value;
+  const language = $('#checklistLanguage').value;
   if (!lineId || !stationId || !auditLayer) return showToast('กรุณาเลือก Line, Station และ Audit Layer', 'warning');
   showLoading('กำลังโหลด Checklist...');
   try {
-    const data = await apiCall('getChecklist', { lineId, stationId, auditLayer });
+    const data = await apiCall('getChecklist', { lineId, stationId, auditLayer, language });
     state.checklist = data.checklist || [];
     state.auditAnswers = {};
     renderAuditChecklist();
@@ -270,6 +271,7 @@ async function saveAudit() {
       lineId: $('#auditLine').value, lineName: selectedText('#auditLine'),
       stationId: $('#auditStation').value, stationName: selectedText('#auditStation'),
       area: $('#auditArea').value, shift: $('#auditShift').value, auditLayer: $('#auditLayer').value,
+      checklistLanguage: $('#checklistLanguage').value,
       remark: $('#auditRemark').value.trim(), records
     };
     const data = await apiCall('saveAudit', payload);

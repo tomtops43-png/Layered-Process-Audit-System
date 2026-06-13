@@ -161,6 +161,7 @@ Supported `fileType` values are `BeforePhoto`, `AfterPhoto`, `Evidence`, `Report
 ## Setup and maintenance helpers
 
 - `setupHeaders()` — creates missing sheets/headers and appends missing required columns without clearing data.
+- `resetChecklistMasterBilingualFromSpreadsheet(sourceSpreadsheetId)` — deliberately clears and rebuilds only `ChecklistMaster` from the `ChecklistMaster_Bilingual` tab of a converted Google Sheets workbook. It validates the exact bilingual headers, exactly 39 data rows, and `LineID`/`StationID = ALL` before clearing the target.
 - `createDefaultAdmin(username, password)` — creates one administrator only when that username does not exist.
 - `hashExistingPasswords()` — hashes non-empty `PasswordHash` cells that are not already 64-character SHA-256 hex values. Run only when legacy cells currently contain plaintext passwords.
 - `testApi()` — runs the status endpoint.

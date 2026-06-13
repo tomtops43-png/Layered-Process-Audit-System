@@ -30,6 +30,45 @@ function setupHeaders() {
   return results;
 }
 
+/**
+ * Destructively replaces ChecklistMaster from the 2D values read from the
+ * ChecklistMaster_Bilingual worksheet. The input must include its header row
+ * followed by exactly 39 checklist rows.
+ */
+function resetChecklistMasterBilingual(sourceValues) {
+  if (!Array.isArray(sourceValues) || sourceValues.length !== 40) {
+    throw new Error('ChecklistMaster_Bilingual must contain one header row and exactly 39 data rows.');
+  }
+  var requiredHeaders = SHEET_HEADERS[SHEET_NAMES.CHECKLIST];
+  var sourceHeaders = sourceValues[0].map(cleanString_);
+  if (sourceHeaders.length !== requiredHeaders.length ||
+      sourceHeaders.some(function (header, index) { return header !== requiredHeaders[index]; })) {
+    throw new Error('ChecklistMaster_Bilingual headers do not match the configured ChecklistMaster schema.');
+  }
+  sourceValues.slice(1).forEach(function (row, index) {
+    if (!Array.isArray(row) || row.length !== requiredHeaders.length) {
+      throw new Error('Row ' + (index + 2) + ' does not contain all required ChecklistMaster columns.');
+    }
+    if (cleanString_(row[sourceHeaders.indexOf('LineID')]).toUpperCase() !== 'ALL' ||
+        cleanString_(row[sourceHeaders.indexOf('StationID')]).toUpperCase() !== 'ALL') {
+      throw new Error('Row ' + (index + 2) + ' must use LineID = ALL and StationID = ALL.');
+    }
+  });
+
+  var sheet = getSheet(SHEET_NAMES.CHECKLIST);
+  sheet.clearContents();
+  sheet.getRange(1, 1, sourceValues.length, requiredHeaders.length).setValues(sourceValues);
+  sheet.setFrozenRows(1);
+  return { sheetName: SHEET_NAMES.CHECKLIST, insertedRows: 39 };
+}
+
+function resetChecklistMasterBilingualFromSpreadsheet(sourceSpreadsheetId) {
+  if (!cleanString_(sourceSpreadsheetId)) throw new Error('Source spreadsheet ID is required.');
+  var sourceSheet = SpreadsheetApp.openById(sourceSpreadsheetId).getSheetByName('ChecklistMaster_Bilingual');
+  if (!sourceSheet) throw new Error('Source sheet not found: ChecklistMaster_Bilingual');
+  return resetChecklistMasterBilingual(sourceSheet.getDataRange().getValues());
+}
+
 function createDefaultAdmin(username, password) {
   username = cleanString_(username) || 'admin';
   password = cleanString_(password) || PropertiesService.getScriptProperties().getProperty('DEFAULT_ADMIN_PASSWORD');
