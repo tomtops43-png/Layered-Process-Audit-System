@@ -26,6 +26,8 @@ function doPost(e) {
       getAuditList: function (user) { return getAuditList(payload, user); },
       getFindings: function (user) { return getFindings(payload, user); },
       updateFinding: function (user) { return updateFinding(payload, user); },
+      submitFinding: function (user) { return submitFinding(payload, user); },
+      verifyFinding: function (user) { return verifyFinding(payload, user); },
       closeFinding: function (user) { return closeFinding(payload, user); },
       uploadFile: function (user) { return uploadFile(payload, user); },
       getDashboard: function (user) { return getDashboard(payload, user); },

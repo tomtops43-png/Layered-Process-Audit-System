@@ -5,6 +5,7 @@ function getDashboard(payload, currentUser) {
     var currentPeriod = getPeriodMonth(now);
     var audits = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
     var findings = getRowsAsObjects(SHEET_NAMES.FINDINGS).map(refreshOverdueForRead_);
+    var allFindings = findings.slice();
     if (payload.lineId) {
       audits = audits.filter(function (row) { return valuesEqual_(row.LineID, payload.lineId); });
       findings = findings.filter(function (row) { return valuesEqual_(row.LineID, payload.lineId); });
@@ -51,6 +52,15 @@ function getDashboard(payload, currentUser) {
       OnGoingFinding: findings.filter(function (row) { return ['on going', 'ongoing', 'in progress'].indexOf(cleanString_(row.Status).toLowerCase()) !== -1; }).length,
       ClosedFinding: findings.filter(function (row) { return isClosedStatus_(row.Status); }).length,
       OverdueAction: findings.filter(function (row) { return valuesEqual_(row.OverdueFlag, 'Yes'); }).length,
+      MyOpenFindings: allFindings.filter(function (row) {
+        return isAssignedToUser_(row, currentUser) && !isClosedStatus_(row.Status);
+      }).length,
+      MyOverdueFindings: allFindings.filter(function (row) {
+        return isAssignedToUser_(row, currentUser) && valuesEqual_(row.OverdueFlag, 'Yes');
+      }).length,
+      PendingMyVerification: allFindings.filter(function (row) {
+        return valuesEqual_(row.Status, 'Pending Verification') && canVerifyFinding_(currentUser, row);
+      }).length,
       TopNGCategory: topCategory ? { Category: topCategory, Count: categoryNg[topCategory] } : {},
       MonthlyAuditResult: Object.keys(monthly).sort().slice(-12).map(function (key) { return monthly[key]; }),
       SummaryByLine: Object.keys(byLine).sort().map(function (key) { return byLine[key]; }),

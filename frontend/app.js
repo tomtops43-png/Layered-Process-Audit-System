@@ -53,6 +53,9 @@ function bindEvents() {
   $('#findingForm').addEventListener('submit', event => { event.preventDefault(); updateFinding(); });
   $('#closeFindingDialog').addEventListener('click', () => $('#findingDialog').close());
   $('#cancelFindingEdit').addEventListener('click', () => $('#findingDialog').close());
+  $('#submitVerificationButton').addEventListener('click', submitFindingForVerification);
+  $('#approveFindingButton').addEventListener('click', () => verifyFinding('Approve'));
+  $('#rejectFindingButton').addEventListener('click', () => verifyFinding('Reject'));
 }
 
 async function apiCall(action, payload = {}) {
@@ -169,9 +172,15 @@ function renderDashboard(data) {
     ['On going Finding', data.OnGoingFinding, 'กำลังดำเนินการ', 'orange'],
     ['Closed Finding', data.ClosedFinding, 'ปิดแล้ว', 'green'],
     ['Overdue Action', data.OverdueAction, 'เกิน Due Date', 'dark-red'],
+    ['My Open Findings', data.MyOpenFindings, 'Assigned to Me', 'orange'],
+    ['My Overdue Findings', data.MyOverdueFindings, 'งานของฉันที่เกินกำหนด', 'dark-red'],
+    ['Pending My Verification', data.PendingMyVerification, 'รอตรวจสอบโดยฉัน', 'red'],
     ['Top NG Category', topCategory, 'Category ที่พบสูงสุด', 'red']
   ];
   $('#dashboardCards').innerHTML = cards.map(card => `<article class="metric-card ${card[3]}"><span class="metric-label">${escapeHtml(card[0])}</span><strong class="metric-value">${escapeHtml(String(card[1] ?? 0))}</strong><small class="metric-note">${escapeHtml(card[2])}</small></article>`).join('');
+  const notificationCount = number(data.MyOpenFindings) + number(data.PendingMyVerification);
+  $('#findingNavBadge').textContent = notificationCount;
+  $('#findingNavBadge').classList.toggle('hidden', notificationCount < 1);
   renderMonthlyBars(data.MonthlyAuditResult || []);
   $('#lineSummary').innerHTML = tableHtml(['Line', 'Total Audit', 'Total NG', 'Open Finding'], (data.SummaryByLine || []).map(row => [row.LineName || row.LineID, row.TotalAudit, row.TotalNG, row.OpenFinding]));
   const nearDue = data.ActionsNearDueDate || [];
@@ -212,9 +221,14 @@ function renderAuditChecklist() {
     container.innerHTML = emptyHtml('ไม่พบ Checklist');
     return;
   }
-  container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>Standard Criteria</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>Example OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>Example NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="N/A">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid"><label>Finding Detail *<textarea data-field="findingDetail" rows="2"></textarea></label><label>Corrective Action *<textarea data-field="correctiveAction" rows="2"></textarea></label><label>Responsible Person *<input data-field="responsiblePerson"></label><label>PIC User ID<input data-field="picUserId" placeholder="ถ้ามี"></label><label>Due Date *<input data-field="dueDate" type="date"></label><label>Status<select data-field="findingStatus"><option>Open</option><option>On going</option></select></label><label>Before Photo *<input data-field="beforePhoto" type="file" accept="image/*" capture="environment"></label><label>Remark<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
+  const userOptions = activeUserOptions();
+  container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>Standard Criteria</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>Example OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>Example NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="N/A">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid"><label>Finding Detail *<textarea data-field="findingDetail" rows="2"></textarea></label><label>Corrective Action *<textarea data-field="correctiveAction" rows="2"></textarea></label><label>Assign To *<select data-field="assignedToUserId"><option value="">เลือกผู้รับผิดชอบ</option>${userOptions}</select></label><label>Responsible Person<input data-field="responsiblePerson" readonly></label><label>Due Date *<input data-field="dueDate" type="date"></label><label>Status<select data-field="findingStatus"><option>Assigned</option><option>Open</option><option>In Progress</option></select></label><label>Before Photo *<input data-field="beforePhoto" type="file" accept="image/*" capture="environment"></label><label>Remark<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
   $$('.checklist-card', container).forEach(card => {
     $$('.result-button', card).forEach(button => button.addEventListener('click', () => selectAuditResult(card, button.dataset.result)));
+    $('[data-field="assignedToUserId"]', card).addEventListener('change', event => {
+      const user = (state.masterData.users || []).find(item => String(item.UserID) === event.target.value);
+      $('[data-field="responsiblePerson"]', card).value = user ? user.FullName : '';
+    });
   });
   updateAuditProgress();
 }
@@ -245,7 +259,12 @@ async function saveAudit() {
       record.correctiveAction = fieldValue(card, 'correctiveAction');
       record.responsiblePerson = fieldValue(card, 'responsiblePerson');
       record.picName = record.responsiblePerson;
-      record.picUserId = fieldValue(card, 'picUserId');
+      record.picUserId = fieldValue(card, 'assignedToUserId');
+      record.assignedToUserId = record.picUserId;
+      record.assignedToName = record.responsiblePerson;
+      const assignedUser = (state.masterData.users || []).find(user => String(user.UserID) === record.assignedToUserId);
+      record.assignedToRole = assignedUser ? assignedUser.Role : '';
+      record.severity = item.Severity || 'Minor';
       record.dueDate = fieldValue(card, 'dueDate');
       record.status = fieldValue(card, 'findingStatus') || 'Open';
       record.findingStatus = record.status;
@@ -305,6 +324,7 @@ async function loadFindings() {
       category: optionalFilterValue($('#findingCategory').value), status: optionalFilterValue($('#findingStatus').value),
       pic: optionalFilterValue($('#findingPicName').value), picName: optionalFilterValue($('#findingPicName').value),
       periodMonth: monthToPeriod($('#findingMonth').value),
+      myFindings: optionalFilterValue($('#findingMine').value),
       overdueOnly: $('#findingOverdue').checked
     };
     Object.keys(payload).forEach(key => { if (payload[key] === '' || payload[key] === false) delete payload[key]; });
@@ -321,7 +341,7 @@ async function loadFindings() {
 function renderFindings() {
   const container = $('#findingsList');
   if (!state.findings.length) return container.innerHTML = emptyHtml('ไม่พบ Finding ตามเงื่อนไข');
-  container.innerHTML = state.findings.map(row => `<article class="finding-card ${String(row.OverdueFlag).toLowerCase() === 'yes' ? 'overdue' : ''}"><div class="finding-summary"><div><span class="finding-id">${escapeHtml(row.FindingID)}</span><span class="data-label">${formatDate(row.FoundDate)} · ${escapeHtml(row.Category || '-')}</span></div><div><span class="data-label">Line</span>${escapeHtml(row.LineName || row.LineID || '-')}</div><div><span class="data-label">Station</span>${escapeHtml(row.StationName || row.StationID || '-')}</div><div><span class="data-label">PIC</span>${escapeHtml(row.PICName || '-')}</div><div><span class="data-label">Due Date</span>${formatDate(row.DueDate)}</div><div><span class="status-badge ${String(row.OverdueFlag).toLowerCase() === 'yes' ? 'status-overdue' : statusClass(row.Status)}">${String(row.OverdueFlag).toLowerCase() === 'yes' ? `Overdue ${number(row.DaysOverdue)}d` : escapeHtml(row.Status || '-')}</span></div></div><div class="finding-detail"><div><span class="data-label">Problem Detail</span>${escapeHtml(row.ProblemDetail || '-')}</div><div><span class="data-label">Corrective Action</span>${escapeHtml(row.CorrectiveAction || '-')}</div><div class="photo-link"><span class="data-label">Photo</span>${photoLinks(row)}</div></div><div class="finding-actions"><button class="btn btn-outline" data-edit-finding="${escapeAttr(row.FindingID)}">แก้ไข / ปิด Finding</button></div></article>`).join('');
+  container.innerHTML = state.findings.map(row => `<article class="finding-card ${String(row.OverdueFlag).toLowerCase() === 'yes' ? 'overdue' : ''}"><div class="finding-summary"><div><span class="finding-id">${escapeHtml(row.FindingID)}</span><span class="data-label">${formatDate(row.FoundDate)} · ${escapeHtml(row.Category || '-')} · ${escapeHtml(row.Severity || row.Priority || '-')}</span></div><div><span class="data-label">Line</span>${escapeHtml(row.LineName || row.LineID || '-')}</div><div><span class="data-label">Station</span>${escapeHtml(row.StationName || row.StationID || '-')}</div><div><span class="data-label">Assigned To</span>${escapeHtml(row.AssignedToName || row.PICName || '-')}</div><div><span class="data-label">Due Date</span>${formatDate(row.DueDate)}</div><div><span class="status-badge ${String(row.OverdueFlag).toLowerCase() === 'yes' ? 'status-overdue' : statusClass(row.Status)}">${String(row.OverdueFlag).toLowerCase() === 'yes' ? `Overdue ${number(row.DaysOverdue)}d` : escapeHtml(row.Status || '-')}</span></div></div><div class="finding-detail"><div><span class="data-label">Problem Detail</span>${escapeHtml(row.ProblemDetail || '-')}</div><div><span class="data-label">Corrective Action</span>${escapeHtml(row.CorrectiveAction || '-')}</div><div class="photo-link"><span class="data-label">Photo</span>${photoLinks(row)}</div></div><div class="finding-actions"><button class="btn btn-outline" data-edit-finding="${escapeAttr(row.FindingID)}">เปิด Finding</button></div></article>`).join('');
   $$('[data-edit-finding]', container).forEach(button => button.addEventListener('click', () => openFindingEditor(button.dataset.editFinding)));
 }
 
@@ -333,13 +353,19 @@ function openFindingEditor(findingId) {
   $('#editFindingId').value = row.FindingID;
   $('#editRootCause').value = row.RootCause || '';
   $('#editCorrectiveAction').value = row.CorrectiveAction || '';
-  $('#editPicName').value = row.PICName || '';
-  $('#editPicUserId').value = row.PICUserID || '';
+  populateFindingAssignee(row.AssignedToUserID || row.PICUserID || '');
   $('#editDueDate').value = dateInputValue(row.DueDate);
   $('#editStatus').value = normalizeEditableStatus(row.Status);
   $('#editCloseRemark').value = row.CloseRemark || '';
   $('#editAfterPhoto').value = '';
   $('#editPhotoPreview').innerHTML = row.AfterPhotoURL ? `<a href="${escapeAttr(row.AfterPhotoURL)}" target="_blank" rel="noopener">ดู After Photo ปัจจุบัน</a>` : '';
+  const pending = String(row.Status).toLowerCase() === 'pending verification';
+  const canVerify = pending && ['Admin', 'Manager', 'Engineer'].includes(state.user.Role);
+  const assignedToMe = String(row.AssignedToUserID || row.PICUserID || '') === String(state.user.UserID || '') ||
+    String(row.AssignedToName || row.PICName || '') === String(state.user.FullName || '');
+  $('#approveFindingButton').classList.toggle('hidden', !canVerify);
+  $('#rejectFindingButton').classList.toggle('hidden', !canVerify);
+  $('#submitVerificationButton').classList.toggle('hidden', (!assignedToMe && !['Admin', 'Manager'].includes(state.user.Role)) || pending || String(row.Status).toLowerCase() === 'closed');
   $('#findingDialog').showModal();
 }
 
@@ -360,13 +386,55 @@ async function updateFinding() {
     }
     const common = {
       findingId, rootCause: $('#editRootCause').value.trim(), correctiveAction: $('#editCorrectiveAction').value.trim(),
-      picName: $('#editPicName').value.trim(), picUserId: $('#editPicUserId').value.trim(),
+      assignedToUserId: $('#editAssignedTo').value,
       dueDate: $('#editDueDate').value, afterPhotoUrl, closeRemark, remark: 'Updated from web application'
     };
     if (targetStatus === 'Closed') await closeFinding({ ...common });
     else await apiCall('updateFinding', { ...common, status: targetStatus });
     $('#findingDialog').close();
     showToast(targetStatus === 'Closed' ? 'ปิด Finding สำเร็จ' : 'อัปเดต Finding สำเร็จ', 'success');
+    await loadFindings();
+    loadDashboard(false);
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+async function submitFindingForVerification() {
+  const findingId = $('#editFindingId').value;
+  if (!window.confirm(`ส่ง Finding ${findingId} เพื่อตรวจสอบ?`)) return;
+  await runFindingWorkflow('submitFinding', {
+    findingId,
+    rootCause: $('#editRootCause').value.trim(),
+    correctiveAction: $('#editCorrectiveAction').value.trim()
+  }, 'ส่ง Finding เพื่อตรวจสอบแล้ว');
+}
+
+async function verifyFinding(decision) {
+  const findingId = $('#editFindingId').value;
+  const rejectReason = decision === 'Reject' ? window.prompt('กรุณาระบุเหตุผลที่ Reject') : '';
+  if (decision === 'Reject' && !rejectReason) return;
+  if (!window.confirm(`${decision} Finding ${findingId}?`)) return;
+  await runFindingWorkflow('verifyFinding', {
+    findingId, decision, rejectReason, closeRemark: $('#editCloseRemark').value.trim()
+  }, decision === 'Approve' ? 'อนุมัติและปิด Finding แล้ว' : 'Reject Finding แล้ว');
+}
+
+async function runFindingWorkflow(action, payload, successMessage) {
+  showLoading('กำลังบันทึก Finding...');
+  try {
+    const file = $('#editAfterPhoto').files[0];
+    if (file) {
+      const upload = await uploadFile(file, 'Finding', payload.findingId, 'AfterPhoto', false);
+      payload.afterPhotoUrl = upload.DriveFileURL;
+    } else if (state.editingFinding) {
+      payload.afterPhotoUrl = state.editingFinding.AfterPhotoURL || '';
+    }
+    await apiCall(action, payload);
+    $('#findingDialog').close();
+    showToast(successMessage, 'success');
     await loadFindings();
     loadDashboard(false);
   } catch (error) {
@@ -464,6 +532,16 @@ function populateSelect(selector, rows, valueField, textField, firstLabel) {
   if (rows.some(row => String(row[valueField]) === current)) select.value = current;
 }
 
+function activeUserOptions() {
+  return (state.masterData.users || []).map(user => `<option value="${escapeAttr(user.UserID)}">${escapeHtml(user.FullName || user.Username)} (${escapeHtml(user.Role || '-')})</option>`).join('');
+}
+
+function populateFindingAssignee(selectedUserId) {
+  const select = $('#editAssignedTo');
+  select.innerHTML = `<option value="">ไม่ระบุผู้รับผิดชอบ</option>${activeUserOptions()}`;
+  select.value = selectedUserId || '';
+}
+
 function handleAuditLineChange() {
   populateStationSelect('#auditStation', $('#auditLine').value, false);
   updateAuditArea();
@@ -528,6 +606,7 @@ function statusClass(status) {
   const value = String(status || '').toLowerCase().replace(/\s+/g, '-');
   if (value === 'open') return 'status-open';
   if (['on-going', 'ongoing', 'in-progress'].includes(value)) return 'status-on-going';
+  if (['assigned', 'pending-verification', 'rejected'].includes(value)) return 'status-on-going';
   if (value === 'closed') return 'status-closed';
   if (value === 'ok') return 'status-ok';
   if (value === 'ng') return 'status-ng';
@@ -561,7 +640,7 @@ function formatPeriod(value) {
 function formatDate(value) { const text = String(value || ''); const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/); return match ? `${match[3]}/${match[2]}/${match[1]}` : text || '-'; }
 function dateInputValue(value) { const match = String(value || '').match(/^\d{4}-\d{2}-\d{2}/); return match ? match[0] : ''; }
 function localDateInput(date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; }
-function normalizeEditableStatus(status) { const value = String(status || '').toLowerCase(); if (value === 'closed') return 'Closed'; if (['on going', 'ongoing', 'in progress'].includes(value)) return 'On going'; return 'Open'; }
+function normalizeEditableStatus(status) { const options = ['Open', 'Assigned', 'In Progress', 'Pending Verification', 'Closed', 'Rejected']; return options.find(option => option.toLowerCase() === String(status || '').toLowerCase()) || 'Open'; }
 function number(value) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0; }
 function emptyHtml(message) { return `<div class="empty-state">${escapeHtml(message)}</div>`; }
 function isTokenError(message) { return /token|expired|authentication|session/i.test(message); }

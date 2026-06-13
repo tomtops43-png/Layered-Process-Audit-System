@@ -38,6 +38,7 @@ label{display:flex;flex-direction:column;gap:7px;font-size:.88rem;font-weight:70
 .main-nav{display:grid;gap:5px}
 .nav-item{display:flex;align-items:center;gap:12px;width:100%;min-height:49px;border:0;border-radius:9px;padding:10px 13px;background:transparent;color:#445365;font-weight:700;text-align:left}
 .nav-item span{width:25px;text-align:center;font-size:1.15rem}
+.nav-badge{margin-left:auto;min-width:22px;padding:2px 7px;border-radius:99px;background:var(--red);color:#fff;font-size:.72rem;text-align:center}
 .nav-item:hover,.nav-item.active{background:var(--cyan);color:var(--navy)}
 .sidebar-logout{margin-top:auto}
 .main-content{margin-left:var(--sidebar);padding:calc(var(--topbar) + 27px) 28px 42px;min-height:100vh}

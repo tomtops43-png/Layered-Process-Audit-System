@@ -62,6 +62,14 @@ function saveAudit(payload, currentUser) {
 
       if (result === 'NG') {
         var findingId = generateId('F', SHEET_NAMES.FINDINGS, 'FindingID', periodMonth);
+        var assignedUserId = cleanString_(record.assignedToUserId || record.picUserId);
+        var assignedUser = assignedUserId ? findById_(SHEET_NAMES.USERS, 'UserID', assignedUserId) : null;
+        var assignedName = cleanString_(record.assignedToName || record.picName || auditRecord.ResponsiblePerson) ||
+          (assignedUser ? cleanString_(assignedUser.FullName) : '');
+        var severity = cleanString_(record.severity || record.priority || checklist.Severity) || 'Minor';
+        var verificationRequired = cleanString_(record.verificationRequired) ||
+          (severity.toLowerCase() === 'minor' && cleanString_(payload.auditLayer).toLowerCase() === 'leader' ? 'No' : 'Yes');
+        var initialStatus = cleanString_(record.findingStatus || record.status) || (assignedUserId || assignedName ? 'Assigned' : 'Open');
         appendObject(SHEET_NAMES.FINDINGS, {
           FindingID: findingId, AuditID: auditId, RecordID: recordId, FoundDate: auditDate,
           PeriodMonth: periodMonth, LineID: payload.lineId, LineName: lineName,
@@ -70,10 +78,17 @@ function saveAudit(payload, currentUser) {
           ProblemDetail: findingDetail || auditRecord.Remark || auditRecord.CheckItemSnapshot,
           StandardCriteria: auditRecord.StandardCriteriaSnapshot,
           CorrectiveAction: auditRecord.CorrectiveAction, RootCause: record.rootCause || '',
-          PICUserID: record.picUserId || '', PICName: record.picName || auditRecord.ResponsiblePerson,
-          DueDate: dueDate, Status: record.findingStatus || 'Open', Priority: record.priority || checklist.Severity || '',
+          PICUserID: assignedUserId, PICName: assignedName,
+          AuditorUserID: currentUser.UserID, AuditorName: currentUser.FullName, AuditorRole: currentUser.Role,
+          AssignedToUserID: assignedUserId, AssignedToName: assignedName,
+          AssignedToRole: assignedUser ? assignedUser.Role : cleanString_(record.assignedToRole),
+          VerifierUserID: '', VerifierName: '', VerifierRole: '', Severity: severity,
+          VerificationRequired: verificationRequired, VerificationStatus: 'Not Submitted',
+          SubmittedAt: '', SubmittedBy: '',
+          DueDate: dueDate, Status: initialStatus, Priority: record.priority || severity,
           BeforePhotoURL: auditRecord.BeforePhotoURL, AfterPhotoURL: auditRecord.AfterPhotoURL,
-          ClosedDate: '', ClosedBy: '', CloseRemark: '', OverdueFlag: 'No', DaysOverdue: 0,
+          ClosedDate: '', ClosedAt: '', ClosedBy: '', CloseRemark: '',
+          RejectedAt: '', RejectedBy: '', RejectReason: '', OverdueFlag: 'No', DaysOverdue: 0,
           CreatedAt: timestamp, CreatedBy: currentUser.UserID, UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
         });
         updateObjectById(SHEET_NAMES.AUDIT_RECORDS, 'RecordID', recordId, { FindingID: findingId });

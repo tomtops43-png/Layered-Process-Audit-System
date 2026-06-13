@@ -66,11 +66,11 @@ function hasPermission(role, action) {
   role = cleanString_(role);
   if (role === 'Admin') return true;
   var permissions = {
-    Manager: ['getCurrentUser', 'getMasterData', 'getChecklist', 'saveAudit', 'getAuditList', 'getFindings', 'updateFinding', 'closeFinding', 'uploadFile', 'getDashboard', 'getMonthlyReport', 'exportReportCsv'],
-    Supervisor: ['getCurrentUser', 'getMasterData', 'getChecklist', 'saveAudit', 'getAuditList', 'getFindings', 'updateFinding', 'closeFinding', 'uploadFile', 'getDashboard', 'getMonthlyReport', 'exportReportCsv'],
-    Engineer: ['getCurrentUser', 'getMasterData', 'getChecklist', 'saveAudit', 'getAuditList', 'getFindings', 'updateFinding', 'closeFinding', 'uploadFile', 'getDashboard', 'getMonthlyReport', 'exportReportCsv'],
-    Leader: ['getCurrentUser', 'getMasterData', 'getChecklist', 'saveAudit', 'getAuditList', 'getFindings', 'updateFinding', 'uploadFile'],
-    User: ['getCurrentUser', 'getMasterData', 'getAuditList', 'getFindings', 'updateFinding', 'uploadFile']
+    Manager: ['getCurrentUser', 'getMasterData', 'getChecklist', 'saveAudit', 'getAuditList', 'getFindings', 'updateFinding', 'submitFinding', 'verifyFinding', 'closeFinding', 'uploadFile', 'getDashboard', 'getMonthlyReport', 'exportReportCsv'],
+    Supervisor: ['getCurrentUser', 'getMasterData', 'getChecklist', 'saveAudit', 'getAuditList', 'getFindings', 'updateFinding', 'submitFinding', 'uploadFile', 'getDashboard', 'getMonthlyReport', 'exportReportCsv'],
+    Engineer: ['getCurrentUser', 'getMasterData', 'getChecklist', 'saveAudit', 'getAuditList', 'getFindings', 'updateFinding', 'submitFinding', 'verifyFinding', 'closeFinding', 'uploadFile', 'getDashboard', 'getMonthlyReport', 'exportReportCsv'],
+    Leader: ['getCurrentUser', 'getMasterData', 'getChecklist', 'saveAudit', 'getAuditList', 'getFindings', 'updateFinding', 'submitFinding', 'closeFinding', 'uploadFile'],
+    User: ['getCurrentUser', 'getMasterData', 'getAuditList', 'getFindings', 'updateFinding', 'submitFinding', 'uploadFile']
   };
   return permissions[role] ? permissions[role].indexOf(action) !== -1 : false;
 }
@@ -86,6 +86,8 @@ function publicUser_(user) {
 function canAccessFinding_(user, finding) {
   if (['Admin', 'Manager', 'Supervisor', 'Engineer'].indexOf(user.Role) !== -1) return true;
   var identityValues = [user.UserID, user.Username, user.FullName].map(function (value) { return cleanString_(value).toLowerCase(); });
-  return identityValues.indexOf(cleanString_(finding.PICUserID).toLowerCase()) !== -1 ||
-    identityValues.indexOf(cleanString_(finding.PICName).toLowerCase()) !== -1;
+  return identityValues.indexOf(cleanString_(finding.AssignedToUserID || finding.PICUserID).toLowerCase()) !== -1 ||
+    identityValues.indexOf(cleanString_(finding.AssignedToName || finding.PICName).toLowerCase()) !== -1 ||
+    identityValues.indexOf(cleanString_(finding.AuditorUserID || finding.CreatedBy).toLowerCase()) !== -1 ||
+    identityValues.indexOf(cleanString_(finding.VerifierUserID).toLowerCase()) !== -1;
 }

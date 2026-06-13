@@ -37,7 +37,7 @@
       <nav id="mainNav" class="main-nav">
         <button data-page="dashboard" class="nav-item active"><span>▦</span>Dashboard</button>
         <button data-page="audit" class="nav-item"><span>✓</span>ตรวจ LPA</button>
-        <button data-page="findings" class="nav-item"><span>!</span>Finding Tracking</button>
+        <button data-page="findings" class="nav-item"><span>!</span>Finding Tracking <b id="findingNavBadge" class="nav-badge hidden">0</b></button>
         <button data-page="report" class="nav-item"><span>▤</span>Monthly Report</button>
         <button data-page="checklist" class="nav-item"><span>☷</span>Checklist Master</button>
       </nav>
@@ -85,7 +85,8 @@
             <label>Line<select id="findingLine"><option value="">ทั้งหมด</option></select></label>
             <label>Station<select id="findingStation"><option value="">ทั้งหมด</option></select></label>
             <label>Category<input id="findingCategory" placeholder="ค้นหา Category"></label>
-            <label>Status<select id="findingStatus"><option value="">ทั้งหมด</option><option>Open</option><option>On going</option><option>Closed</option></select></label>
+            <label>Status<select id="findingStatus"><option value="">ทั้งหมด</option><option>Open</option><option>Assigned</option><option>In Progress</option><option>Pending Verification</option><option>Closed</option><option>Rejected</option><option>Overdue</option></select></label>
+            <label>My Findings<select id="findingMine"><option value="">ทั้งหมด</option><option value="assigned">Assigned to Me</option><option value="created">Created by Me</option><option value="verification">Pending My Verification</option></select></label>
             <label>PIC Name<input id="findingPicName" placeholder="ชื่อ PIC"></label>
             <label>เดือน<input id="findingMonth" type="month"></label>
             <label class="check-label"><input id="findingOverdue" type="checkbox"> Overdue only</label>
@@ -140,15 +141,14 @@
       <div class="form-grid">
         <label>Root Cause<textarea id="editRootCause" rows="3"></textarea></label>
         <label>Corrective Action<textarea id="editCorrectiveAction" rows="3"></textarea></label>
-        <label>PIC Name<input id="editPicName"></label>
-        <label>PIC User ID<input id="editPicUserId"></label>
+        <label>Assign To<select id="editAssignedTo"><option value="">ไม่ระบุผู้รับผิดชอบ</option></select></label>
         <label>Due Date<input id="editDueDate" type="date"></label>
-        <label>Status<select id="editStatus"><option>Open</option><option>On going</option><option>Closed</option></select></label>
+        <label>Status<select id="editStatus"><option>Open</option><option>Assigned</option><option>In Progress</option><option>Pending Verification</option><option>Rejected</option><option>Closed</option></select></label>
         <label class="full-width">Close Remark<textarea id="editCloseRemark" rows="2"></textarea></label>
         <label class="full-width">After Photo<input id="editAfterPhoto" type="file" accept="image/*" capture="environment"></label>
       </div>
       <div id="editPhotoPreview" class="photo-link"></div>
-      <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelFindingEdit">ยกเลิก</button><button type="submit" class="btn btn-primary">บันทึกการแก้ไข</button></div>
+      <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelFindingEdit">ยกเลิก</button><button type="button" class="btn btn-outline hidden" id="rejectFindingButton">Reject</button><button type="button" class="btn btn-secondary hidden" id="approveFindingButton">Approve & Close</button><button type="button" class="btn btn-primary" id="submitVerificationButton">Submit for Verification</button><button type="submit" class="btn btn-primary">บันทึกการแก้ไข</button></div>
     </form>
   </dialog>
 
