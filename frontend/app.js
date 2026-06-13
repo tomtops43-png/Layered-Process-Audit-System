@@ -246,7 +246,8 @@ async function saveAudit() {
       record.picName = record.responsiblePerson;
       record.picUserId = fieldValue(card, 'picUserId');
       record.dueDate = fieldValue(card, 'dueDate');
-      record.findingStatus = fieldValue(card, 'findingStatus') || 'Open';
+      record.status = fieldValue(card, 'findingStatus') || 'Open';
+      record.findingStatus = record.status;
       const photo = fieldFile(card, 'beforePhoto');
       if (!record.findingDetail || !record.correctiveAction || !record.responsiblePerson || !record.dueDate || !photo) return showToast(`กรุณากรอก Finding และ Before Photo ของ ${item.ChecklistID} ให้ครบ`, 'warning');
       record._photo = photo;
@@ -263,8 +264,9 @@ async function saveAudit() {
         delete record._photo;
       }
     }
+    const auditDate = $('#auditDate').value;
     const payload = {
-      auditDate: $('#auditDate').value, auditTime: $('#auditTime').value,
+      auditDate, auditTime: $('#auditTime').value, periodMonth: auditDate.slice(0, 7),
       lineId: $('#auditLine').value, lineName: selectedText('#auditLine'),
       stationId: $('#auditStation').value, stationName: selectedText('#auditStation'),
       area: $('#auditArea').value, shift: $('#auditShift').value, auditLayer: $('#auditLayer').value,
