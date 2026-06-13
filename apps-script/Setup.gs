@@ -141,24 +141,58 @@ function hashExistingPasswords() {
 function createSampleMasterData() {
   var timestamp = formatDateTimeBangkok(new Date());
   var created = [];
-  var lineId = 'TEST-LINE';
-  var stationId = 'TEST-STATION';
-  if (!findById_(SHEET_NAMES.LINES, 'LineID', lineId)) {
-    appendObject(SHEET_NAMES.LINES, {
-      LineID: lineId, LineName: 'Test Line', Area: 'Test Area', Department: 'Quality',
+  var lines = getRowsAsObjects(SHEET_NAMES.LINES);
+  var stations = getRowsAsObjects(SHEET_NAMES.STATIONS);
+  var activeLine = lines.filter(function (row) { return isActive_(row.ActiveStatus); })[0];
+  var activeStation = stations.filter(function (row) { return isActive_(row.ActiveStatus); })[0];
+
+  if (!activeLine) {
+    activeLine = lines.filter(function (row) {
+      return cleanString_(row.LineID).toUpperCase() === 'TEST-LINE';
+    })[0];
+  }
+  if (!activeLine) {
+    activeLine = {
+      LineID: 'TEST-LINE', LineName: 'Test Line', Area: 'Test Area', Department: 'Quality',
       ActiveStatus: 'Active', SortOrder: 999, CreatedAt: timestamp, UpdatedAt: timestamp
+    };
+    appendObject(SHEET_NAMES.LINES, {
+      LineID: activeLine.LineID, LineName: activeLine.LineName, Area: activeLine.Area,
+      Department: activeLine.Department, ActiveStatus: activeLine.ActiveStatus,
+      SortOrder: activeLine.SortOrder, CreatedAt: activeLine.CreatedAt, UpdatedAt: activeLine.UpdatedAt
     });
-    created.push(lineId);
+    created.push(activeLine.LineID);
   }
-  if (!findById_(SHEET_NAMES.STATIONS, 'StationID', stationId)) {
+
+  if (!activeStation) {
+    activeStation = stations.filter(function (row) {
+      return cleanString_(row.StationID).toUpperCase() === 'TEST-STATION';
+    })[0];
+  }
+  if (!activeStation) {
+    activeStation = {
+      StationID: 'TEST-STATION', LineID: activeLine.LineID, LineName: activeLine.LineName || 'Test Line',
+      StationName: 'Test Station', StationNo: 'TEST', Area: activeLine.Area || 'Test Area',
+      ProcessName: 'Test Process', ActiveStatus: 'Active', SortOrder: 999,
+      CreatedAt: timestamp, UpdatedAt: timestamp
+    };
     appendObject(SHEET_NAMES.STATIONS, {
-      StationID: stationId, LineID: lineId, LineName: 'Test Line', StationName: 'Test Station',
-      StationNo: 'TEST', Area: 'Test Area', ProcessName: 'Test Process', ActiveStatus: 'Active',
-      SortOrder: 999, CreatedAt: timestamp, UpdatedAt: timestamp
+      StationID: activeStation.StationID, LineID: activeStation.LineID, LineName: activeStation.LineName,
+      StationName: activeStation.StationName, StationNo: activeStation.StationNo, Area: activeStation.Area,
+      ProcessName: activeStation.ProcessName, ActiveStatus: activeStation.ActiveStatus,
+      SortOrder: activeStation.SortOrder, CreatedAt: activeStation.CreatedAt, UpdatedAt: activeStation.UpdatedAt
     });
-    created.push(stationId);
+    created.push(activeStation.StationID);
   }
-  return { created: created, lineId: lineId, stationId: stationId };
+
+  return {
+    created: created,
+    lineId: activeLine.LineID,
+    lineName: activeLine.LineName || activeStation.LineName || '',
+    stationId: activeStation.StationID,
+    stationName: activeStation.StationName || '',
+    area: activeStation.Area || activeLine.Area || ''
+  };
 }
 
 function testApi() {
@@ -172,7 +206,7 @@ function testSaveAudit() {
   var context = getSampleAuditContext_();
   var now = new Date();
   var auditDate = formatDateBangkok_(now);
-  var periodMonth = getPeriodMonth(now);
+  var periodMonth = Utilities.formatDate(now, APP_TIMEZONE, 'yyyy-MM');
   var payload = {
     auditDate: auditDate, auditTime: Utilities.formatDate(now, APP_TIMEZONE, 'HH:mm:ss'),
     periodMonth: periodMonth, lineId: context.lineId, lineName: context.lineName,
@@ -202,7 +236,8 @@ function testSaveAuditNG() {
   dueDate.setDate(dueDate.getDate() + 7);
   var payload = {
     auditDate: auditDate, auditTime: Utilities.formatDate(now, APP_TIMEZONE, 'HH:mm:ss'),
-    periodMonth: getPeriodMonth(now), lineId: context.lineId, lineName: context.lineName,
+    periodMonth: Utilities.formatDate(now, APP_TIMEZONE, 'yyyy-MM'),
+    lineId: context.lineId, lineName: context.lineName,
     stationId: context.stationId, stationName: context.stationName, area: context.area,
     auditLayer: context.auditLayer, shift: 'TEST', submitStatus: 'Submitted',
     remark: 'Created by testSaveAuditNG',
@@ -227,9 +262,12 @@ function testSaveAuditNG() {
 }
 
 function testLogin(username, password) {
-  username = cleanString_(username);
-  password = cleanString_(password);
-  if (!username || !password) throw new Error('testLogin(username, password) requires both values.');
+  username = cleanString_(username) || 'admin';
+  password = cleanString_(password) ||
+    cleanString_(PropertiesService.getScriptProperties().getProperty('DEFAULT_ADMIN_PASSWORD'));
+  if (!password) {
+    throw new Error('Pass a password to testLogin(username, password), or set DEFAULT_ADMIN_PASSWORD in Script Properties.');
+  }
   var result = JSON.parse(login({ username: username, password: password }).getContent());
   console.log(JSON.stringify(result));
   return result;
@@ -244,7 +282,8 @@ function testDashboard() {
 
 function testMonthlyReport(periodMonth) {
   var admin = getActiveAdmin_();
-  periodMonth = cleanString_(periodMonth) || getPeriodMonth(new Date());
+  periodMonth = cleanString_(periodMonth) ||
+    Utilities.formatDate(new Date(), APP_TIMEZONE, 'yyyy-MM');
   var result = JSON.parse(getMonthlyReport({ periodMonth: periodMonth }, buildUserContext_(admin)).getContent());
   console.log(JSON.stringify(result));
   return result;
@@ -277,14 +316,46 @@ function getSampleAuditContext_() {
   var admin = getActiveAdmin_();
   var checklist = getActiveChecklist_();
   var sample = createSampleMasterData();
-  var lineId = cleanString_(checklist.LineID).toUpperCase() === 'ALL' ? sample.lineId : checklist.LineID;
-  var stationId = cleanString_(checklist.StationID).toUpperCase() === 'ALL' ? sample.stationId : checklist.StationID;
-  var line = findById_(SHEET_NAMES.LINES, 'LineID', lineId) || {};
-  var station = findById_(SHEET_NAMES.STATIONS, 'StationID', stationId) || {};
+  var activeLines = getRowsAsObjects(SHEET_NAMES.LINES).filter(function (row) {
+    return isActive_(row.ActiveStatus);
+  });
+  var activeStations = getRowsAsObjects(SHEET_NAMES.STATIONS).filter(function (row) {
+    return isActive_(row.ActiveStatus);
+  });
+  var checklistLineId = cleanString_(checklist.LineID);
+  var checklistStationId = cleanString_(checklist.StationID);
+  var line = checklistLineId.toUpperCase() === 'ALL' ? activeLines[0] :
+    activeLines.filter(function (row) {
+      return cleanString_(row.LineID) === checklistLineId;
+    })[0];
+  if (!line) {
+    line = activeLines.filter(function (row) {
+      return cleanString_(row.LineID) === cleanString_(sample.lineId);
+    })[0] || {
+      LineID: checklistLineId && checklistLineId.toUpperCase() !== 'ALL' ? checklistLineId : sample.lineId,
+      LineName: sample.lineName, Area: sample.area
+    };
+  }
+  var station = checklistStationId.toUpperCase() === 'ALL' ?
+    activeStations.filter(function (row) {
+      return cleanString_(row.LineID) === cleanString_(line.LineID);
+    })[0] || activeStations[0] :
+    activeStations.filter(function (row) {
+      return cleanString_(row.StationID) === checklistStationId;
+    })[0];
+  if (!station) {
+    station = activeStations.filter(function (row) {
+      return cleanString_(row.StationID) === cleanString_(sample.stationId);
+    })[0] || {
+      StationID: checklistStationId && checklistStationId.toUpperCase() !== 'ALL' ?
+        checklistStationId : sample.stationId,
+      StationName: sample.stationName, LineID: line.LineID, LineName: line.LineName, Area: sample.area
+    };
+  }
   return {
     admin: admin, user: buildUserContext_(admin), checklist: checklist,
-    lineId: lineId, lineName: line.LineName || station.LineName || 'Test Line',
-    stationId: stationId, stationName: station.StationName || 'Test Station',
+    lineId: line.LineID, lineName: line.LineName || station.LineName || 'Test Line',
+    stationId: station.StationID, stationName: station.StationName || 'Test Station',
     area: station.Area || line.Area || 'Test Area',
     auditLayer: cleanString_(checklist.AuditLayer).toUpperCase() === 'ALL' ? 'Manager' : checklist.AuditLayer
   };
