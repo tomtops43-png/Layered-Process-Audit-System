@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#123c69">
+  <meta name="description" content="Layered Process Audit System สำหรับติดตามการตรวจและปิด Finding">
+  <title>Layered Process Audit System</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="loginView" class="login-view">
+    <main class="login-card" aria-labelledby="loginTitle">
+      <div class="brand-mark" aria-hidden="true">LPA</div>
+      <p class="eyebrow">QF8 QUALITY SYSTEM</p>
+      <h1 id="loginTitle">Layered Process Audit</h1>
+      <p class="muted">เข้าสู่ระบบเพื่อตรวจประเมินและติดตาม Finding</p>
+      <form id="loginForm" class="form-stack">
+        <label>ชื่อผู้ใช้<input id="username" name="username" autocomplete="username" required></label>
+        <label>รหัสผ่าน<input id="password" name="password" type="password" autocomplete="current-password" required></label>
+        <button id="loginButton" class="btn btn-primary btn-large" type="submit">เข้าสู่ระบบ</button>
+      </form>
+      <p class="login-foot">ระบบสำหรับใช้งานภายในโรงงาน</p>
+    </main>
+  </div>
+
+  <div id="appView" class="app-shell hidden">
+    <header class="topbar">
+      <button class="icon-button mobile-only" id="menuButton" aria-label="เปิดเมนู">☰</button>
+      <div class="topbar-brand"><strong>LPA</strong><span>Layered Process Audit</span></div>
+      <div class="user-chip"><span id="currentUserName">-</span><small id="currentUserRole">-</small></div>
+      <button class="btn btn-ghost desktop-only" id="logoutButton">ออกจากระบบ</button>
+    </header>
+
+    <aside id="sidebar" class="sidebar" aria-label="เมนูหลัก">
+      <div class="sidebar-head"><strong>เมนูหลัก</strong><button id="closeMenuButton" class="icon-button mobile-only" aria-label="ปิดเมนู">×</button></div>
+      <nav id="mainNav" class="main-nav">
+        <button data-page="dashboard" class="nav-item active"><span>▦</span>Dashboard</button>
+        <button data-page="audit" class="nav-item"><span>✓</span>ตรวจ LPA</button>
+        <button data-page="findings" class="nav-item"><span>!</span>Finding Tracking <b id="findingNavBadge" class="nav-badge hidden">0</b></button>
+        <button data-page="report" class="nav-item"><span>▤</span>Monthly Report</button>
+        <button data-page="checklist" class="nav-item"><span>☷</span>Checklist Master</button>
+      </nav>
+      <button class="btn btn-outline sidebar-logout" id="sidebarLogoutButton">ออกจากระบบ</button>
+    </aside>
+    <div id="sidebarBackdrop" class="sidebar-backdrop hidden"></div>
+
+    <main class="main-content">
+      <section id="page-dashboard" class="page active-page">
+        <div class="page-heading"><div><p class="eyebrow">ภาพรวมระบบ</p><h2>Dashboard</h2></div><button class="btn btn-outline" id="refreshDashboard">↻ รีเฟรช</button></div>
+        <div id="dashboardCards" class="metric-grid"></div>
+        <div class="content-grid two-columns">
+          <article class="panel"><div class="panel-title"><h3>ผลการตรวจรายเดือน</h3></div><div id="monthlyAuditChart" class="bar-chart empty-state">กำลังโหลด...</div></article>
+          <article class="panel"><div class="panel-title"><h3>สรุปตาม Line</h3></div><div id="lineSummary" class="table-wrap"></div></article>
+        </div>
+        <article class="panel"><div class="panel-title"><h3>Action ใกล้ Due Date ภายใน 7 วัน</h3></div><div id="nearDueList" class="responsive-list"></div></article>
+      </section>
+
+      <section id="page-audit" class="page">
+        <div class="page-heading"><div><p class="eyebrow">บันทึกผลการตรวจ</p><h2>LPA Audit Form</h2></div></div>
+        <form id="auditForm">
+          <article class="panel">
+            <div class="form-grid audit-meta-grid">
+              <label>Audit Date<input id="auditDate" type="date" required></label>
+              <label>Audit Time<input id="auditTime" type="time" required></label>
+              <label>Line<select id="auditLine" required><option value="">เลือก Line</option></select></label>
+              <label>Station<select id="auditStation" required><option value="">เลือก Station</option></select></label>
+              <label>Area<input id="auditArea" readonly placeholder="เลือก Line / Station"></label>
+              <label>Shift<select id="auditShift" required><option value="">เลือก Shift</option><option>Day</option><option>Night</option><option>A</option><option>B</option><option>C</option></select></label>
+              <label>Audit Layer<select id="auditLayer" required><option value="">เลือก Layer</option><option>Leader</option><option>Engineer</option><option>Supervisor</option><option>Manager</option></select></label>
+              <label>Checklist Language<select id="checklistLanguage"><option value="TH" selected>ไทย</option><option value="EN">English</option></select></label>
+              <label>Remark<input id="auditRemark" placeholder="หมายเหตุ (ถ้ามี)"></label>
+            </div>
+            <button id="loadChecklistButton" class="btn btn-secondary btn-large" type="button">โหลด Checklist</button>
+          </article>
+          <div id="auditChecklist" class="checklist-stack"><div class="empty-state">เลือก Line, Station และ Audit Layer แล้วกด “โหลด Checklist”</div></div>
+          <div id="auditSaveBar" class="save-bar hidden"><div><strong id="auditProgress">ยังไม่ได้ตอบ</strong><small>กรุณาตอบ Checklist ให้ครบทุกข้อ</small></div><button class="btn btn-primary btn-large" type="submit">บันทึก Audit</button></div>
+        </form>
+      </section>
+
+      <section id="page-findings" class="page">
+        <div class="page-heading"><div><p class="eyebrow">ติดตามการแก้ไข</p><h2>Finding Tracking</h2></div><button class="btn btn-outline" id="refreshFindings">↻ รีเฟรช</button></div>
+        <article class="panel filters-panel">
+          <div class="form-grid filter-grid">
+            <label>Line<select id="findingLine"><option value="">ทั้งหมด</option></select></label>
+            <label>Station<select id="findingStation"><option value="">ทั้งหมด</option></select></label>
+            <label>Category<input id="findingCategory" placeholder="ค้นหา Category"></label>
+            <label>Status<select id="findingStatus"><option value="">ทั้งหมด</option><option>Open</option><option>Assigned</option><option>In Progress</option><option>Pending Verification</option><option>Closed</option><option>Rejected</option><option>Overdue</option></select></label>
+            <label>My Findings<select id="findingMine"><option value="">ทั้งหมด</option><option value="assigned">Assigned to Me</option><option value="created">Created by Me</option><option value="verification">Pending My Verification</option></select></label>
+            <label>PIC Name<input id="findingPicName" placeholder="ชื่อ PIC"></label>
+            <label>เดือน<input id="findingMonth" type="month"></label>
+            <label class="check-label"><input id="findingOverdue" type="checkbox"> Overdue only</label>
+          </div>
+          <button id="applyFindingFilters" class="btn btn-secondary">ค้นหา Finding</button>
+        </article>
+        <div id="findingsList" class="finding-list"></div>
+      </section>
+
+      <section id="page-report" class="page">
+        <div class="page-heading"><div><p class="eyebrow">สรุปผลประจำเดือน</p><h2>Monthly Report</h2></div></div>
+        <article class="panel report-toolbar">
+          <label>เลือกเดือน<input id="reportMonth" type="month"></label>
+          <button id="loadReportButton" class="btn btn-secondary">แสดงรายงาน</button>
+          <button id="printReportButton" class="btn btn-outline" disabled>พิมพ์</button>
+          <button id="exportCsvButton" class="btn btn-primary" disabled>Export CSV</button>
+        </article>
+        <div id="reportContent" class="report-content"><div class="empty-state">เลือกเดือนเพื่อดูรายงาน</div></div>
+      </section>
+
+      <section id="page-checklist" class="page">
+        <div class="page-heading"><div><p class="eyebrow">ข้อมูลมาตรฐาน</p><h2>Checklist Master</h2></div></div>
+        <article class="panel filters-panel">
+          <div class="form-grid filter-grid">
+            <label>Line<select id="checklistLine"><option value="">เลือก Line</option></select></label>
+            <label>Station<select id="checklistStation"><option value="">เลือก Station</option></select></label>
+            <label>Audit Layer<select id="checklistLayer"><option>ALL</option><option>Leader</option><option>Engineer</option><option>Supervisor</option><option>Manager</option></select></label>
+            <label>Category<input id="checklistCategory" placeholder="Category (ไม่บังคับ)"></label>
+          </div>
+          <button id="loadMasterChecklistButton" class="btn btn-secondary">แสดง Checklist</button>
+        </article>
+        <article class="panel"><div id="masterChecklistTable" class="table-wrap"><div class="empty-state">เลือกตัวกรองเพื่อแสดง Checklist</div></div></article>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="เมนูมือถือ">
+      <button data-page="dashboard" class="active"><span>▦</span>Dashboard</button>
+      <button data-page="audit"><span>✓</span>Audit</button>
+      <button data-page="findings"><span>!</span>Finding</button>
+      <button data-page="report"><span>▤</span>Report</button>
+      <button data-page="checklist"><span>☷</span>Checklist</button>
+    </nav>
+  </div>
+
+  <div id="loadingOverlay" class="loading-overlay hidden" role="status" aria-live="polite"><div class="loader"></div><strong id="loadingText">กำลังโหลด...</strong></div>
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <dialog id="findingDialog" class="modal">
+    <form id="findingForm" method="dialog">
+      <div class="modal-head"><div><p class="eyebrow">แก้ไข Finding</p><h3 id="findingDialogTitle">-</h3></div><button type="button" class="icon-button" id="closeFindingDialog">×</button></div>
+      <input id="editFindingId" type="hidden">
+      <div class="form-grid">
+        <label>Root Cause<textarea id="editRootCause" rows="3"></textarea></label>
+        <label>Corrective Action<textarea id="editCorrectiveAction" rows="3"></textarea></label>
+        <label>Assign To<select id="editAssignedTo"><option value="">ไม่ระบุผู้รับผิดชอบ</option></select></label>
+        <label>Due Date<input id="editDueDate" type="date"></label>
+        <label>Status<select id="editStatus"><option>Open</option><option>Assigned</option><option>In Progress</option><option>Pending Verification</option><option>Rejected</option><option>Closed</option></select></label>
+        <label class="full-width">Close Remark<textarea id="editCloseRemark" rows="2"></textarea></label>
+        <label class="full-width">After Photo<input id="editAfterPhoto" type="file" accept="image/*" capture="environment"></label>
+      </div>
+      <div id="editPhotoPreview" class="photo-link"></div>
+      <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelFindingEdit">ยกเลิก</button><button type="button" class="btn btn-outline hidden" id="rejectFindingButton">Reject</button><button type="button" class="btn btn-secondary hidden" id="approveFindingButton">Approve & Close</button><button type="button" class="btn btn-primary" id="submitVerificationButton">Submit for Verification</button><button type="submit" class="btn btn-primary">บันทึกการแก้ไข</button></div>
+    </form>
+  </dialog>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
