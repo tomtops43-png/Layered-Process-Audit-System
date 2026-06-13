@@ -23,7 +23,7 @@ function getFindings(payload, currentUser) {
         (!overdueOnly || valuesEqual_(row.OverdueFlag, 'Yes')) &&
         (!myFindings || matchesMyFindingFilter_(row, currentUser, myFindings));
     });
-    if (['Leader', 'User'].indexOf(currentUser.Role) !== -1) rows = rows.filter(function (row) { return canAccessFinding_(currentUser, row); });
+    rows = rows.filter(function (row) { return canViewFindingRbac_(currentUser, row); });
     rows.sort(function (a, b) { return cleanString_(a.DueDate).localeCompare(cleanString_(b.DueDate)); });
     return jsonResponse(true, 'Findings loaded.', { findings: rows.map(sanitizeForClient_), count: rows.length });
   } catch (error) {
@@ -59,7 +59,8 @@ function updateFinding(payload, currentUser) {
     allowed.forEach(function (field) { if (Object.prototype.hasOwnProperty.call(payload, field)) updates[field] = payload[field]; });
     Object.keys(aliases).forEach(function (key) { if (Object.prototype.hasOwnProperty.call(payload, key)) updates[aliases[key]] = payload[key]; });
     if (!Object.keys(updates).length) throw new Error('No supported finding fields were provided to update.');
-    if (updates.AssignedToUserID) {
+    if (updates.AssignedToUserID && !valuesEqual_(updates.AssignedToUserID, finding.AssignedToUserID || finding.PICUserID)) {
+      requirePermission_(currentUser, 'findings.assign');
       var assignee = findById_(SHEET_NAMES.USERS, 'UserID', updates.AssignedToUserID);
       if (!assignee || !isActive_(assignee.ActiveStatus)) throw new Error('Assigned user was not found or is inactive.');
       updates.AssignedToName = assignee.FullName;
@@ -125,9 +126,12 @@ function verifyFinding(payload, currentUser) {
     var finding = findById_(SHEET_NAMES.FINDINGS, 'FindingID', payload.findingId);
     if (!finding) throw new Error('Finding not found: ' + payload.findingId);
     if (!valuesEqual_(finding.Status, 'Pending Verification')) throw new Error('Finding is not pending verification.');
-    if (!canVerifyFinding_(currentUser, finding)) return jsonResponse(false, 'Your role cannot verify this finding.', {});
     var decision = cleanString_(payload.decision).toLowerCase();
     if (['approve', 'approved', 'reject', 'rejected'].indexOf(decision) === -1) throw new Error('Decision must be Approve or Reject.');
+    if (!canVerifyFinding_(currentUser, finding)) return jsonResponse(false, 'You do not have permission to verify this finding.', {});
+    if ((decision === 'approve' || decision === 'approved') && !canCloseFinding_(currentUser, finding)) {
+      return jsonResponse(false, 'You do not have permission to close this finding severity.', {});
+    }
     var timestamp = formatDateTimeBangkok(new Date());
     var updates = {
       VerifierUserID: currentUser.UserID, VerifierName: currentUser.FullName, VerifierRole: currentUser.Role,
@@ -202,31 +206,36 @@ function isAssignedToUser_(finding, currentUser) {
 }
 
 function canUpdateFinding_(currentUser, finding) {
-  return ['Admin', 'Manager', 'Supervisor', 'Engineer'].indexOf(currentUser.Role) !== -1 ||
-    isAssignedToUser_(finding, currentUser);
+  if (isAdmin_(currentUser)) return true;
+  if (isAssignedToUser_(finding, currentUser) && hasPermission_(currentUser, 'findings.update.assigned')) return true;
+  return hasPermission_(currentUser, 'findings.update.line') && canAccessLine_(currentUser, finding.LineID, 'Update');
 }
 
 function canVerifyFinding_(currentUser, finding) {
-  var role = cleanString_(currentUser.Role);
-  var severity = cleanString_(finding.Severity || finding.Priority).toLowerCase();
-  var audit = findById_(SHEET_NAMES.AUDIT_SESSIONS, 'AuditID', finding.AuditID) || {};
-  var layer = cleanString_(audit.AuditLayer).toLowerCase();
-  if (role === 'Admin' || role === 'Manager') return true;
-  if (severity === 'critical' || layer === 'manager') return false;
-  if (role === 'Engineer') return true;
-  return false;
+  if (!hasPermission_(currentUser, 'findings.verify')) return false;
+  return isAdmin_(currentUser) || hasPermission_(currentUser, 'findings.view.all') ||
+    canAccessLine_(currentUser, finding.LineID, 'Update');
 }
 
 function canCloseFinding_(currentUser, finding) {
   var severity = cleanString_(finding.Severity || finding.Priority).toLowerCase();
-  if (currentUser.Role === 'Leader') {
-    var audit = findById_(SHEET_NAMES.AUDIT_SESSIONS, 'AuditID', finding.AuditID) || {};
-    var layer = cleanString_(audit.AuditLayer).toLowerCase();
-    var verificationRequired = cleanString_(finding.VerificationRequired).toLowerCase();
-    var leaderClosureAllowed = verificationRequired === 'no' || (!verificationRequired && (!layer || layer === 'leader'));
-    return severity === 'minor' && leaderClosureAllowed && isAssignedToUser_(finding, currentUser);
-  }
-  return canVerifyFinding_(currentUser, finding);
+  var permissionKey = severity === 'critical' ? 'findings.close.critical' :
+    (severity === 'major' ? 'findings.close.major' : 'findings.close.minor');
+  if (!hasPermission_(currentUser, permissionKey)) return false;
+  var audit = findById_(SHEET_NAMES.AUDIT_SESSIONS, 'AuditID', finding.AuditID) || {};
+  var layer = cleanString_(audit.AuditLayer).toLowerCase();
+  var verificationRequired = cleanString_(finding.VerificationRequired).toLowerCase();
+  var directMinorClosure = severity === 'minor' && isAssignedToUser_(finding, currentUser) &&
+    (verificationRequired === 'no' || (!verificationRequired && (!layer || layer === 'leader')));
+  return directMinorClosure || canVerifyFinding_(currentUser, finding);
+}
+
+function canViewFindingRbac_(currentUser, finding) {
+  if (isAdmin_(currentUser) || hasPermission_(currentUser, 'findings.view.all')) return true;
+  if (hasPermission_(currentUser, 'findings.view.line') && canAccessLine_(currentUser, finding.LineID, 'View')) return true;
+  if (hasPermission_(currentUser, 'findings.view.assigned') && isAssignedToUser_(finding, currentUser)) return true;
+  return hasPermission_(currentUser, 'findings.view.created') &&
+    valuesEqual_(finding.AuditorUserID || finding.CreatedBy, currentUser.UserID);
 }
 
 function appendActionLog_(findingId, oldStatus, newStatus, changes, remark, evidenceUrl, currentUser, timestamp) {

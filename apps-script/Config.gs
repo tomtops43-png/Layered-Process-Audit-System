@@ -20,7 +20,10 @@ var SHEET_NAMES = {
   SETTINGS: 'Settings',
   REPORT_LOGS: 'ReportLogs',
   AUDIT_PLAN: 'AuditPlan',
-  LISTS: 'DO_NOT_DELETE_Lists'
+  LISTS: 'DO_NOT_DELETE_Lists',
+  ROLE_PERMISSIONS: 'RolePermissions',
+  USER_PERMISSIONS: 'UserPermissions',
+  USER_LINE_ACCESS: 'UserLineAccess'
 };
 
 var SHEET_HEADERS = {};
@@ -37,6 +40,9 @@ SHEET_HEADERS[SHEET_NAMES.SETTINGS] = ['SettingKey', 'SettingValue', 'Descriptio
 SHEET_HEADERS[SHEET_NAMES.REPORT_LOGS] = ['ReportID', 'PeriodMonth', 'ReportTitle', 'TotalAudit', 'TotalOK', 'TotalNG', 'NGRate', 'OpenFinding', 'ClosedFinding', 'OverdueAction', 'ReportFileURL', 'GeneratedBy', 'GeneratedAt', 'SentTo', 'Remark'];
 SHEET_HEADERS[SHEET_NAMES.AUDIT_PLAN] = ['PlanID', 'PeriodMonth', 'LineID', 'LineName', 'StationID', 'StationName', 'AuditLayer', 'PlannedDate', 'PlannedAuditor', 'ActualAuditID', 'ActualDate', 'PlanStatus', 'Remark', 'CreatedAt', 'UpdatedAt'];
 SHEET_HEADERS[SHEET_NAMES.LISTS] = ['ListType', 'ListValue', 'DisplayText', 'SortOrder', 'ActiveStatus'];
+SHEET_HEADERS[SHEET_NAMES.ROLE_PERMISSIONS] = ['Role', 'PermissionKey', 'Allowed', 'Description', 'UpdatedAt', 'UpdatedBy'];
+SHEET_HEADERS[SHEET_NAMES.USER_PERMISSIONS] = ['UserID', 'PermissionKey', 'Allowed', 'Reason', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'];
+SHEET_HEADERS[SHEET_NAMES.USER_LINE_ACCESS] = ['UserID', 'LineID', 'LineName', 'AccessLevel', 'ActiveStatus', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'];
 
 var PUBLIC_ACTIONS = ['login'];
 var VALID_ROLES = ['Admin', 'Manager', 'Supervisor', 'Engineer', 'Leader', 'User'];

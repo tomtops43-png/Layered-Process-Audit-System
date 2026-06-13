@@ -16,6 +16,13 @@ function getMasterData(payload, currentUser) {
 
 function getChecklist(payload, currentUser) {
   try {
+    if (!hasPermission_(currentUser, 'checklist.view') && !hasPermission_(currentUser, 'checklist.manage') &&
+        !hasApiAccess_(currentUser, 'saveAudit')) throw new Error('Permission denied: checklist.view');
+    if (!isAllFilter_(payload.lineId) && !isAdmin_(currentUser) && !hasPermission_(currentUser, 'audit.view.all') &&
+        (hasPermission_(currentUser, 'audit.engineer.create') || hasPermission_(currentUser, 'audit.leader.create') ||
+         hasPermission_(currentUser, 'audit.view.line'))) {
+      requireLineAccess_(currentUser, payload.lineId, 'View');
+    }
     requireFields_(payload, ['lineId', 'stationId', 'auditLayer']);
     var lineId = cleanString_(payload.lineId);
     var stationId = cleanString_(payload.stationId);

@@ -38,8 +38,9 @@
         <button data-page="dashboard" class="nav-item active"><span>▦</span>Dashboard</button>
         <button data-page="audit" class="nav-item"><span>✓</span>ตรวจ LPA</button>
         <button data-page="findings" class="nav-item"><span>!</span>Finding Tracking <b id="findingNavBadge" class="nav-badge hidden">0</b></button>
-        <button data-page="report" class="nav-item"><span>▤</span>Monthly Report</button>
-        <button data-page="checklist" class="nav-item"><span>☷</span>Checklist Master</button>
+        <button data-page="report" class="nav-item" data-permission-any="reports.view,reports.export"><span>▤</span>Monthly Report</button>
+        <button data-page="checklist" class="nav-item" data-permission-any="checklist.view,checklist.manage"><span>☷</span>Checklist Master</button>
+        <button data-page="admin" class="nav-item hidden" id="adminNavButton"><span>⚙</span>Admin Panel</button>
       </nav>
       <button class="btn btn-outline sidebar-logout" id="sidebarLogoutButton">ออกจากระบบ</button>
     </aside>
@@ -120,6 +121,20 @@
         </article>
         <article class="panel"><div id="masterChecklistTable" class="table-wrap"><div class="empty-state">เลือกตัวกรองเพื่อแสดง Checklist</div></div></article>
       </section>
+
+      <section id="page-admin" class="page">
+        <div class="page-heading"><div><p class="eyebrow">ระบบผู้ใช้งานและสิทธิ์</p><h2>Admin Panel</h2></div><button id="addUserButton" class="btn btn-primary">+ Add User</button></div>
+        <article class="panel filters-panel">
+          <div class="form-grid filter-grid">
+            <label>ค้นหา<input id="adminUserSearch" placeholder="Username / Full Name"></label>
+            <label>Role<select id="adminRoleFilter"><option value="">ทั้งหมด</option><option>Admin</option><option>Manager</option><option>Supervisor</option><option>Engineer</option><option>Leader</option><option>User</option></select></label>
+            <label>Status<select id="adminStatusFilter"><option value="">ทั้งหมด</option><option>Active</option><option>Inactive</option></select></label>
+            <label>Line<select id="adminLineFilter"><option value="">ทั้งหมด</option></select></label>
+          </div>
+          <button id="searchUsersButton" class="btn btn-secondary">ค้นหาผู้ใช้</button>
+        </article>
+        <article class="panel"><div id="adminUsersTable" class="table-wrap"><div class="empty-state">กำลังโหลดผู้ใช้...</div></div></article>
+      </section>
     </main>
 
     <nav class="bottom-nav" aria-label="เมนูมือถือ">
@@ -149,6 +164,33 @@
       </div>
       <div id="editPhotoPreview" class="photo-link"></div>
       <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelFindingEdit">ยกเลิก</button><button type="button" class="btn btn-outline hidden" id="rejectFindingButton">Reject</button><button type="button" class="btn btn-secondary hidden" id="approveFindingButton">Approve & Close</button><button type="button" class="btn btn-primary" id="submitVerificationButton">Submit for Verification</button><button type="submit" class="btn btn-primary">บันทึกการแก้ไข</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="userDialog" class="modal modal-wide">
+    <form id="userForm" method="dialog">
+      <div class="modal-head"><div><p class="eyebrow">USER MANAGEMENT</p><h3 id="userDialogTitle">Add User</h3></div><button type="button" class="icon-button" id="closeUserDialog">×</button></div>
+      <input id="adminEditUserId" type="hidden">
+      <div class="form-grid">
+        <label>Employee ID<input id="adminEmployeeId"></label>
+        <label>Username *<input id="adminUsername" required></label>
+        <label>Full Name *<input id="adminFullName" required></label>
+        <label>Nickname<input id="adminNickname"></label>
+        <label>Role *<select id="adminUserRole" required><option>Admin</option><option>Manager</option><option>Supervisor</option><option>Engineer</option><option>Leader</option><option>User</option></select></label>
+        <label>Department<input id="adminDepartment"></label>
+        <label>Default Line<select id="adminLineDefault"><option value="">ไม่ระบุ</option></select></label>
+        <label>Email<input id="adminEmail" type="email"></label>
+        <label>Phone<input id="adminPhone"></label>
+        <label>Status<select id="adminActiveStatus"><option>Active</option><option>Inactive</option></select></label>
+        <label id="adminPasswordLabel">Initial Password *<input id="adminPassword" type="password" minlength="8"></label>
+      </div>
+      <div id="adminAccessEditor" class="admin-access hidden">
+        <h4>Line Access</h4>
+        <div id="adminLineAccessList" class="permission-grid"></div>
+        <h4>User Permission Overrides</h4>
+        <div id="adminPermissionList" class="permission-grid"></div>
+      </div>
+      <div class="modal-actions"><button type="button" class="btn btn-outline" id="resetPasswordButton">Reset Password</button><button type="button" class="btn btn-outline" id="deactivateUserButton">Deactivate</button><button type="button" class="btn btn-outline" id="cancelUserEdit">ยกเลิก</button><button type="submit" class="btn btn-primary">บันทึกผู้ใช้</button></div>
     </form>
   </dialog>
 

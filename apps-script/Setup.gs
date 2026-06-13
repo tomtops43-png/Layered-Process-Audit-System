@@ -30,6 +30,42 @@ function setupHeaders() {
   return results;
 }
 
+/** Creates missing RBAC sheets/headers and inserts only missing default role permissions. */
+function setupRbac() {
+  var headerResults = setupHeaders();
+  var defaults = getDefaultRolePermissions_();
+  var existing = getRowsAsObjects(SHEET_NAMES.ROLE_PERMISSIONS);
+  var timestamp = formatDateTimeBangkok(new Date());
+  var inserted = 0;
+  Object.keys(defaults).forEach(function (role) {
+    defaults[role].forEach(function (permissionKey) {
+      var exists = existing.some(function (row) {
+        return valuesEqual_(row.Role, role) && valuesEqual_(row.PermissionKey, permissionKey);
+      });
+      if (!exists) {
+        appendObject(SHEET_NAMES.ROLE_PERMISSIONS, {
+          Role: role, PermissionKey: permissionKey, Allowed: 'Yes',
+          Description: 'Default ' + role + ' permission',
+          UpdatedAt: timestamp, UpdatedBy: 'SYSTEM'
+        });
+        inserted++;
+      }
+    });
+  });
+  return { headers: headerResults, insertedRolePermissions: inserted };
+}
+
+function getDefaultRolePermissions_() {
+  return {
+    Admin: ['*', 'users.view', 'users.create', 'users.update', 'users.deactivate', 'users.resetPassword', 'users.managePermission'],
+    Manager: ['audit.manager.create', 'audit.view.all', 'findings.view.all', 'findings.assign', 'findings.verify', 'findings.close.minor', 'findings.close.major', 'findings.close.critical', 'dashboard.view.all', 'reports.view', 'reports.export'],
+    Supervisor: [],
+    Engineer: ['audit.engineer.create', 'audit.view.line', 'findings.view.line', 'findings.assign', 'findings.update.line', 'findings.verify', 'findings.close.minor', 'findings.close.major', 'dashboard.view', 'reports.view'],
+    Leader: ['audit.leader.create', 'audit.view.own', 'findings.view.assigned', 'findings.view.created', 'findings.update.assigned', 'findings.close.minor', 'dashboard.view'],
+    User: ['findings.view.assigned', 'findings.update.assigned', 'dashboard.view']
+  };
+}
+
 /**
  * Destructively replaces ChecklistMaster from the 2D values read from the
  * ChecklistMaster_Bilingual worksheet. The input must include its header row

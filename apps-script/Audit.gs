@@ -2,10 +2,17 @@
 function saveAudit(payload, currentUser) {
   try {
     requireFields_(payload, ['auditDate', 'lineId', 'stationId', 'auditLayer', 'records']);
+    var auditPermission = cleanString_(payload.auditLayer).toLowerCase() === 'manager' ? 'audit.manager.create' :
+      (cleanString_(payload.auditLayer).toLowerCase() === 'engineer' ? 'audit.engineer.create' : 'audit.leader.create');
+    requirePermission_(currentUser, auditPermission);
+    if (!isAdmin_(currentUser) && !hasPermission_(currentUser, 'audit.view.all') &&
+        (hasPermission_(currentUser, 'audit.engineer.create') || hasPermission_(currentUser, 'audit.leader.create'))) {
+      requireLineAccess_(currentUser, payload.lineId, 'Update');
+    }
     if (!Array.isArray(payload.records) || !payload.records.length) throw new Error('At least one audit record is required.');
     payload.records.forEach(function (record, index) {
       try { requireFields_(record, ['checklistId', 'result']); } catch (error) { throw new Error('Record ' + (index + 1) + ': ' + error.message); }
-      if (['OK', 'NG', 'NA'].indexOf(cleanString_(record.result).toUpperCase()) === -1) throw new Error('Record ' + (index + 1) + ': result must be OK, NG, or NA.');
+      if (!normalizeAuditResult_(record.result)) throw new Error('Record ' + (index + 1) + ': result must be OK, NG, or N/A.');
     });
 
     var now = new Date();
@@ -20,10 +27,10 @@ function saveAudit(payload, currentUser) {
     var area = cleanString_(payload.area) || cleanString_(station.Area) || cleanString_(line.Area);
     var auditId = generateId('LPA', SHEET_NAMES.AUDIT_SESSIONS, 'AuditID', periodMonth);
     var totals = { OK: 0, NG: 0, NA: 0 };
-    payload.records.forEach(function (record) { totals[cleanString_(record.result).toUpperCase()]++; });
+    payload.records.forEach(function (record) { totals[normalizeAuditResult_(record.result).replace('/', '')]++; });
     var checked = totals.OK + totals.NG;
     var ngRate = checked ? Number((totals.NG * 100 / checked).toFixed(2)) : 0;
-    var resultSummary = totals.NG > 0 ? 'NG' : (totals.OK > 0 ? 'OK' : 'NA');
+    var resultSummary = totals.NG > 0 ? 'NG' : (totals.OK > 0 ? 'OK' : 'N/A');
 
     appendObject(SHEET_NAMES.AUDIT_SESSIONS, {
       AuditID: auditId, AuditDate: auditDate, AuditTime: auditTime, PeriodMonth: periodMonth,
@@ -40,7 +47,7 @@ function saveAudit(payload, currentUser) {
     payload.records.forEach(function (record) {
       var checklist = findById_(SHEET_NAMES.CHECKLIST, 'ChecklistID', record.checklistId) || {};
       var recordId = generateId('AR', SHEET_NAMES.AUDIT_RECORDS, 'RecordID', periodMonth);
-      var result = cleanString_(record.result).toUpperCase();
+      var result = normalizeAuditResult_(record.result);
       var defaultDays = toNumber_(getSetting('DEFAULT_DUE_DAYS')) || 7;
       var dueDate = record.dueDate ? formatDateBangkok_(record.dueDate) : (result === 'NG' ? addDays_(parseDate_(auditDate) || now, defaultDays) : '');
       var findingDetail = cleanString_(record.findingDetail);
@@ -111,7 +118,12 @@ function getAuditList(payload, currentUser) {
         (!payload.auditLayer || valuesEqual_(row.AuditLayer, payload.auditLayer)) &&
         (!payload.status || valuesEqual_(row.SubmitStatus, payload.status));
     });
-    if (currentUser.Role === 'User') rows = rows.filter(function (row) { return valuesEqual_(row.AuditorUserID, currentUser.UserID); });
+    if (!hasPermission_(currentUser, 'audit.view.all')) {
+      rows = rows.filter(function (row) {
+        return (hasPermission_(currentUser, 'audit.view.line') && canAccessLine_(currentUser, row.LineID, 'View')) ||
+          (hasPermission_(currentUser, 'audit.view.own') && valuesEqual_(row.AuditorUserID, currentUser.UserID));
+      });
+    }
     rows.sort(function (a, b) { return (cleanString_(b.AuditDate) + cleanString_(b.AuditTime)).localeCompare(cleanString_(a.AuditDate) + cleanString_(a.AuditTime)); });
     var limit = Math.min(Math.max(toNumber_(payload.limit) || 100, 1), 500);
     return jsonResponse(true, 'Audit list loaded.', { audits: rows.slice(0, limit).map(sanitizeForClient_), count: rows.length });
@@ -124,4 +136,10 @@ function addDays_(date, days) {
   var result = new Date(date.getTime());
   result.setDate(result.getDate() + Number(days));
   return formatDateBangkok_(result);
+}
+
+function normalizeAuditResult_(result) {
+  var value = cleanString_(result).toUpperCase().replace(/\s/g, '');
+  if (value === 'NA' || value === 'N/A') return 'N/A';
+  return value === 'OK' || value === 'NG' ? value : '';
 }

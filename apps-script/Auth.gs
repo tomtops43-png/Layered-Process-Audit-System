@@ -17,7 +17,11 @@ function login(payload) {
     updateObjectById(SHEET_NAMES.USERS, 'UserID', user.UserID, {
       LastLogin: formatDateTimeBangkok(now), UpdatedAt: formatDateTimeBangkok(now), UpdatedBy: user.UserID
     });
-    return jsonResponse(true, 'Login successful.', { token: token, expiresIn: TOKEN_TTL_SECONDS, user: publicUser_(user) });
+    var context = permissionContext_(user);
+    return jsonResponse(true, 'Login successful.', {
+      token: token, expiresIn: TOKEN_TTL_SECONDS, user: publicUser_(user),
+      permissions: context.permissions, lineAccess: context.lineAccess
+    });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }

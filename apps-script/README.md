@@ -28,7 +28,7 @@ Deployable backend API for the QF8 customer audit-finding closure application. I
    - `SPREADSHEET_ID`: ID from the `LPA_Database` spreadsheet URL.
    - Optional `DEFAULT_ADMIN_PASSWORD`: temporary password used only when `createDefaultAdmin()` is called without arguments.
 5. In Apps Script project settings, set the project timezone to **Asia/Bangkok**. The code also explicitly formats business dates in `Asia/Bangkok`.
-6. Run `setupHeaders()` once from the editor and authorize access. It creates missing sheets/headers and appends missing columns; it does not delete existing data.
+6. Run `setupRbac()` once from the editor and authorize access. It runs the existing non-destructive header setup, creates the RBAC sheets when missing, and inserts only missing default role permissions; it does not delete existing users or data.
 7. Confirm the `Settings` sheet contains these keys and valid values:
    - `APP_NAME`
    - `TIMEZONE` (`Asia/Bangkok`)
@@ -161,6 +161,7 @@ Supported `fileType` values are `BeforePhoto`, `AfterPhoto`, `Evidence`, `Report
 ## Setup and maintenance helpers
 
 - `setupHeaders()` — creates missing sheets/headers and appends missing required columns without clearing data.
+- `setupRbac()` — creates missing `RolePermissions`, `UserPermissions`, and `UserLineAccess` headers and inserts only missing default role-permission rows.
 - `resetChecklistMasterBilingualFromSpreadsheet(sourceSpreadsheetId)` — deliberately clears and rebuilds only `ChecklistMaster` from the `ChecklistMaster_Bilingual` tab of a converted Google Sheets workbook. It validates the exact bilingual headers, exactly 39 data rows, and `LineID`/`StationID = ALL` before clearing the target.
 - `createDefaultAdmin(username, password)` — creates one administrator only when that username does not exist.
 - `hashExistingPasswords()` — hashes non-empty `PasswordHash` cells that are not already 64-character SHA-256 hex values. Run only when legacy cells currently contain plaintext passwords.

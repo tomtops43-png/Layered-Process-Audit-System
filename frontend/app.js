@@ -9,8 +9,19 @@ const state = {
   findings: [],
   dashboard: null,
   report: null,
-  editingFinding: null
+  editingFinding: null,
+  adminUsers: [],
+  editingUser: null
 };
+
+const PERMISSION_CATALOG = [
+  'users.view', 'users.create', 'users.update', 'users.deactivate', 'users.resetPassword', 'users.managePermission',
+  'audit.manager.create', 'audit.engineer.create', 'audit.leader.create', 'audit.view.all', 'audit.view.line', 'audit.view.own',
+  'findings.view.all', 'findings.view.line', 'findings.view.assigned', 'findings.view.created', 'findings.assign',
+  'findings.update.line', 'findings.update.assigned', 'findings.verify', 'findings.close.minor',
+  'findings.close.major', 'findings.close.critical', 'dashboard.view', 'dashboard.view.all',
+  'reports.view', 'reports.export', 'checklist.view', 'checklist.manage'
+];
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -56,6 +67,13 @@ function bindEvents() {
   $('#submitVerificationButton').addEventListener('click', submitFindingForVerification);
   $('#approveFindingButton').addEventListener('click', () => verifyFinding('Approve'));
   $('#rejectFindingButton').addEventListener('click', () => verifyFinding('Reject'));
+  $('#addUserButton').addEventListener('click', () => openUserEditor());
+  $('#searchUsersButton').addEventListener('click', loadUsers);
+  $('#userForm').addEventListener('submit', event => { event.preventDefault(); saveUser(); });
+  $('#closeUserDialog').addEventListener('click', () => $('#userDialog').close());
+  $('#cancelUserEdit').addEventListener('click', () => $('#userDialog').close());
+  $('#deactivateUserButton').addEventListener('click', deactivateSelectedUser);
+  $('#resetPasswordButton').addEventListener('click', resetSelectedUserPassword);
 }
 
 async function apiCall(action, payload = {}) {
@@ -94,6 +112,8 @@ async function login() {
     const data = await apiCall('login', { username, password });
     state.token = data.token;
     state.user = data.user;
+    state.user.permissions = data.permissions || [];
+    state.user.lineAccess = data.lineAccess || [];
     localStorage.setItem('lpa_token', state.token);
     localStorage.setItem('lpa_user', JSON.stringify(state.user));
     $('#password').value = '';
@@ -122,8 +142,17 @@ function logout(notify = true) {
 }
 
 async function initializeAuthenticatedApp() {
+  try {
+    const current = await apiCall('getCurrentUser', {});
+    state.user = current;
+    localStorage.setItem('lpa_user', JSON.stringify(state.user));
+  } catch (error) {
+    showToast(error.message, 'error');
+    return;
+  }
   $('#currentUserName').textContent = state.user.FullName || state.user.Username || '-';
   $('#currentUserRole').textContent = state.user.Role || '-';
+  applyPermissionVisibility();
   navigateTo('dashboard');
   showLoading('กำลังเตรียมข้อมูล...');
   try {
@@ -222,13 +251,17 @@ function renderAuditChecklist() {
     return;
   }
   const userOptions = activeUserOptions();
-  container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>Standard Criteria</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>Example OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>Example NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="N/A">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid"><label>Finding Detail *<textarea data-field="findingDetail" rows="2"></textarea></label><label>Corrective Action *<textarea data-field="correctiveAction" rows="2"></textarea></label><label>Assign To *<select data-field="assignedToUserId"><option value="">เลือกผู้รับผิดชอบ</option>${userOptions}</select></label><label>Responsible Person<input data-field="responsiblePerson" readonly></label><label>Due Date *<input data-field="dueDate" type="date"></label><label>Status<select data-field="findingStatus"><option>Assigned</option><option>Open</option><option>In Progress</option></select></label><label>Before Photo *<input data-field="beforePhoto" type="file" accept="image/*" capture="environment"></label><label>Remark<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
+  const assignmentFields = hasPermission('findings.assign')
+    ? `<label>Assign To *<select data-field="assignedToUserId"><option value="">เลือกผู้รับผิดชอบ</option>${userOptions}</select></label><label>Responsible Person<input data-field="responsiblePerson" readonly></label>`
+    : `<input data-field="assignedToUserId" type="hidden"><label>Responsible Person *<input data-field="responsiblePerson"></label>`;
+  container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>Standard Criteria</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>Example OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>Example NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="N/A">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid"><label>Finding Detail *<textarea data-field="findingDetail" rows="2"></textarea></label><label>Corrective Action *<textarea data-field="correctiveAction" rows="2"></textarea></label>${assignmentFields}<label>Due Date *<input data-field="dueDate" type="date"></label><label>Status<select data-field="findingStatus"><option>Assigned</option><option>Open</option><option>In Progress</option></select></label><label>Before Photo *<input data-field="beforePhoto" type="file" accept="image/*" capture="environment"></label><label>Remark<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
   $$('.checklist-card', container).forEach(card => {
     $$('.result-button', card).forEach(button => button.addEventListener('click', () => selectAuditResult(card, button.dataset.result)));
-    $('[data-field="assignedToUserId"]', card).addEventListener('change', event => {
-      const user = (state.masterData.users || []).find(item => String(item.UserID) === event.target.value);
-      $('[data-field="responsiblePerson"]', card).value = user ? user.FullName : '';
-    });
+    const assigneeSelect = $('select[data-field="assignedToUserId"]', card);
+    if (assigneeSelect) assigneeSelect.addEventListener('change', event => {
+        const user = (state.masterData.users || []).find(item => String(item.UserID) === event.target.value);
+        $('[data-field="responsiblePerson"]', card).value = user ? user.FullName : '';
+      });
   });
   updateAuditProgress();
 }
@@ -354,18 +387,23 @@ function openFindingEditor(findingId) {
   $('#editRootCause').value = row.RootCause || '';
   $('#editCorrectiveAction').value = row.CorrectiveAction || '';
   populateFindingAssignee(row.AssignedToUserID || row.PICUserID || '');
+  $('#editAssignedTo').disabled = !hasPermission('findings.assign');
   $('#editDueDate').value = dateInputValue(row.DueDate);
   $('#editStatus').value = normalizeEditableStatus(row.Status);
   $('#editCloseRemark').value = row.CloseRemark || '';
   $('#editAfterPhoto').value = '';
   $('#editPhotoPreview').innerHTML = row.AfterPhotoURL ? `<a href="${escapeAttr(row.AfterPhotoURL)}" target="_blank" rel="noopener">ดู After Photo ปัจจุบัน</a>` : '';
   const pending = String(row.Status).toLowerCase() === 'pending verification';
-  const canVerify = pending && ['Admin', 'Manager', 'Engineer'].includes(state.user.Role);
+  const canVerify = pending && hasPermission('findings.verify');
   const assignedToMe = String(row.AssignedToUserID || row.PICUserID || '') === String(state.user.UserID || '') ||
     String(row.AssignedToName || row.PICName || '') === String(state.user.FullName || '');
-  $('#approveFindingButton').classList.toggle('hidden', !canVerify);
+  const severity = String(row.Severity || row.Priority || 'Minor').toLowerCase();
+  const closePermission = severity === 'critical' ? 'findings.close.critical' : severity === 'major' ? 'findings.close.major' : 'findings.close.minor';
+  $('#approveFindingButton').classList.toggle('hidden', !canVerify || !hasPermission(closePermission));
   $('#rejectFindingButton').classList.toggle('hidden', !canVerify);
   $('#submitVerificationButton').classList.toggle('hidden', (!assignedToMe && !['Admin', 'Manager'].includes(state.user.Role)) || pending || String(row.Status).toLowerCase() === 'closed');
+  const closedOption = Array.from($('#editStatus').options).find(option => option.value === 'Closed');
+  if (closedOption) closedOption.disabled = !hasPermission(closePermission);
   $('#findingDialog').showModal();
 }
 
@@ -386,9 +424,9 @@ async function updateFinding() {
     }
     const common = {
       findingId, rootCause: $('#editRootCause').value.trim(), correctiveAction: $('#editCorrectiveAction').value.trim(),
-      assignedToUserId: $('#editAssignedTo').value,
       dueDate: $('#editDueDate').value, afterPhotoUrl, closeRemark, remark: 'Updated from web application'
     };
+    if (hasPermission('findings.assign')) common.assignedToUserId = $('#editAssignedTo').value;
     if (targetStatus === 'Closed') await closeFinding({ ...common });
     else await apiCall('updateFinding', { ...common, status: targetStatus });
     $('#findingDialog').close();
@@ -508,6 +546,138 @@ async function loadMasterChecklist() {
   }
 }
 
+async function loadUsers() {
+  if (!hasPermission('users.view')) return;
+  showLoading('กำลังโหลดผู้ใช้...');
+  try {
+    const data = await apiCall('listUsers', {
+      search: $('#adminUserSearch').value.trim(),
+      role: $('#adminRoleFilter').value,
+      status: $('#adminStatusFilter').value,
+      lineId: $('#adminLineFilter').value
+    });
+    state.adminUsers = data.users || [];
+    renderAdminUsers();
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+function renderAdminUsers() {
+  const rows = state.adminUsers;
+  if (!rows.length) return $('#adminUsersTable').innerHTML = emptyHtml('ไม่พบผู้ใช้');
+  $('#adminUsersTable').innerHTML = `<table class="data-table"><thead><tr><th>User</th><th>Full Name</th><th>Role</th><th>Line Access</th><th>Status</th><th>Last Login</th><th></th></tr></thead><tbody>${rows.map(user => `<tr><td>${escapeHtml(user.Username)}</td><td>${escapeHtml(user.FullName)}</td><td>${escapeHtml(user.Role)}</td><td>${escapeHtml((user.LineAccess || []).map(line => line.LineName || line.LineID).join(', ') || user.LineDefault || '-')}</td><td><span class="status-badge ${String(user.ActiveStatus).toLowerCase() === 'active' ? 'status-closed' : 'status-na'}">${escapeHtml(user.ActiveStatus || '-')}</span></td><td>${escapeHtml(user.LastLogin || '-')}</td><td><button class="btn btn-outline" data-edit-user="${escapeAttr(user.UserID)}">Edit</button></td></tr>`).join('')}</tbody></table>`;
+  $$('[data-edit-user]', $('#adminUsersTable')).forEach(button => button.addEventListener('click', () => openUserEditor(button.dataset.editUser)));
+}
+
+async function openUserEditor(userId = '') {
+  const user = state.adminUsers.find(item => item.UserID === userId) || null;
+  state.editingUser = user;
+  $('#userDialogTitle').textContent = user ? `Edit ${user.Username}` : 'Add User';
+  $('#adminEditUserId').value = user ? user.UserID : '';
+  $('#adminEmployeeId').value = user ? user.EmployeeID || '' : '';
+  $('#adminUsername').value = user ? user.Username || '' : '';
+  $('#adminFullName').value = user ? user.FullName || '' : '';
+  $('#adminNickname').value = user ? user.Nickname || '' : '';
+  $('#adminUserRole').value = user ? user.Role || 'User' : 'User';
+  $('#adminDepartment').value = user ? user.Department || '' : '';
+  $('#adminLineDefault').value = user ? user.LineDefault || '' : '';
+  $('#adminEmail').value = user ? user.Email || '' : '';
+  $('#adminPhone').value = user ? user.Phone || '' : '';
+  $('#adminActiveStatus').value = user ? user.ActiveStatus || 'Active' : 'Active';
+  $('#adminPassword').value = '';
+  $('#adminPasswordLabel').classList.toggle('hidden', Boolean(user));
+  $('#adminAccessEditor').classList.toggle('hidden', !user || !hasPermission('users.managePermission'));
+  $('#resetPasswordButton').classList.toggle('hidden', !user || !hasPermission('users.resetPassword'));
+  $('#deactivateUserButton').classList.toggle('hidden', !user || !hasPermission('users.deactivate') || user.UserID === state.user.UserID);
+  if (user && hasPermission('users.managePermission')) await loadUserAccessEditors(user.UserID);
+  $('#userDialog').showModal();
+}
+
+async function loadUserAccessEditors(userId) {
+  showLoading('กำลังโหลดสิทธิ์ผู้ใช้...');
+  try {
+    const [permissionData, lineData] = await Promise.all([
+      apiCall('listUserPermissions', { userId }),
+      apiCall('listUserLineAccess', { userId })
+    ]);
+    const permissionMap = {};
+    (permissionData.userPermissions || []).forEach(row => { permissionMap[row.PermissionKey] = row.Allowed || 'Inherit'; });
+    $('#adminPermissionList').innerHTML = PERMISSION_CATALOG.map(key => {
+      const value = permissionMap[key] || 'Inherit';
+      return `<label class="permission-item">${escapeHtml(key)}<select data-user-permission="${escapeAttr(key)}"><option ${value === 'Inherit' ? 'selected' : ''}>Inherit</option><option value="Yes" ${value === 'Yes' ? 'selected' : ''}>Allow</option><option value="No" ${value === 'No' ? 'selected' : ''}>Deny</option></select></label>`;
+    }).join('');
+    const lineMap = {};
+    (lineData.lineAccess || []).forEach(row => { lineMap[row.LineID] = row; });
+    const lines = [{ LineID: 'ALL', LineName: 'ALL' }, ...(state.masterData.lines || [])];
+    $('#adminLineAccessList').innerHTML = lines.map(line => {
+      const access = lineMap[line.LineID];
+      return `<div class="permission-item line-access-item"><label><input type="checkbox" data-line-access="${escapeAttr(line.LineID)}" ${access && String(access.ActiveStatus).toLowerCase() === 'active' ? 'checked' : ''}> ${escapeHtml(line.LineName || line.LineID)}</label><select data-line-level="${escapeAttr(line.LineID)}"><option>View</option><option ${access && access.AccessLevel === 'Update' ? 'selected' : ''}>Update</option><option ${access && access.AccessLevel === 'Manage' ? 'selected' : ''}>Manage</option></select></div>`;
+    }).join('');
+  } finally {
+    hideLoading();
+  }
+}
+
+async function saveUser() {
+  const userId = $('#adminEditUserId').value;
+  const payload = {
+    employeeId: $('#adminEmployeeId').value.trim(), username: $('#adminUsername').value.trim(),
+    fullName: $('#adminFullName').value.trim(), nickname: $('#adminNickname').value.trim(),
+    role: $('#adminUserRole').value, department: $('#adminDepartment').value.trim(),
+    lineDefault: $('#adminLineDefault').value, email: $('#adminEmail').value.trim(),
+    phone: $('#adminPhone').value.trim(), activeStatus: $('#adminActiveStatus').value
+  };
+  if (!userId) payload.password = $('#adminPassword').value;
+  showLoading('กำลังบันทึกผู้ใช้...');
+  try {
+    const result = await apiCall(userId ? 'updateUser' : 'createUser', userId ? { ...payload, userId } : payload);
+    const savedUserId = userId || result.user.UserID;
+    if (userId && hasPermission('users.managePermission')) await saveUserAccess(savedUserId);
+    $('#userDialog').close();
+    showToast('บันทึกผู้ใช้สำเร็จ', 'success');
+    await loadUsers();
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+async function saveUserAccess(userId) {
+  const permissions = $$('[data-user-permission]').map(input => ({ permissionKey: input.dataset.userPermission, allowed: input.value, reason: 'Updated from Admin Panel' }));
+  const lineAccess = $$('[data-line-access]').map(input => ({
+    lineId: input.dataset.lineAccess,
+    accessLevel: $(`[data-line-level="${cssEscape(input.dataset.lineAccess)}"]`).value,
+    activeStatus: input.checked ? 'Active' : 'Inactive'
+  }));
+  await apiCall('updateUserPermissions', { userId, permissions });
+  await apiCall('updateUserLineAccess', { userId, lineAccess });
+}
+
+async function deactivateSelectedUser() {
+  const userId = $('#adminEditUserId').value;
+  if (!userId || !window.confirm('ยืนยันปิดใช้งานผู้ใช้นี้?')) return;
+  try {
+    await apiCall('deactivateUser', { userId });
+    $('#userDialog').close();
+    showToast('ปิดใช้งานผู้ใช้แล้ว', 'success');
+    await loadUsers();
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
+async function resetSelectedUserPassword() {
+  const userId = $('#adminEditUserId').value;
+  const password = window.prompt('รหัสผ่านใหม่อย่างน้อย 8 ตัวอักษร');
+  if (!userId || !password) return;
+  try {
+    await apiCall('resetUserPassword', { userId, password });
+    showToast('Reset password สำเร็จ', 'success');
+  } catch (error) { showToast(error.message, 'error'); }
+}
+
 function renderMasterChecklist(rows) {
   const headers = ['ChecklistID', 'Category', 'CheckItem', 'StandardCriteria', 'ExampleOK', 'ExampleNG', 'LineName', 'StationName', 'AuditLayer', 'Frequency', 'Severity', 'ActiveStatus'];
   $('#masterChecklistTable').innerHTML = rows.length ? tableHtml(headers, rows.map(row => headers.map(header => row[header] ?? ''))) : emptyHtml('ไม่พบ Checklist');
@@ -518,6 +688,8 @@ function populateAllMasterSelects() {
   populateStationSelect('#auditStation', '', false);
   populateStationSelect('#findingStation', '', true);
   populateStationSelect('#checklistStation', '', false);
+  populateSelect('#adminLineFilter', state.masterData.lines || [], 'LineID', 'LineName', 'ทั้งหมด');
+  populateSelect('#adminLineDefault', state.masterData.lines || [], 'LineID', 'LineName', 'ไม่ระบุ');
 }
 
 function populateStationSelect(selector, lineId, allowAll) {
@@ -569,6 +741,7 @@ function navigateTo(page) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (page === 'dashboard' && !state.dashboard) loadDashboard();
   if (page === 'findings' && !state.findings.length) loadFindings();
+  if (page === 'admin' && hasPermission('users.view')) loadUsers();
 }
 
 function showLogin() { $('#loginView').classList.remove('hidden'); $('#appView').classList.add('hidden'); $('#username').focus(); }
@@ -611,6 +784,25 @@ function statusClass(status) {
   if (value === 'ok') return 'status-ok';
   if (value === 'ng') return 'status-ng';
   return 'status-na';
+}
+
+function hasPermission(permissionKey) {
+  return state.user && (state.user.Role === 'Admin' || (state.user.permissions || []).includes('*') || (state.user.permissions || []).includes(permissionKey));
+}
+
+function hasAnyPermission(keys) {
+  return keys.some(hasPermission);
+}
+
+function applyPermissionVisibility() {
+  $$('[data-permission-any]').forEach(element => {
+    const keys = element.dataset.permissionAny.split(',').map(value => value.trim());
+    element.classList.toggle('hidden', !hasAnyPermission(keys));
+  });
+  const canViewAdmin = hasAnyPermission(['users.view', 'users.managePermission']);
+  $('#adminNavButton').classList.toggle('hidden', !canViewAdmin);
+  $('#addUserButton').classList.toggle('hidden', !hasPermission('users.create'));
+  $('#exportCsvButton').classList.toggle('hidden', !hasPermission('reports.export'));
 }
 
 function setDefaultDates() {

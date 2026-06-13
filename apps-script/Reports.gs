@@ -1,15 +1,22 @@
 /** Monthly report and CSV export APIs. */
 function getMonthlyReport(payload, currentUser) {
   try {
+    requirePermission_(currentUser, 'reports.view');
     requireFields_(payload, ['periodMonth']);
-    var period = cleanString_(payload.periodMonth);
-    if (!/^\d{6}$/.test(period)) throw new Error('periodMonth must use YYYYMM format.');
+    var period = normalizeFindingPeriod_(payload.periodMonth);
+    if (!period) throw new Error('periodMonth must use YYYY-MM or YYYYMM format.');
     var audits = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS).filter(function (row) { return valuesEqual_(row.PeriodMonth, period); });
+    if (!hasPermission_(currentUser, 'audit.view.all')) {
+      audits = audits.filter(function (row) {
+        return canAccessLine_(currentUser, row.LineID, 'View') || valuesEqual_(row.AuditorUserID, currentUser.UserID);
+      });
+    }
     var auditIds = {};
     audits.forEach(function (row) { auditIds[row.AuditID] = true; });
     var records = getRowsAsObjects(SHEET_NAMES.AUDIT_RECORDS).filter(function (row) { return Boolean(auditIds[row.AuditID]); });
-    var findings = getRowsAsObjects(SHEET_NAMES.FINDINGS).filter(function (row) { return valuesEqual_(row.PeriodMonth, period); }).map(refreshOverdueForRead_);
-    if (['Leader', 'User'].indexOf(currentUser.Role) !== -1) findings = findings.filter(function (row) { return canAccessFinding_(currentUser, row); });
+    var findings = getRowsAsObjects(SHEET_NAMES.FINDINGS).filter(function (row) {
+      return normalizeFindingPeriod_(row.PeriodMonth || row.FoundDate) === period && canViewFindingRbac_(currentUser, row);
+    }).map(refreshOverdueForRead_);
 
     var categorySummary = groupReport_(records, 'Category');
     var lineSummary = {};
@@ -22,7 +29,7 @@ function getMonthlyReport(payload, currentUser) {
     });
     var totalOk = records.filter(function (row) { return valuesEqual_(row.Result, 'OK'); }).length;
     var totalNg = records.filter(function (row) { return valuesEqual_(row.Result, 'NG'); }).length;
-    var totalNa = records.filter(function (row) { return valuesEqual_(row.Result, 'NA'); }).length;
+    var totalNa = records.filter(function (row) { return ['na', 'n/a'].indexOf(cleanString_(row.Result).toLowerCase()) !== -1; }).length;
     var checked = totalOk + totalNg;
     var topFinding = findings.slice().sort(function (a, b) { return toNumber_(b.DaysOverdue) - toNumber_(a.DaysOverdue); }).slice(0, 10).map(sanitizeForClient_);
     var actionPlan = findings.filter(function (row) { return !isClosedStatus_(row.Status); }).sort(function (a, b) { return cleanString_(a.DueDate).localeCompare(cleanString_(b.DueDate)); }).map(sanitizeForClient_);
@@ -44,11 +51,13 @@ function getMonthlyReport(payload, currentUser) {
 
 function exportReportCsv(payload, currentUser) {
   try {
+    requirePermission_(currentUser, 'reports.export');
     requireFields_(payload, ['periodMonth']);
-    var period = cleanString_(payload.periodMonth);
-    if (!/^\d{6}$/.test(period)) throw new Error('periodMonth must use YYYYMM format.');
-    var findings = getRowsAsObjects(SHEET_NAMES.FINDINGS).filter(function (row) { return valuesEqual_(row.PeriodMonth, period); }).map(refreshOverdueForRead_);
-    if (['Leader', 'User'].indexOf(currentUser.Role) !== -1) findings = findings.filter(function (row) { return canAccessFinding_(currentUser, row); });
+    var period = normalizeFindingPeriod_(payload.periodMonth);
+    if (!period) throw new Error('periodMonth must use YYYY-MM or YYYYMM format.');
+    var findings = getRowsAsObjects(SHEET_NAMES.FINDINGS).filter(function (row) {
+      return normalizeFindingPeriod_(row.PeriodMonth || row.FoundDate) === period && canViewFindingRbac_(currentUser, row);
+    }).map(refreshOverdueForRead_);
     var headers = ['FindingID', 'AuditID', 'RecordID', 'FoundDate', 'LineID', 'LineName', 'StationID', 'StationName', 'Area', 'Category', 'ProblemDetail', 'StandardCriteria', 'CorrectiveAction', 'RootCause', 'PICUserID', 'PICName', 'DueDate', 'Status', 'Priority', 'OverdueFlag', 'DaysOverdue', 'ClosedDate', 'ClosedBy', 'CloseRemark'];
     var csvRows = [headers].concat(findings.map(function (row) { return headers.map(function (header) { return row[header] === undefined ? '' : row[header]; }); }));
     var csv = '\uFEFF' + csvRows.map(function (row) { return row.map(csvEscape_).join(','); }).join('\r\n');
@@ -66,6 +75,7 @@ function groupReport_(records, field) {
     if (!groups[key]) groups[key] = { Category: key, Total: 0, OK: 0, NG: 0, NA: 0 };
     groups[key].Total++;
     var result = cleanString_(row.Result).toUpperCase();
+    if (result === 'N/A') result = 'NA';
     if (Object.prototype.hasOwnProperty.call(groups[key], result)) groups[key][result]++;
   });
   return Object.keys(groups).sort().map(function (key) { return groups[key]; });

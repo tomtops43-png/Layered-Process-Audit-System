@@ -1,14 +1,22 @@
 /** Dashboard KPI and grouped-summary API. */
 function getDashboard(payload, currentUser) {
   try {
+    if (!hasPermission_(currentUser, 'dashboard.view') && !hasPermission_(currentUser, 'dashboard.view.all')) {
+      throw new Error('Permission denied: dashboard.view');
+    }
     var now = new Date();
     var currentPeriod = getPeriodMonth(now);
     var audits = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
     var findings = getRowsAsObjects(SHEET_NAMES.FINDINGS).map(refreshOverdueForRead_);
     var allFindings = findings.slice();
     if (payload.lineId) {
+      if (!hasPermission_(currentUser, 'dashboard.view.all')) requireLineAccess_(currentUser, payload.lineId, 'View');
       audits = audits.filter(function (row) { return valuesEqual_(row.LineID, payload.lineId); });
       findings = findings.filter(function (row) { return valuesEqual_(row.LineID, payload.lineId); });
+    }
+    if (!hasPermission_(currentUser, 'dashboard.view.all')) {
+      audits = audits.filter(function (row) { return canAccessLine_(currentUser, row.LineID, 'View') || valuesEqual_(row.AuditorUserID, currentUser.UserID); });
+      findings = findings.filter(function (row) { return canViewFindingRbac_(currentUser, row); });
     }
     if (['Leader', 'User'].indexOf(currentUser.Role) !== -1) findings = findings.filter(function (row) { return canAccessFinding_(currentUser, row); });
 

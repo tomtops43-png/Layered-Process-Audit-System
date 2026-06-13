@@ -32,15 +32,25 @@ function doPost(e) {
       uploadFile: function (user) { return uploadFile(payload, user); },
       getDashboard: function (user) { return getDashboard(payload, user); },
       getMonthlyReport: function (user) { return getMonthlyReport(payload, user); },
-      exportReportCsv: function (user) { return exportReportCsv(payload, user); }
+      exportReportCsv: function (user) { return exportReportCsv(payload, user); },
+      listUsers: function (user) { return listUsers(payload, user); },
+      createUser: function (user) { return createUser(payload, user); },
+      updateUser: function (user) { return updateUser(payload, user); },
+      deactivateUser: function (user) { return deactivateUser(payload, user); },
+      resetUserPassword: function (user) { return resetUserPassword(payload, user); },
+      listRolePermissions: function (user) { return listRolePermissions(payload, user); },
+      updateRolePermissions: function (user) { return updateRolePermissions(payload, user); },
+      listUserPermissions: function (user) { return listUserPermissions(payload, user); },
+      updateUserPermissions: function (user) { return updateUserPermissions(payload, user); },
+      listUserLineAccess: function (user) { return listUserLineAccess(payload, user); },
+      updateUserLineAccess: function (user) { return updateUserLineAccess(payload, user); }
     };
 
     if (!handlers[action]) return jsonResponse(false, 'Unknown action: ' + action, {});
     if (PUBLIC_ACTIONS.indexOf(action) !== -1) return handlers[action]();
 
-    var currentUser = validateToken(token);
-    if (!currentUser) return jsonResponse(false, 'Invalid or expired authentication token.', {});
-    if (!hasPermission(currentUser.Role, action)) return jsonResponse(false, 'Permission denied for action: ' + action, {});
+    var currentUser = getCurrentUserFromRequest_(token);
+    if (!hasApiAccess_(currentUser, action)) return jsonResponse(false, 'Permission denied for action: ' + action, {});
 
     return handlers[action](currentUser);
   } catch (error) {
