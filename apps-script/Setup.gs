@@ -40,11 +40,12 @@ function setupRbac() {
   Object.keys(defaults).forEach(function (role) {
     defaults[role].forEach(function (permissionKey) {
       var exists = existing.some(function (row) {
-        return valuesEqual_(row.Role, role) && valuesEqual_(row.PermissionKey, permissionKey);
+        return cleanString_(row.Role).toLowerCase() === cleanString_(role).toLowerCase() &&
+          cleanString_(row.PermissionKey).toLowerCase() === cleanString_(permissionKey).toLowerCase();
       });
       if (!exists) {
         appendObject(SHEET_NAMES.ROLE_PERMISSIONS, {
-          Role: role, PermissionKey: permissionKey, Allowed: 'Yes',
+          Role: role, PermissionKey: permissionKey, Allowed: 'TRUE',
           Description: 'Default ' + role + ' permission',
           UpdatedAt: timestamp, UpdatedBy: 'SYSTEM'
         });
@@ -137,6 +138,29 @@ function hashExistingPasswords() {
   return { updatedCount: updated.length, userIds: updated };
 }
 
+function createSampleMasterData() {
+  var timestamp = formatDateTimeBangkok(new Date());
+  var created = [];
+  var lineId = 'TEST-LINE';
+  var stationId = 'TEST-STATION';
+  if (!findById_(SHEET_NAMES.LINES, 'LineID', lineId)) {
+    appendObject(SHEET_NAMES.LINES, {
+      LineID: lineId, LineName: 'Test Line', Area: 'Test Area', Department: 'Quality',
+      ActiveStatus: 'Active', SortOrder: 999, CreatedAt: timestamp, UpdatedAt: timestamp
+    });
+    created.push(lineId);
+  }
+  if (!findById_(SHEET_NAMES.STATIONS, 'StationID', stationId)) {
+    appendObject(SHEET_NAMES.STATIONS, {
+      StationID: stationId, LineID: lineId, LineName: 'Test Line', StationName: 'Test Station',
+      StationNo: 'TEST', Area: 'Test Area', ProcessName: 'Test Process', ActiveStatus: 'Active',
+      SortOrder: 999, CreatedAt: timestamp, UpdatedAt: timestamp
+    });
+    created.push(stationId);
+  }
+  return { created: created, lineId: lineId, stationId: stationId };
+}
+
 function testApi() {
   var response = doGet();
   var result = response.getContent();
@@ -145,19 +169,123 @@ function testApi() {
 }
 
 function testSaveAudit() {
-  var admin = getRowsAsObjects(SHEET_NAMES.USERS).filter(function (row) { return row.Role === 'Admin' && isActive_(row.ActiveStatus); })[0];
-  var checklist = getRowsAsObjects(SHEET_NAMES.CHECKLIST).filter(function (row) { return isActive_(row.ActiveStatus); })[0];
-  if (!admin) throw new Error('An active Admin user is required.');
-  if (!checklist) throw new Error('At least one active checklist row is required.');
+  var context = getSampleAuditContext_();
+  var now = new Date();
+  var auditDate = formatDateBangkok_(now);
+  var periodMonth = getPeriodMonth(now);
   var payload = {
-    auditDate: formatDateBangkok_(new Date()), lineId: checklist.LineID === 'ALL' ? 'TEST-LINE' : checklist.LineID,
-    stationId: checklist.StationID === 'ALL' ? 'TEST-STATION' : checklist.StationID,
-    auditLayer: checklist.AuditLayer === 'ALL' ? 'L1' : checklist.AuditLayer,
-    shift: 'TEST', remark: 'Created by testSaveAudit',
-    records: [{ checklistId: checklist.ChecklistID, category: checklist.Category, checkItem: checklist.CheckItem, standardCriteria: checklist.StandardCriteria, result: 'OK', remark: 'Backend smoke test' }]
+    auditDate: auditDate, auditTime: Utilities.formatDate(now, APP_TIMEZONE, 'HH:mm:ss'),
+    periodMonth: periodMonth, lineId: context.lineId, lineName: context.lineName,
+    stationId: context.stationId, stationName: context.stationName, area: context.area,
+    auditLayer: context.auditLayer, shift: 'TEST', submitStatus: 'Submitted',
+    remark: 'Created by testSaveAudit',
+    records: [{
+      checklistId: context.checklist.ChecklistID, category: context.checklist.Category,
+      checkItem: context.checklist.CheckItem, standardCriteria: context.checklist.StandardCriteria,
+      checklistRevision: context.checklist.Revision, result: 'OK', findingDetail: '',
+      correctiveAction: '', responsiblePerson: '', picUserId: '', picName: '', dueDate: '',
+      status: 'Completed', findingStatus: '', beforePhotoUrl: '', afterPhotoUrl: '',
+      remark: 'Backend OK audit smoke test'
+    }]
   };
-  var response = saveAudit(payload, { UserID: admin.UserID, Username: admin.Username, FullName: admin.FullName, Role: admin.Role });
+  var response = saveAudit(payload, context.user);
   var result = JSON.parse(response.getContent());
   console.log(JSON.stringify(result));
   return result;
+}
+
+function testSaveAuditNG() {
+  var context = getSampleAuditContext_();
+  var now = new Date();
+  var auditDate = formatDateBangkok_(now);
+  var dueDate = new Date(now.getTime());
+  dueDate.setDate(dueDate.getDate() + 7);
+  var payload = {
+    auditDate: auditDate, auditTime: Utilities.formatDate(now, APP_TIMEZONE, 'HH:mm:ss'),
+    periodMonth: getPeriodMonth(now), lineId: context.lineId, lineName: context.lineName,
+    stationId: context.stationId, stationName: context.stationName, area: context.area,
+    auditLayer: context.auditLayer, shift: 'TEST', submitStatus: 'Submitted',
+    remark: 'Created by testSaveAuditNG',
+    records: [{
+      checklistId: context.checklist.ChecklistID, category: context.checklist.Category,
+      checkItem: context.checklist.CheckItem, standardCriteria: context.checklist.StandardCriteria,
+      checklistRevision: context.checklist.Revision, result: 'NG',
+      findingDetail: 'NG smoke-test finding', correctiveAction: 'Contain and correct the test condition',
+      rootCause: 'Test root cause', responsiblePerson: context.admin.FullName,
+      picUserId: context.admin.UserID, picName: context.admin.FullName,
+      assignedToUserId: context.admin.UserID, assignedToName: context.admin.FullName,
+      assignedToRole: context.admin.Role, dueDate: formatDateBangkok_(dueDate),
+      status: 'Assigned', findingStatus: 'Assigned', severity: context.checklist.Severity || 'Minor',
+      beforePhotoUrl: 'https://drive.google.com/test-before-photo',
+      afterPhotoUrl: '', remark: 'Backend NG/Finding smoke test'
+    }]
+  };
+  var response = saveAudit(payload, context.user);
+  var result = JSON.parse(response.getContent());
+  console.log(JSON.stringify(result));
+  return result;
+}
+
+function testLogin(username, password) {
+  username = cleanString_(username);
+  password = cleanString_(password);
+  if (!username || !password) throw new Error('testLogin(username, password) requires both values.');
+  var result = JSON.parse(login({ username: username, password: password }).getContent());
+  console.log(JSON.stringify(result));
+  return result;
+}
+
+function testDashboard() {
+  var admin = getActiveAdmin_();
+  var result = JSON.parse(getDashboard({}, buildUserContext_(admin)).getContent());
+  console.log(JSON.stringify(result));
+  return result;
+}
+
+function testMonthlyReport(periodMonth) {
+  var admin = getActiveAdmin_();
+  periodMonth = cleanString_(periodMonth) || getPeriodMonth(new Date());
+  var result = JSON.parse(getMonthlyReport({ periodMonth: periodMonth }, buildUserContext_(admin)).getContent());
+  console.log(JSON.stringify(result));
+  return result;
+}
+
+function getActiveAdmin_() {
+  var admin = getRowsAsObjects(SHEET_NAMES.USERS).filter(function (row) {
+    return cleanString_(row.Role).toLowerCase() === 'admin' && isActive_(row.ActiveStatus);
+  })[0];
+  if (!admin) throw new Error('An active Admin user is required.');
+  return admin;
+}
+
+function getActiveChecklist_() {
+  var checklist = getRowsAsObjects(SHEET_NAMES.CHECKLIST).filter(function (row) {
+    return isActive_(row.ActiveStatus);
+  })[0];
+  if (!checklist) throw new Error('At least one active checklist row is required.');
+  return checklist;
+}
+
+function buildUserContext_(user) {
+  return {
+    UserID: user.UserID, Username: user.Username, FullName: user.FullName,
+    Role: user.Role, LineDefault: user.LineDefault || ''
+  };
+}
+
+function getSampleAuditContext_() {
+  var admin = getActiveAdmin_();
+  var checklist = getActiveChecklist_();
+  var sample = createSampleMasterData();
+  var lineId = cleanString_(checklist.LineID).toUpperCase() === 'ALL' ? sample.lineId : checklist.LineID;
+  var stationId = cleanString_(checklist.StationID).toUpperCase() === 'ALL' ? sample.stationId : checklist.StationID;
+  var line = findById_(SHEET_NAMES.LINES, 'LineID', lineId) || {};
+  var station = findById_(SHEET_NAMES.STATIONS, 'StationID', stationId) || {};
+  return {
+    admin: admin, user: buildUserContext_(admin), checklist: checklist,
+    lineId: lineId, lineName: line.LineName || station.LineName || 'Test Line',
+    stationId: stationId, stationName: station.StationName || 'Test Station',
+    area: station.Area || line.Area || 'Test Area',
+    auditLayer: cleanString_(checklist.AuditLayer).toUpperCase() === 'ALL' ? 'Manager' : checklist.AuditLayer
+  };
 }
