@@ -255,16 +255,15 @@ function renderAuditChecklist() {
     return;
   }
   const userOptions = activeUserOptions();
-  const assignmentFields = hasPermission('findings.assign')
-    ? `<label>Assign To *<select data-field="assignedToUserId"><option value="">เลือกผู้รับผิดชอบ</option>${userOptions}</select></label><label>Responsible Person<input data-field="responsiblePerson" readonly></label>`
-    : `<input data-field="assignedToUserId" type="hidden"><label>Responsible Person *<input data-field="responsiblePerson"></label>`;
-  container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>Standard Criteria</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>Example OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>Example NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="N/A">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid"><label>Finding Detail *<textarea data-field="findingDetail" rows="2"></textarea></label><label>Corrective Action *<textarea data-field="correctiveAction" rows="2"></textarea></label>${assignmentFields}<label>Due Date *<input data-field="dueDate" type="date"></label><label>Status<select data-field="findingStatus"><option>Assigned</option><option>Open</option><option>In Progress</option></select></label><label>Before Photo *<input data-field="beforePhoto" type="file" accept="image/*" capture="environment"></label><label>Remark<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
+  const assignmentFields = `<label>Assign To<select data-field="assignedToUserId"><option value="">ไม่ระบุผู้รับผิดชอบ</option>${userOptions}</select></label><label>Responsible Person<input data-field="responsiblePerson" readonly></label><input data-field="findingStatus" type="hidden" value="Open">`;
+  container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>Standard Criteria</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>Example OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>Example NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="N/A">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid"><label>Finding Detail *<textarea data-field="findingDetail" rows="2"></textarea></label><label>Corrective Action *<textarea data-field="correctiveAction" rows="2"></textarea></label>${assignmentFields}<label>Due Date *<input data-field="dueDate" type="date"></label><label>Before Photo *<input data-field="beforePhoto" type="file" accept="image/*" capture="environment"></label><label>Remark<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
   $$('.checklist-card', container).forEach(card => {
     $$('.result-button', card).forEach(button => button.addEventListener('click', () => selectAuditResult(card, button.dataset.result)));
     const assigneeSelect = $('select[data-field="assignedToUserId"]', card);
     if (assigneeSelect) assigneeSelect.addEventListener('change', event => {
         const user = (state.masterData.users || []).find(item => String(item.UserID) === event.target.value);
         $('[data-field="responsiblePerson"]', card).value = user ? user.FullName : '';
+        $('[data-field="findingStatus"]', card).value = user ? 'Assigned' : 'Open';
       });
   });
   updateAuditProgress();
@@ -303,10 +302,10 @@ async function saveAudit() {
       record.assignedToRole = assignedUser ? assignedUser.Role : '';
       record.severity = item.Severity || 'Minor';
       record.dueDate = fieldValue(card, 'dueDate');
-      record.status = fieldValue(card, 'findingStatus') || 'Open';
+      record.status = assignedUser ? 'Assigned' : 'Open';
       record.findingStatus = record.status;
       const photo = fieldFile(card, 'beforePhoto');
-      if (!record.findingDetail || !record.correctiveAction || !record.responsiblePerson || !record.dueDate || !photo) return showToast(`กรุณากรอก Finding และ Before Photo ของ ${item.ChecklistID} ให้ครบ`, 'warning');
+      if (!record.findingDetail || !record.correctiveAction || !record.dueDate || !photo) return showToast(`กรุณากรอก Finding และ Before Photo ของ ${item.ChecklistID} ให้ครบ`, 'warning');
       record._photo = photo;
     }
     records.push(record);
