@@ -255,16 +255,15 @@ function renderAuditChecklist() {
     return;
   }
   const userOptions = activeUserOptions();
-  const assignmentFields = hasPermission('findings.assign')
-    ? `<label>Assign To *<select data-field="assignedToUserId"><option value="">เลือกผู้รับผิดชอบ</option>${userOptions}</select></label><label>Responsible Person<input data-field="responsiblePerson" readonly></label>`
-    : `<input data-field="assignedToUserId" type="hidden"><label>Responsible Person *<input data-field="responsiblePerson"></label>`;
-  container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>Standard Criteria</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>Example OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>Example NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="N/A">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid"><label>Finding Detail *<textarea data-field="findingDetail" rows="2"></textarea></label><label>Corrective Action *<textarea data-field="correctiveAction" rows="2"></textarea></label>${assignmentFields}<label>Due Date *<input data-field="dueDate" type="date"></label><label>Status<select data-field="findingStatus"><option>Assigned</option><option>Open</option><option>In Progress</option></select></label><label>Before Photo *<input data-field="beforePhoto" type="file" accept="image/*" capture="environment"></label><label>Remark<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
+  const assignmentFields = `<label>Assign To<select data-field="assignedToUserId"><option value="">ไม่ระบุผู้รับผิดชอบ</option>${userOptions}</select></label><label>Responsible Person<input data-field="responsiblePerson" readonly></label><input data-field="findingStatus" type="hidden" value="Open">`;
+  container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>Standard Criteria</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>Example OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>Example NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="N/A">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid"><label>Finding Detail *<textarea data-field="findingDetail" rows="2"></textarea></label><label>Corrective Action *<textarea data-field="correctiveAction" rows="2"></textarea></label>${assignmentFields}<label>Due Date *<input data-field="dueDate" type="date"></label><label>Before Photo *<input data-field="beforePhoto" type="file" accept="image/*" capture="environment"></label><label>Remark<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
   $$('.checklist-card', container).forEach(card => {
     $$('.result-button', card).forEach(button => button.addEventListener('click', () => selectAuditResult(card, button.dataset.result)));
     const assigneeSelect = $('select[data-field="assignedToUserId"]', card);
     if (assigneeSelect) assigneeSelect.addEventListener('change', event => {
         const user = (state.masterData.users || []).find(item => String(item.UserID) === event.target.value);
         $('[data-field="responsiblePerson"]', card).value = user ? user.FullName : '';
+        $('[data-field="findingStatus"]', card).value = user ? 'Assigned' : 'Open';
       });
   });
   updateAuditProgress();
@@ -303,10 +302,10 @@ async function saveAudit() {
       record.assignedToRole = assignedUser ? assignedUser.Role : '';
       record.severity = item.Severity || 'Minor';
       record.dueDate = fieldValue(card, 'dueDate');
-      record.status = fieldValue(card, 'findingStatus') || 'Open';
+      record.status = assignedUser ? 'Assigned' : 'Open';
       record.findingStatus = record.status;
       const photo = fieldFile(card, 'beforePhoto');
-      if (!record.findingDetail || !record.correctiveAction || !record.responsiblePerson || !record.dueDate || !photo) return showToast(`กรุณากรอก Finding และ Before Photo ของ ${item.ChecklistID} ให้ครบ`, 'warning');
+      if (!record.findingDetail || !record.correctiveAction || !record.dueDate || !photo) return showToast(`กรุณากรอก Finding และ Before Photo ของ ${item.ChecklistID} ให้ครบ`, 'warning');
       record._photo = photo;
     }
     records.push(record);
@@ -391,35 +390,47 @@ function openFindingEditor(findingId) {
   $('#editRootCause').value = row.RootCause || '';
   $('#editCorrectiveAction').value = row.CorrectiveAction || '';
   populateFindingAssignee(row.AssignedToUserID || row.PICUserID || '');
-  $('#editAssignedTo').disabled = !hasPermission('findings.assign');
   $('#editDueDate').value = dateInputValue(row.DueDate);
-  $('#editStatus').value = normalizeEditableStatus(row.Status);
+  $('#editStatus').value = row.Status || 'Open';
+  $('#editStatus').closest('label').classList.toggle('hidden', ['Leader', 'User'].includes(state.user.Role));
   $('#editCloseRemark').value = row.CloseRemark || '';
   $('#editAfterPhoto').value = '';
   $('#editPhotoPreview').innerHTML = row.AfterPhotoURL ? `<a href="${escapeAttr(row.AfterPhotoURL)}" target="_blank" rel="noopener">ดู After Photo ปัจจุบัน</a>` : '';
-  const pending = String(row.Status).toLowerCase() === 'pending verification';
+  const status = String(row.Status || '').toLowerCase();
+  const pending = status === 'pending verification';
   const canVerify = pending && hasPermission('findings.verify');
-  const assignedToMe = String(row.AssignedToUserID || row.PICUserID || '') === String(state.user.UserID || '') ||
-    String(row.AssignedToName || row.PICName || '') === String(state.user.FullName || '');
+  const assignedUserId = String(row.AssignedToUserID || row.PICUserID || '');
+  const assignedToMe = assignedUserId
+    ? assignedUserId === String(state.user.UserID || '')
+    : String(row.AssignedToName || row.PICName || '') === String(state.user.FullName || '');
+  const isLeaderOrUser = ['Leader', 'User'].includes(state.user.Role);
+  const isAssignedFollowUpUser = isLeaderOrUser && assignedToMe;
+  const canUpdate = status !== 'closed' && (hasPermission('findings.view.all') || hasPermission('findings.update.line') ||
+    (assignedToMe && hasPermission('findings.update.assigned')));
+  const canSubmit = canUpdate && !pending && status !== 'closed';
   const severity = String(row.Severity || row.Priority || 'Minor').toLowerCase();
   const closePermission = severity === 'critical' ? 'findings.close.critical' : severity === 'major' ? 'findings.close.major' : 'findings.close.minor';
-  $('#approveFindingButton').classList.toggle('hidden', !canVerify || !hasPermission(closePermission));
-  $('#rejectFindingButton').classList.toggle('hidden', !canVerify);
-  $('#submitVerificationButton').classList.toggle('hidden', (!assignedToMe && !['Admin', 'Manager'].includes(state.user.Role)) || pending || String(row.Status).toLowerCase() === 'closed');
-  const closedOption = Array.from($('#editStatus').options).find(option => option.value === 'Closed');
-  if (closedOption) closedOption.disabled = !hasPermission(closePermission);
+  $('#assignedFindingHelp').classList.toggle('hidden', !isAssignedFollowUpUser || !canSubmit);
+  $('#approveFindingButton').classList.toggle('hidden', isLeaderOrUser || !canVerify || !hasPermission(closePermission));
+  $('#rejectFindingButton').classList.toggle('hidden', isLeaderOrUser || !canVerify);
+  $('#submitVerificationButton').classList.toggle('hidden', !canSubmit);
+  $('#saveFindingButton').classList.toggle('hidden', !canUpdate || isAssignedFollowUpUser);
+  $('#editRootCause').disabled = !canUpdate;
+  $('#editCorrectiveAction').disabled = !canUpdate;
+  $('#editAssignedTo').disabled = !canUpdate || !hasPermission('findings.assign');
+  $('#editDueDate').disabled = !canUpdate;
+  $('#editCloseRemark').disabled = !canUpdate && !canVerify;
+  $('#editAfterPhoto').disabled = !canUpdate && !canVerify;
   $('#findingDialog').showModal();
 }
 
 async function updateFinding() {
   const findingId = $('#editFindingId').value;
-  const targetStatus = $('#editStatus').value;
   const closeRemark = $('#editCloseRemark').value.trim();
   const file = $('#editAfterPhoto').files[0];
   const existingPhoto = state.editingFinding ? state.editingFinding.AfterPhotoURL : '';
-  if (targetStatus === 'Closed' && !file && !existingPhoto && !closeRemark) return showToast('การปิด Finding ต้องมี After Photo หรือ Close Remark', 'warning');
-  if (!window.confirm(targetStatus === 'Closed' ? `ยืนยันปิด Finding ${findingId}?` : `ยืนยันบันทึก Finding ${findingId}?`)) return;
-  showLoading(targetStatus === 'Closed' ? 'กำลังปิด Finding...' : 'กำลังบันทึก Finding...');
+  if (!window.confirm(`ยืนยันบันทึกการแก้ไข Finding ${findingId}?`)) return;
+  showLoading('กำลังบันทึก Finding...');
   try {
     let afterPhotoUrl = existingPhoto || '';
     if (file) {
@@ -431,10 +442,9 @@ async function updateFinding() {
       dueDate: $('#editDueDate').value, afterPhotoUrl, closeRemark, remark: 'Updated from web application'
     };
     if (hasPermission('findings.assign')) common.assignedToUserId = $('#editAssignedTo').value;
-    if (targetStatus === 'Closed') await closeFinding({ ...common });
-    else await apiCall('updateFinding', { ...common, status: targetStatus });
+    await apiCall('updateFinding', common);
     $('#findingDialog').close();
-    showToast(targetStatus === 'Closed' ? 'ปิด Finding สำเร็จ' : 'อัปเดต Finding สำเร็จ', 'success');
+    showToast('บันทึกการแก้ไข Finding สำเร็จ', 'success');
     await loadFindings();
     loadDashboard(false);
   } catch (error) {
@@ -446,21 +456,30 @@ async function updateFinding() {
 
 async function submitFindingForVerification() {
   const findingId = $('#editFindingId').value;
+  const rootCause = $('#editRootCause').value.trim();
+  const correctiveAction = $('#editCorrectiveAction').value.trim();
+  const existingPhoto = state.editingFinding ? state.editingFinding.AfterPhotoURL : '';
+  const file = $('#editAfterPhoto').files[0];
+  if (!rootCause || !correctiveAction || (!file && !existingPhoto)) {
+    return showToast('กรุณากรอก Root Cause, Corrective Action และแนบ After Photo ให้ครบก่อนส่งตรวจยืนยัน', 'warning');
+  }
   if (!window.confirm(`ส่ง Finding ${findingId} เพื่อตรวจสอบ?`)) return;
   await runFindingWorkflow('submitFinding', {
-    findingId,
-    rootCause: $('#editRootCause').value.trim(),
-    correctiveAction: $('#editCorrectiveAction').value.trim()
+    findingId, rootCause, correctiveAction,
+    closeRemark: $('#editCloseRemark').value.trim(),
+    remark: $('#editCloseRemark').value.trim() || 'Submitted for verification'
   }, 'ส่ง Finding เพื่อตรวจสอบแล้ว');
 }
 
 async function verifyFinding(decision) {
   const findingId = $('#editFindingId').value;
-  const rejectReason = decision === 'Reject' ? window.prompt('กรุณาระบุเหตุผลที่ Reject') : '';
-  if (decision === 'Reject' && !rejectReason) return;
+  const closeRemark = $('#editCloseRemark').value.trim();
+  if (decision === 'Approve' && !closeRemark) return showToast('กรุณาระบุ Close Remark ก่อนปิด Finding', 'warning');
+  const rejectReason = decision === 'Reject' ? (window.prompt('กรุณาระบุเหตุผลที่ Reject', closeRemark) || '').trim() : '';
+  if (decision === 'Reject' && !rejectReason) return showToast('กรุณาระบุเหตุผลที่ Reject', 'warning');
   if (!window.confirm(`${decision} Finding ${findingId}?`)) return;
   await runFindingWorkflow('verifyFinding', {
-    findingId, decision, rejectReason, closeRemark: $('#editCloseRemark').value.trim()
+    findingId, decision, rejectReason, closeRemark: decision === 'Reject' ? rejectReason : closeRemark
   }, decision === 'Approve' ? 'อนุมัติและปิด Finding แล้ว' : 'Reject Finding แล้ว');
 }
 
