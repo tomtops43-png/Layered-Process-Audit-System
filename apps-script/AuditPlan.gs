@@ -1,19 +1,31 @@
 /** Audit plan generation, visibility, reminders, and idempotent status refresh. */
 function generateAuditPlan(payload, currentUser) {
   try {
+    var allowedRoles = getAuditPlanGenerationRoles_(currentUser);
     requirePermission_(currentUser, 'audit.plan.generate');
     requireFields_(payload, ['periodMonth']);
     var month = normalizePlanMonth_(payload.periodMonth);
     if (!month) throw new Error('periodMonth must use YYYY-MM or YYYYMM format.');
+    var requestedRole = cleanString_(payload.requiredRole || payload.role) || 'ALL';
+    var selectedRoles = isAllFilter_(requestedRole) ? allowedRoles.slice() : allowedRoles.filter(function (role) {
+      return valuesEqual_(role, requestedRole);
+    });
+    if (!selectedRoles.length) {
+      throw new Error('คุณไม่มีสิทธิ์สร้างแผนการตรวจสำหรับบทบาท ' + requestedRole);
+    }
     var includeWeekends = payload.includeWeekends === true || isAllowed_(payload.includeWeekends);
     var lineFilter = cleanString_(payload.lineId) || 'ALL';
     var stationFilter = cleanString_(payload.stationId) || 'ALL';
+    var lineAccess = getUserLineAccess_(currentUser);
+    var canManageAllLines = isAdmin_(currentUser) || hasPermission_(currentUser, 'audit.view.all');
     if (!isAllFilter_(lineFilter) && !isAdmin_(currentUser) && !hasPermission_(currentUser, 'audit.view.all')) {
-      requireLineAccess_(currentUser, lineFilter, 'Manage');
+      requireLineAccess_(currentUser, lineFilter, 'View');
     }
 
     var lines = getRowsAsObjects(SHEET_NAMES.LINES).filter(function (row) {
-      return isActive_(row.ActiveStatus) && (isAllFilter_(lineFilter) || valuesEqual_(row.LineID, lineFilter));
+      return isActive_(row.ActiveStatus) &&
+        (isAllFilter_(lineFilter) || valuesEqual_(row.LineID, lineFilter)) &&
+        (canManageAllLines || canAccessLineFromRows_(currentUser, row.LineID, 'View', lineAccess));
     });
     var lineIds = {};
     lines.forEach(function (row) { lineIds[cleanString_(row.LineID)] = row; });
@@ -33,6 +45,7 @@ function generateAuditPlan(payload, currentUser) {
     stations.forEach(function (station) {
       var line = lineIds[cleanString_(station.LineID)] || {};
       buildMonthlyPlanDefinitions_(month, includeWeekends).forEach(function (definition) {
+        if (!selectedRoles.some(function (role) { return valuesEqual_(role, definition.RequiredRole); })) return;
         var duplicateKey = [
           definition.PeriodType, definition.PeriodKey, definition.RequiredRole,
           station.LineID, station.StationID
@@ -59,11 +72,19 @@ function generateAuditPlan(payload, currentUser) {
     invalidateDashboardCachesForUser_(currentUser);
     return jsonResponse(true, 'Audit plan generated.', {
       created: created, skippedDuplicates: skipped, month: month,
-      lineScope: lineFilter, stationScope: stationFilter, includeWeekends: includeWeekends
+      lineScope: lineFilter, stationScope: stationFilter, includeWeekends: includeWeekends,
+      roleScope: selectedRoles
     });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
+}
+
+function getAuditPlanGenerationRoles_(currentUser) {
+  var role = cleanString_(currentUser && currentUser.Role).toLowerCase();
+  if (role === 'admin' || role === 'manager') return ['Leader', 'Supervisor', 'Manager'];
+  if (role === 'supervisor') return ['Leader', 'Supervisor'];
+  throw new Error('คุณไม่มีสิทธิ์สร้างแผนการตรวจ LPA');
 }
 
 function getAuditPlan(payload, currentUser) {

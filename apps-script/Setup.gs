@@ -81,7 +81,7 @@ function getDefaultRolePermissions_() {
   return {
     Admin: ['*', 'users.view', 'users.create', 'users.update', 'users.deactivate', 'users.resetPassword', 'users.managePermission', 'audit.plan.view', 'audit.plan.manage', 'audit.plan.generate', 'audit.plan.refresh'],
     Manager: ['audit.manager.create', 'audit.view.all', 'audit.plan.view', 'audit.plan.manage', 'audit.plan.generate', 'audit.plan.refresh', 'findings.view.all', 'findings.assign', 'findings.verify', 'findings.close.minor', 'findings.close.major', 'findings.close.critical', 'dashboard.view.all', 'reports.view', 'reports.export'],
-    Supervisor: ['audit.supervisor.create', 'audit.view.line', 'audit.plan.view', 'dashboard.view'],
+    Supervisor: ['audit.supervisor.create', 'audit.view.line', 'audit.plan.view', 'audit.plan.generate', 'dashboard.view'],
     Engineer: ['audit.engineer.create', 'audit.view.line', 'audit.plan.view', 'findings.view.line', 'findings.assign', 'findings.update.line', 'findings.verify', 'findings.close.minor', 'findings.close.major', 'dashboard.view', 'reports.view'],
     Leader: ['audit.leader.create', 'audit.view.own', 'audit.plan.view', 'findings.view.assigned', 'findings.view.created', 'findings.update.assigned', 'dashboard.view'],
     User: ['findings.view.assigned', 'findings.update.assigned', 'dashboard.view']

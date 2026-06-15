@@ -188,6 +188,7 @@ async function initializeAuthenticatedApp(validateSession = true) {
   $('#currentUserName').textContent = state.user.FullName || state.user.Username || '-';
   $('#currentUserRole').textContent = state.user.Role || '-';
   applyPermissionVisibility();
+  applyAuditPlanRoleScope();
   applyAuditLayerPermissions();
   showDashboardSkeleton();
   navigateTo('dashboard');
@@ -629,7 +630,8 @@ async function generateAuditPlan() {
   try {
     const result = await apiCall('generateAuditPlan', {
       periodMonth: $('#planMonth').value, lineId: $('#planLine').value || 'ALL',
-      stationId: $('#planStation').value || 'ALL', includeWeekends: $('#planIncludeWeekends').checked
+      stationId: $('#planStation').value || 'ALL', requiredRole: $('#planRole').value || 'ALL',
+      includeWeekends: $('#planIncludeWeekends').checked
     });
     showToast(`สร้าง ${result.created} รายการ, ข้ามรายการซ้ำ ${result.skippedDuplicates}`, 'success');
     await loadAuditPlan();
@@ -1139,9 +1141,36 @@ function applyPermissionVisibility() {
   $('#adminNavButton').classList.toggle('hidden', !canViewAdmin);
   $('#addUserButton').classList.toggle('hidden', !hasPermission('users.create'));
   $('#exportCsvButton').classList.toggle('hidden', !hasPermission('reports.export'));
-  $('#generateAuditPlanButton').classList.toggle('hidden', !hasPermission('audit.plan.generate'));
-  $('#includeWeekendsField').classList.toggle('hidden', !hasPermission('audit.plan.generate'));
+  const role = String(state.user?.Role || '').toLowerCase();
+  const canGeneratePlan = hasPermission('audit.plan.generate') && ['admin', 'manager', 'supervisor'].includes(role);
+  $('#generateAuditPlanButton').classList.toggle('hidden', !canGeneratePlan);
+  $('#includeWeekendsField').classList.toggle('hidden', !canGeneratePlan);
   $('#refreshAuditPlanButton').classList.toggle('hidden', !hasPermission('audit.plan.refresh'));
+}
+
+function applyAuditPlanRoleScope() {
+  const role = String(state.user?.Role || '').toLowerCase();
+  const roleSelect = $('#planRole');
+  const myPlan = $('#planMine');
+  const scopes = {
+    admin: ['', 'Leader', 'Supervisor', 'Manager'],
+    manager: ['', 'Leader', 'Supervisor', 'Manager'],
+    supervisor: ['', 'Leader', 'Supervisor'],
+    leader: ['Leader']
+  };
+  const roles = scopes[role] || ['', 'Leader', 'Supervisor', 'Manager'];
+  roleSelect.innerHTML = roles.map(value =>
+    `<option value="${value}">${value || 'ทั้งหมด'}</option>`
+  ).join('');
+  if (role === 'leader') {
+    roleSelect.value = 'Leader';
+    roleSelect.disabled = true;
+    myPlan.checked = true;
+    myPlan.disabled = true;
+  } else {
+    roleSelect.disabled = false;
+    myPlan.disabled = false;
+  }
 }
 
 function applyAuditLayerPermissions() {
