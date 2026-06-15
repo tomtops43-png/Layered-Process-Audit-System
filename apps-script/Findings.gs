@@ -226,8 +226,7 @@ function matchesMyFindingFilter_(finding, currentUser, filter) {
     return isCreatedByUser_(finding, currentUser);
   }
   if (['verification', 'pending-verification', 'verify'].indexOf(filter) !== -1) {
-    return valuesEqual_(finding.Status, 'Pending Verification') &&
-      valuesEqual_(finding.VerifierUserID, currentUser.UserID);
+    return canHandlePendingVerification_(currentUser, finding);
   }
   return true;
 }
@@ -266,6 +265,17 @@ function canVerifyFinding_(currentUser, finding) {
     canAccessLine_(currentUser, finding.LineID, 'View');
 }
 
+function canHandlePendingVerification_(currentUser, finding) {
+  if (!valuesEqual_(finding.Status, 'Pending Verification') ||
+      !hasPermission_(currentUser, 'findings.verify')) return false;
+  var verifierUserId = cleanString_(finding.VerifierUserID);
+  if (verifierUserId) {
+    return valuesEqual_(verifierUserId, currentUser.UserID) || isAdmin_(currentUser) ||
+      cleanString_(currentUser.Role).toLowerCase() === 'manager';
+  }
+  return canVerifyFinding_(currentUser, finding) && canCloseFinding_(currentUser, finding);
+}
+
 function canCloseFinding_(currentUser, finding) {
   var severity = cleanString_(finding.Severity || finding.Priority).toLowerCase();
   var permissionKey = severity === 'critical' ? 'findings.close.critical' :
@@ -286,6 +296,7 @@ function canDirectlyCloseMinorFinding_(currentUser, finding) {
 
 function canViewFindingRbac_(currentUser, finding) {
   if (isAdmin_(currentUser) || hasPermission_(currentUser, 'findings.view.all')) return true;
+  if (canHandlePendingVerification_(currentUser, finding)) return true;
   if (hasPermission_(currentUser, 'findings.view.line') && cleanString_(finding.LineID) &&
       canAccessLine_(currentUser, finding.LineID, 'View')) return true;
   if (hasPermission_(currentUser, 'findings.view.assigned') && isAssignedToUser_(finding, currentUser)) return true;

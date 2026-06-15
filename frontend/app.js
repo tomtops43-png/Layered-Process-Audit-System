@@ -392,6 +392,7 @@ function openFindingEditor(findingId) {
   populateFindingAssignee(row.AssignedToUserID || row.PICUserID || '');
   $('#editDueDate').value = dateInputValue(row.DueDate);
   $('#editStatus').value = row.Status || 'Open';
+  $('#editStatus').closest('label').classList.toggle('hidden', ['Leader', 'User'].includes(state.user.Role));
   $('#editCloseRemark').value = row.CloseRemark || '';
   $('#editAfterPhoto').value = '';
   $('#editPhotoPreview').innerHTML = row.AfterPhotoURL ? `<a href="${escapeAttr(row.AfterPhotoURL)}" target="_blank" rel="noopener">ดู After Photo ปัจจุบัน</a>` : '';

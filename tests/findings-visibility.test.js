@@ -126,7 +126,29 @@ sheets.Findings = [
 ];
 setPermissions('User', ['findings.view.assigned']);
 assert.deepStrictEqual(visibleIds(user), ['assigned', 'pending-verification']);
-assert.deepStrictEqual(visibleIds(user, { myFindings: 'verification' }), ['pending-verification']);
+assert.deepStrictEqual(visibleIds(user, { myFindings: 'verification' }), []);
+
+sheets.Findings = [
+  { FindingID: 'unassigned-minor', LineID: 'LINE-VERIFY', Status: 'Pending Verification', Severity: 'Minor', VerifierUserID: '' },
+  { FindingID: 'unassigned-critical', LineID: 'LINE-VERIFY', Status: 'Pending Verification', Severity: 'Critical', VerifierUserID: '' },
+  { FindingID: 'assigned-verifier', LineID: 'LINE-OTHER', Status: 'Pending Verification', Severity: 'Critical', VerifierUserID: engineer.UserID },
+  { FindingID: 'assigned-other', LineID: 'LINE-VERIFY', Status: 'Pending Verification', Severity: 'Minor', VerifierUserID: 'USR-OTHER' }
+];
+setPermissions('Engineer', ['findings.verify', 'findings.close.minor', 'findings.close.major']);
+sheets.UserLineAccess = [
+  { UserID: engineer.UserID, LineID: 'LINE-VERIFY', AccessLevel: 'View', ActiveStatus: 'Active' }
+];
+assert.deepStrictEqual(
+  visibleIds(engineer, { myFindings: 'verification' }),
+  ['assigned-verifier', 'unassigned-minor'],
+  'Verifier filter must include assigned verification work and unassigned work within line/severity scope'
+);
+
+setPermissions('Manager', ['findings.view.all', 'findings.verify', 'findings.close.minor', 'findings.close.major', 'findings.close.critical']);
+assert.deepStrictEqual(
+  visibleIds(manager, { myFindings: 'verification' }),
+  ['assigned-other', 'assigned-verifier', 'unassigned-critical', 'unassigned-minor']
+);
 
 const workflowLeader = { UserID: 'USR-LEADER', FullName: 'Leader', Role: 'Leader' };
 const workflowManager = { UserID: 'USR-MANAGER', FullName: 'Manager', Role: 'Manager' };
@@ -192,5 +214,15 @@ assert.strictEqual(sheets.Findings[0].Status, 'Rejected');
 assert.strictEqual(sheets.Findings[0].VerificationStatus, 'Rejected');
 assert.strictEqual(sheets.Findings[0].RejectReason, 'Correct the evidence');
 assert.strictEqual(sheets.Findings[0].RejectedBy, workflowManager.UserID);
+
+const setupSource = fs.readFileSync('apps-script/Setup.gs', 'utf8');
+const leaderDefaults = setupSource.match(/Leader:\s*\[([^\]]*)\]/);
+assert(leaderDefaults, 'Leader default permissions must be defined');
+assert(!leaderDefaults[1].includes('findings.close.minor'), 'Leader must not receive findings.close.minor by default');
+
+const codeSource = fs.readFileSync('apps-script/Code.gs', 'utf8');
+['updateFinding', 'submitFinding', 'verifyFinding', 'closeFinding'].forEach(action => {
+  assert(codeSource.includes(`${action}: function (user)`), `Code.gs must route ${action}`);
+});
 
 console.log('Finding visibility authorization tests passed.');
