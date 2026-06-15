@@ -1,14 +1,24 @@
 /** Lines, stations, users, settings, and checklist read APIs. */
 function getMasterData(payload, currentUser) {
   try {
+    var lineAccess = getUserLineAccess_(currentUser);
+    var cacheKey = 'LPA_MASTER_' + cleanString_(currentUser.UserID) + '_' + cleanString_(currentUser.Role) + '_' +
+      lineAccessScopeKey_(lineAccess);
+    var cached = safeCacheGetJson_(cacheKey);
+    if (cached) return jsonResponse(true, 'Master data loaded from cache.', cached);
     var lines = getRowsAsObjects(SHEET_NAMES.LINES).filter(function (row) { return isActive_(row.ActiveStatus); }).map(sanitizeForClient_);
     var stations = getRowsAsObjects(SHEET_NAMES.STATIONS).filter(function (row) { return isActive_(row.ActiveStatus); }).map(sanitizeForClient_);
     var users = getRowsAsObjects(SHEET_NAMES.USERS).filter(function (row) { return isActive_(row.ActiveStatus); }).map(publicUser_);
     var lists = getRowsAsObjects(SHEET_NAMES.LISTS).filter(function (row) { return !row.ActiveStatus || isActive_(row.ActiveStatus); }).map(sanitizeForClient_);
     var safeSettings = ['APP_NAME', 'TIMEZONE', 'DEFAULT_DUE_DAYS', 'CUSTOMER_NAME', 'COMPANY_NAME'];
+    var settingRows = getRowsAsObjects(SHEET_NAMES.SETTINGS);
+    var settingMap = {};
+    settingRows.forEach(function (row) { settingMap[cleanString_(row.SettingKey)] = row.SettingValue; });
     var settings = {};
-    safeSettings.forEach(function (key) { settings[key] = getSetting(key); });
-    return jsonResponse(true, 'Master data loaded.', { lines: lines, stations: stations, users: users, lists: lists, settings: settings });
+    safeSettings.forEach(function (key) { settings[key] = settingMap[key] || ''; });
+    var result = { lines: lines, stations: stations, users: users, lists: lists, settings: settings };
+    safeCachePutJson_(cacheKey, result, 300);
+    return jsonResponse(true, 'Master data loaded.', result);
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
