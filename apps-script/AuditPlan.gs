@@ -69,7 +69,11 @@ function getAuditPlan(payload, currentUser) {
   try {
     requirePermission_(currentUser, 'audit.plan.view');
     var month = normalizePlanMonth_(payload.periodMonth);
-    var rows = getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN).filter(function (row) {
+    var now = new Date();
+    var audits = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
+    var rows = getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN).map(function (row) {
+      return effectiveAuditPlan_(row, audits, now);
+    }).filter(function (row) {
       return (!month || cleanString_(row.DueDate).slice(0, 7) === month) &&
         (isAllFilter_(payload.lineId) || valuesEqual_(row.LineID, payload.lineId)) &&
         (isAllFilter_(payload.stationId) || valuesEqual_(row.StationID, payload.stationId)) &&
@@ -121,7 +125,10 @@ function getMyAuditPlanSummary(payload, currentUser) {
     var today = formatDateBangkok_(now);
     var weekKey = isoWeekKey_(now);
     var month = today.slice(0, 7);
-    var plans = getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN).filter(function (row) {
+    var audits = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
+    var plans = getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN).map(function (row) {
+      return effectiveAuditPlan_(row, audits, now);
+    }).filter(function (row) {
       return canViewAuditPlan_(currentUser, row, true);
     });
     var summary = {
@@ -224,6 +231,19 @@ function pendingPlanChanges_(plan, today, now, userId) {
     Status: status, CompletedAuditID: '', CompletedAt: '', SubmittedAt: '', IsLate: 'No',
     LateReason: '', UpdatedAt: formatDateTimeBangkok(now), UpdatedBy: userId
   };
+}
+
+/** Returns current effective status without writing, so read APIs never expose stale plan state. */
+function effectiveAuditPlan_(plan, audits, now) {
+  var effective = {};
+  Object.keys(plan || {}).forEach(function (key) { effective[key] = plan[key]; });
+  var audit = findMatchingAuditForPlan_(plan, audits || []);
+  var changes = audit ? completedPlanChanges_(plan, audit, now, '') :
+    pendingPlanChanges_(plan, formatDateBangkok_(now), now, '');
+  ['Status', 'CompletedAuditID', 'CompletedAt', 'SubmittedAt', 'IsLate', 'LateReason'].forEach(function (field) {
+    effective[field] = changes[field];
+  });
+  return effective;
 }
 
 function planPeriodEnded_(plan, now) {

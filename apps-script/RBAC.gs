@@ -54,7 +54,7 @@ function requirePermission_(user, permissionKey) {
 
 function canAccessLine_(user, lineId, requiredLevel) {
   if (isAdmin_(user) || isAllFilter_(lineId)) return true;
-  var levelRank = { view: 1, audit: 1, update: 2, manage: 3, all: 3 };
+  var levelRank = { view: 1, audit: 2, update: 2, manage: 3, all: 3 };
   var minimum = levelRank[cleanString_(requiredLevel).toLowerCase()] || 1;
   return getUserLineAccess_(user).some(function (row) {
     return (valuesEqual_(row.LineID, lineId) || valuesEqual_(row.LineID, 'ALL')) &&

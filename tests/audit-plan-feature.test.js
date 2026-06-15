@@ -36,10 +36,16 @@ const docs = fs.readFileSync('docs/app.js', 'utf8');
 
 assert(plan.includes('planDuplicateKey_'));
 assert(plan.includes("DueTime: '17:00'"));
+assert(plan.includes('function effectiveAuditPlan_('));
+assert(plan.includes('getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN).map(function (row)'));
 assert(audit.includes('คุณกำลังบันทึก Audit ย้อนหลัง กรุณาระบุเหตุผล'));
+assert(audit.includes("requireLineAccess_(currentUser, payload.lineId, 'Audit')"));
 assert(audit.includes('completeAuditPlan_'));
 assert(dashboard.includes('AuditPlanSummary'));
+assert(dashboard.includes('effectiveAuditPlan_(row, audits, now)'));
 assert(report.includes('PlannedAuditCount'));
+assert(report.includes("slice(0, 7).replace('-', '') === period"));
+assert(report.includes('effectiveAuditPlan_(row, allAuditSessions, reportNow)'));
 assert(frontend.includes('Loading Audit Plan'));
 assert(frontend.includes('Generating Audit Plan'));
 assert(frontend.includes('Refreshing Audit Plan'));

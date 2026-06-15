@@ -89,7 +89,10 @@ function summarizeAuditPlansForDashboard_(currentUser, now) {
   var week = isoWeekKey_(now);
   var month = today.slice(0, 7);
   var summary = { DueToday: 0, Overdue: 0, ThisWeek: 0, ThisMonth: 0, Completed: 0, LateSubmitted: 0, Missed: 0, Total: 0 };
-  getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN).filter(function (row) {
+  var audits = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
+  getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN).map(function (row) {
+    return effectiveAuditPlan_(row, audits, now);
+  }).filter(function (row) {
     return canViewAuditPlan_(currentUser, row, true);
   }).forEach(function (row) {
     summary.Total++;

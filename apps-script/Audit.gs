@@ -16,7 +16,7 @@ function saveAudit(payload, currentUser) {
         (hasPermission_(currentUser, 'audit.supervisor.create') ||
          hasPermission_(currentUser, 'audit.engineer.create') ||
          hasPermission_(currentUser, 'audit.leader.create'))) {
-      requireLineAccess_(currentUser, payload.lineId, 'Update');
+      requireLineAccess_(currentUser, payload.lineId, 'Audit');
     }
     if (!Array.isArray(payload.records) || !payload.records.length) throw new Error('At least one audit record is required.');
     payload.records.forEach(function (record, index) {

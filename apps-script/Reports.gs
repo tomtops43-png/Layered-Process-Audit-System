@@ -17,8 +17,13 @@ function getMonthlyReport(payload, currentUser) {
     var findings = getRowsAsObjects(SHEET_NAMES.FINDINGS).filter(function (row) {
       return normalizeFindingPeriod_(row.PeriodMonth || row.FoundDate) === period && canViewFindingRbac_(currentUser, row);
     }).map(refreshOverdueForRead_);
-    var plans = getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN).filter(function (row) {
-      return cleanString_(row.DueDate).slice(0, 7) === period && canViewAuditPlan_(currentUser, row, false);
+    var reportNow = new Date();
+    var allAuditSessions = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
+    var plans = getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN).map(function (row) {
+      return effectiveAuditPlan_(row, allAuditSessions, reportNow);
+    }).filter(function (row) {
+      return cleanString_(row.DueDate).slice(0, 7).replace('-', '') === period &&
+        canViewAuditPlan_(currentUser, row, false);
     });
     var completedPlans = plans.filter(function (row) { return ['Completed', 'Late Submitted'].indexOf(cleanString_(row.Status)) !== -1; });
     var planByRole = {};
