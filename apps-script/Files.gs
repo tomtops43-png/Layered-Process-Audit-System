@@ -8,9 +8,11 @@ function uploadFile(payload, currentUser) {
     };
     var fileType = cleanString_(payload.fileType);
     if (!folderSettings[fileType]) throw new Error('Unsupported fileType: ' + fileType);
-    if (['Leader', 'User'].indexOf(currentUser.Role) !== -1 && valuesEqual_(payload.relatedType, 'Finding')) {
+    if (valuesEqual_(payload.relatedType, 'Finding')) {
       var relatedFinding = findById_(SHEET_NAMES.FINDINGS, 'FindingID', payload.relatedId);
-      if (!relatedFinding || !canAccessFinding_(currentUser, relatedFinding)) return jsonResponse(false, 'You can upload only to findings assigned to you.', {});
+      if (!relatedFinding || (!canUpdateFinding_(currentUser, relatedFinding) && !canVerifyFinding_(currentUser, relatedFinding))) {
+        return jsonResponse(false, 'You do not have permission to upload to this finding.', {});
+      }
     }
 
     var folderId = cleanString_(getSetting(folderSettings[fileType]));
