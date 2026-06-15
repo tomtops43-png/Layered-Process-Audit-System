@@ -11,6 +11,7 @@ const state = {
   findings: [],
   dashboard: null,
   auditPlans: [],
+  auditRules: [],
   report: null,
   editingFinding: null,
   adminUsers: [],
@@ -81,15 +82,15 @@ function bindEvents() {
   $('#auditForm').addEventListener('submit', event => { event.preventDefault(); saveAudit(); });
   $('#planLine').addEventListener('change', () => populateStationSelect('#planStation', $('#planLine').value, true));
   $('#loadAuditPlanButton').addEventListener('click', loadAuditPlan);
-  $('#generateAuditPlanButton').addEventListener('click', generateAuditPlan);
-  $('#refreshAuditPlanButton').addEventListener('click', refreshAuditPlanStatus);
+  $('#addAuditRuleButton').addEventListener('click', () => openAuditRuleEditor());
+  $('#cancelAuditRuleButton').addEventListener('click', closeAuditRuleEditor);
+  $('#auditRuleLine').addEventListener('change', () => populateStationSelect('#auditRuleStation', $('#auditRuleLine').value, false));
+  $('#auditRuleForm').addEventListener('submit', event => { event.preventDefault(); saveAuditRule(); });
   $('#auditPlanTable').addEventListener('click', event => {
-    const button = event.target.closest('[data-plan-action]');
+    const button = event.target.closest('[data-rule-id]');
     if (!button) return;
-    const plan = state.auditPlans.find(item => String(item.PlanID) === button.dataset.planId);
-    if (!plan) return;
-    if (button.dataset.planAction === 'start') startAuditFromPlan(plan);
-    if (button.dataset.planAction === 'view') viewAuditFromPlan(plan);
+    const rule = state.auditRules.find(item => String(item.RuleID) === button.dataset.ruleId);
+    if (rule) openAuditRuleEditor(rule);
   });
   $('#findingLine').addEventListener('change', () => populateStationSelect('#findingStation', $('#findingLine').value, true));
   $('#checklistLine').addEventListener('change', () => populateStationSelect('#checklistStation', $('#checklistLine').value, false));
@@ -270,7 +271,12 @@ function showDashboardSkeleton() {
 
 function renderDashboard(data) {
   const topCategory = data.TopNGCategory && data.TopNGCategory.Category ? `${data.TopNGCategory.Category} (${data.TopNGCategory.Count})` : '-';
+  const ruleSummary = data.AuditRuleSummary || {};
   const cards = [
+    ['My Due Today', ruleSummary.DueToday || 0, 'กำหนดจากกฎตารางตรวจ', 'orange'],
+    ['My Overdue / Missed', ruleSummary.Overdue || 0, 'รอบที่ผ่านแล้วและยังไม่ตรวจ', 'dark-red'],
+    ['My Schedule This Week', ruleSummary.ThisWeek || 0, 'กฎที่มีกำหนดในสัปดาห์นี้', ''],
+    ['Completed This Month', ruleSummary.CompletedThisMonth || 0, 'รอบกฎที่ตรวจสำเร็จ', 'green'],
     ['Total Audit', data.TotalAudit, 'รายการตรวจทั้งหมด', ''],
     ['Audit This Month', data.AuditThisMonth, 'รายการเดือนนี้', ''],
     ['Total Finding', data.TotalFinding, 'Finding ทั้งหมด', ''],
@@ -683,16 +689,19 @@ async function loadMonthlyReport() {
 
 async function loadAuditPlan() {
   if (!hasPermission('audit.plan.view')) return;
-  showLoading('กำลังโหลดแผนการตรวจ...');
+  showLoading('กำลังโหลดกฎตารางตรวจ...');
   try {
-    const data = await apiCall('getAuditPlan', {
-      periodMonth: $('#planMonth').value, lineId: optionalFilterValue($('#planLine').value),
-      stationId: optionalFilterValue($('#planStation').value), requiredRole: optionalFilterValue($('#planRole').value),
-      status: optionalFilterValue($('#planStatus').value), myPlanOnly: $('#planMine').checked,
-      page: 1, pageSize: 100
+    const data = await apiCall('getAuditPlanRules', {
+      lineId: optionalFilterValue($('#planLine').value),
+      stationId: optionalFilterValue($('#planStation').value),
+      requiredRole: optionalFilterValue($('#planRole').value),
+      requiredUserId: optionalFilterValue($('#planUser').value),
+      frequency: optionalFilterValue($('#planFrequency').value),
+      activeStatus: optionalFilterValue($('#planRuleStatus').value),
+      limit: 100
     });
-    state.auditPlans = data.plans || [];
-    renderAuditPlan();
+    state.auditRules = data.rules || [];
+    renderAuditRules();
   } catch (error) {
     showToast(error.message, 'error');
   } finally {
@@ -700,65 +709,63 @@ async function loadAuditPlan() {
   }
 }
 
-async function generateAuditPlan() {
-  if (!hasPermission('audit.plan.generate')) return showToast('คุณไม่มีสิทธิ์สร้างแผนการตรวจ', 'error');
-  if (!$('#planMonth').value) return showToast('กรุณาเลือกเดือน', 'warning');
-  if (!window.confirm('ยืนยันสร้างแผนการตรวจสำหรับเดือนและ Line ที่เลือก?')) return;
-  const generatingAll = !$('#planLine').value && !$('#planStation').value;
-  if (generatingAll && !window.confirm('คุณกำลังสร้างแผนสำหรับทุก Line/Station อาจมีรายการจำนวนมาก ต้องการดำเนินการต่อหรือไม่?')) return;
-  showLoading('กำลังสร้างแผนการตรวจ...');
-  try {
-    const result = await apiCall('generateAuditPlan', {
-      periodMonth: $('#planMonth').value, lineId: $('#planLine').value || 'ALL',
-      stationId: $('#planStation').value || 'ALL', requiredRole: $('#planRole').value || 'ALL',
-      includeWeekends: $('#planIncludeWeekends').checked
-    });
-    showToast(`สร้าง ${result.created} รายการ, ข้ามรายการซ้ำ ${result.skippedDuplicates}`, 'success');
-    await loadAuditPlan();
-  } catch (error) {
-    showToast(error.message, 'error');
-  } finally {
-    hideLoading();
-  }
-}
-
-async function refreshAuditPlanStatus() {
-  if (!hasPermission('audit.plan.refresh')) return showToast('คุณไม่มีสิทธิ์อัปเดตสถานะแผน', 'error');
-  showLoading('กำลังอัปเดตสถานะแผน...');
-  try {
-    const result = await apiCall('refreshAuditPlanStatus', { periodMonth: $('#planMonth').value });
-    showToast(`อัปเดตสถานะแผน ${result.updated} รายการ`, 'success');
-    await loadAuditPlan();
-  } catch (error) {
-    showToast(error.message, 'error');
-  } finally {
-    hideLoading();
-  }
-}
-
-function renderAuditPlan() {
-  renderAuditPlanSummary();
-  if (!state.auditPlans.length) {
-    $('#auditPlanTable').innerHTML = emptyHtml('ไม่พบแผนการตรวจตามตัวกรอง');
+function renderAuditRules() {
+  if (!state.auditRules.length) {
+    $('#auditPlanTable').innerHTML = emptyHtml('ไม่พบกฎตารางตรวจตามตัวกรอง');
     return;
   }
-  $('#auditPlanTable').innerHTML = `<table class="data-table audit-plan-table"><thead><tr><th>Due Date</th><th>Role</th><th>Auditor</th><th>Line</th><th>Station</th><th>Frequency</th><th>Status</th><th>Completed AuditID</th><th>Submitted At</th><th>Late</th><th>Late Reason</th><th>Action</th></tr></thead><tbody>${state.auditPlans.map(plan => {
-    const completed = ['Completed', 'Late Submitted'].includes(plan.Status);
-    const action = completed
-      ? `<button class="btn btn-outline btn-compact" data-plan-action="view" data-plan-id="${escapeAttr(plan.PlanID)}">ดูผลตรวจ</button>`
-      : `<button class="btn btn-primary btn-compact" data-plan-action="start" data-plan-id="${escapeAttr(plan.PlanID)}">เริ่มตรวจ</button>`;
-    return `<tr class="${plan.Status === 'Overdue' || plan.Status === 'Missed' ? 'plan-row-overdue' : ''}"><td>${escapeHtml(formatDate(plan.DueDate))}<small class="table-subtext">${escapeHtml(plan.DueTime || '')}</small></td><td>${escapeHtml(plan.RequiredRole || '-')}</td><td>${escapeHtml(plan.RequiredUserName || 'ตาม Role')}</td><td>${escapeHtml(plan.LineName || plan.LineID)}</td><td>${escapeHtml(plan.StationName || plan.StationID)}</td><td>${escapeHtml(plan.Frequency || '-')}</td><td><span class="status-badge ${auditPlanStatusClass(plan.Status)}">${escapeHtml(plan.Status)}</span></td><td>${escapeHtml(plan.CompletedAuditID || '-')}</td><td>${escapeHtml(plan.SubmittedAt || '-')}</td><td>${escapeHtml(plan.IsLate || 'No')}</td><td class="late-reason-cell">${escapeHtml(plan.LateReason || '-')}</td><td>${action}</td></tr>`;
-  }).join('')}</tbody></table>`;
+  $('#auditPlanTable').innerHTML = `<table class="data-table audit-plan-table"><thead><tr><th>Role</th><th>User</th><th>Line</th><th>Station</th><th>Frequency</th><th>Day</th><th>Due Time</th><th>Status</th><th>Action</th></tr></thead><tbody>${state.auditRules.map(rule => `<tr><td>${escapeHtml(rule.RequiredRole || '-')}</td><td>${escapeHtml(rule.RequiredUserName || 'ตาม Role')}</td><td>${escapeHtml(rule.LineName || rule.LineID)}</td><td>${escapeHtml(rule.StationName || rule.StationID)}</td><td>${escapeHtml(rule.Frequency || '-')}</td><td>${escapeHtml(rule.Frequency === 'Monthly' ? rule.DayOfMonth : (rule.DayOfWeek || 'Working days'))}</td><td>${escapeHtml(rule.DueTime || '17:00')}</td><td><span class="status-badge ${String(rule.ActiveStatus).toLowerCase() === 'active' ? 'status-ok' : 'status-na'}">${escapeHtml(rule.ActiveStatus || '-')}</span></td><td><button class="btn btn-outline btn-compact" data-rule-id="${escapeAttr(rule.RuleID)}">แก้ไข</button></td></tr>`).join('')}</tbody></table>`;
 }
 
-function renderAuditPlanSummary() {
-  const counts = { 'Due Today': 0, Overdue: 0, Completed: 0, 'Late Submitted': 0, Missed: 0 };
-  state.auditPlans.forEach(plan => {
-    if (Object.prototype.hasOwnProperty.call(counts, plan.Status)) counts[plan.Status]++;
-  });
-  $$('[data-plan-count]').forEach(element => {
-    element.textContent = counts[element.dataset.planCount] || 0;
-  });
+function openAuditRuleEditor(rule = null) {
+  if (!hasPermission('audit.plan.manage')) return showToast('คุณไม่มีสิทธิ์จัดการกฎตารางตรวจ', 'error');
+  $('#auditRuleEditor').classList.remove('hidden');
+  $('#auditRuleEditorTitle').textContent = rule ? 'แก้ไขกฎตารางตรวจ' : 'เพิ่มกฎตารางตรวจ';
+  $('#auditRuleId').value = rule?.RuleID || '';
+  $('#auditRuleRole').value = rule?.RequiredRole || 'Leader';
+  $('#auditRuleUser').value = rule?.RequiredUserID || '';
+  $('#auditRuleLine').value = rule?.LineID || '';
+  populateStationSelect('#auditRuleStation', $('#auditRuleLine').value, false);
+  $('#auditRuleStation').value = rule?.StationID || '';
+  $('#auditRuleFrequency').value = rule?.Frequency || 'Daily';
+  $('#auditRuleDayOfWeek').value = rule?.DayOfWeek || '';
+  $('#auditRuleDayOfMonth').value = rule?.DayOfMonth || 1;
+  $('#auditRuleDueTime').value = String(rule?.DueTime || '17:00').slice(0, 5);
+  $('#auditRuleActiveStatus').value = rule?.ActiveStatus || 'Active';
+  $('#auditRuleEditor').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function closeAuditRuleEditor() {
+  $('#auditRuleEditor').classList.add('hidden');
+  $('#auditRuleForm').reset();
+  $('#auditRuleId').value = '';
+}
+
+async function saveAuditRule() {
+  const payload = {
+    ruleId: $('#auditRuleId').value,
+    requiredRole: $('#auditRuleRole').value,
+    requiredUserId: $('#auditRuleUser').value,
+    lineId: $('#auditRuleLine').value,
+    stationId: $('#auditRuleStation').value,
+    frequency: $('#auditRuleFrequency').value,
+    dayOfWeek: $('#auditRuleDayOfWeek').value.trim(),
+    dayOfMonth: $('#auditRuleDayOfMonth').value,
+    dueTime: $('#auditRuleDueTime').value,
+    activeStatus: $('#auditRuleActiveStatus').value
+  };
+  showLoading('กำลังบันทึกกฎตารางตรวจ...');
+  try {
+    await apiCall('upsertAuditPlanRule', payload);
+    closeAuditRuleEditor();
+    await loadAuditPlan();
+    state.dashboard = null;
+    showToast('บันทึกกฎตารางตรวจสำเร็จ', 'success');
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    hideLoading();
+  }
 }
 
 async function startAuditFromPlan(plan) {
@@ -1108,6 +1115,10 @@ function populateAllMasterSelects() {
   populateStationSelect('#findingStation', '', true);
   populateStationSelect('#checklistStation', '', false);
   populateStationSelect('#planStation', '', true);
+  populateSelect('#auditRuleLine', state.masterData.lines || [], 'LineID', 'LineName', 'เลือก Line');
+  populateStationSelect('#auditRuleStation', '', false);
+  populateSelect('#planUser', state.masterData.users || [], 'UserID', 'FullName', 'ทั้งหมด');
+  populateSelect('#auditRuleUser', state.masterData.users || [], 'UserID', 'FullName', 'ตาม Role');
   populateSelect('#adminLineFilter', state.masterData.lines || [], 'LineID', 'LineName', 'ทั้งหมด');
   populateSelect('#adminLineDefault', state.masterData.lines || [], 'LineID', 'LineName', 'ไม่ระบุ');
   const shifts = (state.masterData.lists || [])
@@ -1217,7 +1228,7 @@ async function navigateTo(page) {
     }
   }
   if (page === 'findings' && !state.findings.length) loadFindings();
-  if (page === 'audit-plan' && !state.auditPlans.length) loadAuditPlan();
+  if (page === 'audit-plan' && !state.auditRules.length) loadAuditPlan();
   if (page === 'admin' && hasPermission('users.view')) loadUsers();
   if (page === 'admin' && String(state.user?.Role || '').toLowerCase() === 'admin') loadShiftLists();
 }
@@ -1336,18 +1347,13 @@ function applyPermissionVisibility() {
   $('#adminNavButton').classList.toggle('hidden', !canViewAdmin);
   $('#addUserButton').classList.toggle('hidden', !hasPermission('users.create'));
   $('#exportCsvButton').classList.toggle('hidden', !hasPermission('reports.export'));
-  const role = String(state.user?.Role || '').toLowerCase();
-  const canGeneratePlan = hasPermission('audit.plan.generate') && ['admin', 'manager', 'supervisor'].includes(role);
-  $('#generateAuditPlanButton').classList.toggle('hidden', !canGeneratePlan);
-  $('#includeWeekendsField').classList.toggle('hidden', !canGeneratePlan);
-  $('#refreshAuditPlanButton').classList.toggle('hidden', !hasPermission('audit.plan.refresh'));
+  $('#addAuditRuleButton').classList.toggle('hidden', !hasPermission('audit.plan.manage'));
   $('#shiftManagementPanel').classList.toggle('hidden', String(state.user?.Role || '').toLowerCase() !== 'admin');
 }
 
 function applyAuditPlanRoleScope() {
   const role = String(state.user?.Role || '').toLowerCase();
   const roleSelect = $('#planRole');
-  const myPlan = $('#planMine');
   const scopes = {
     admin: ['', 'Leader', 'Supervisor', 'Manager'],
     manager: ['', 'Leader', 'Supervisor', 'Manager'],
@@ -1361,11 +1367,8 @@ function applyAuditPlanRoleScope() {
   if (role === 'leader') {
     roleSelect.value = 'Leader';
     roleSelect.disabled = true;
-    myPlan.checked = true;
-    myPlan.disabled = true;
   } else {
     roleSelect.disabled = false;
-    myPlan.disabled = false;
   }
 }
 
@@ -1397,7 +1400,6 @@ function setDefaultDates() {
   const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   $('#findingMonth').value = '';
   $('#reportMonth').value = month;
-  $('#planMonth').value = month;
   updateLateReasonVisibility();
 }
 

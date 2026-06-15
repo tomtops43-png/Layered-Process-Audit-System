@@ -15,6 +15,12 @@ function getDashboard(payload, currentUser) {
     var audits = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
     var findings = getRowsAsObjects(SHEET_NAMES.FINDINGS).map(refreshOverdueForRead_);
     var allFindings = findings.slice();
+    var ruleSummary = { DueToday: 0, Overdue: 0, Missed: 0, ThisWeek: 0, CompletedThisMonth: 0, RuleCount: 0 };
+    try {
+      ruleSummary = getRuleBasedAuditSummary_(currentUser, now, lineAccess, audits);
+    } catch (ruleError) {
+      console.warn('Rule-based schedule summary skipped: ' + safeErrorMessage_(ruleError));
+    }
     if (payload.lineId) {
       if (!canViewAll && !canAccessLineFromRows_(currentUser, payload.lineId, 'View', lineAccess)) {
         throw new Error('Line access denied: ' + cleanString_(payload.lineId));
@@ -85,6 +91,7 @@ function getDashboard(payload, currentUser) {
           canViewFindingForDashboard_(currentUser, row, permissions, lineAccess) &&
           permissionEnabled_(permissions, 'findings.verify');
       }).length,
+      AuditRuleSummary: ruleSummary,
       TopNGCategory: topCategory ? { Category: topCategory, Count: categoryNg[topCategory] } : {},
       MonthlyAuditResult: Object.keys(monthly).sort().slice(-12).map(function (key) { return monthly[key]; }),
       SummaryByLine: Object.keys(byLine).sort().map(function (key) { return byLine[key]; }),
