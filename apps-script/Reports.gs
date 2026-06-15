@@ -17,6 +17,30 @@ function getMonthlyReport(payload, currentUser) {
     var findings = getRowsAsObjects(SHEET_NAMES.FINDINGS).filter(function (row) {
       return normalizeFindingPeriod_(row.PeriodMonth || row.FoundDate) === period && canViewFindingRbac_(currentUser, row);
     }).map(refreshOverdueForRead_);
+    var reportNow = new Date();
+    var allAuditSessions = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
+    var auditPlanIndex = buildAuditPlanMatchIndex_(allAuditSessions);
+    var plans = getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN).map(function (row) {
+      return effectiveAuditPlan_(row, allAuditSessions, reportNow, auditPlanIndex);
+    }).filter(function (row) {
+      return cleanString_(row.DueDate).slice(0, 7).replace('-', '') === period &&
+        canViewAuditPlan_(currentUser, row, false);
+    });
+    var completedPlans = plans.filter(function (row) { return ['Completed', 'Late Submitted'].indexOf(cleanString_(row.Status)) !== -1; });
+    var planByRole = {};
+    var planByLine = {};
+    plans.forEach(function (row) {
+      var role = cleanString_(row.RequiredRole) || 'Unassigned';
+      var lineKey = cleanString_(row.LineID) || 'Unassigned';
+      if (!planByRole[role]) planByRole[role] = { Role: role, Planned: 0, Completed: 0, LateSubmitted: 0, Missed: 0 };
+      if (!planByLine[lineKey]) planByLine[lineKey] = { LineID: lineKey, LineName: row.LineName || '', Planned: 0, Completed: 0, LateSubmitted: 0, Missed: 0 };
+      [planByRole[role], planByLine[lineKey]].forEach(function (group) {
+        group.Planned++;
+        if (['Completed', 'Late Submitted'].indexOf(cleanString_(row.Status)) !== -1) group.Completed++;
+        if (valuesEqual_(row.Status, 'Late Submitted')) group.LateSubmitted++;
+        if (valuesEqual_(row.Status, 'Missed')) group.Missed++;
+      });
+    });
 
     var categorySummary = groupReport_(records, 'Category');
     var lineSummary = {};
@@ -40,6 +64,13 @@ function getMonthlyReport(payload, currentUser) {
       OpenFinding: findings.filter(function (row) { return !isClosedStatus_(row.Status); }).length,
       ClosedFinding: findings.filter(function (row) { return isClosedStatus_(row.Status); }).length,
       OverdueAction: findings.filter(function (row) { return valuesEqual_(row.OverdueFlag, 'Yes'); }).length,
+      PlannedAuditCount: plans.length, CompletedAuditCount: completedPlans.length,
+      CompletionRate: plans.length ? Number((completedPlans.length * 100 / plans.length).toFixed(2)) : 0,
+      OverdueAuditCount: plans.filter(function (row) { return valuesEqual_(row.Status, 'Overdue'); }).length,
+      MissedAuditCount: plans.filter(function (row) { return valuesEqual_(row.Status, 'Missed'); }).length,
+      LateSubmittedCount: plans.filter(function (row) { return valuesEqual_(row.Status, 'Late Submitted'); }).length,
+      AuditPlanByRole: Object.keys(planByRole).sort().map(function (key) { return planByRole[key]; }),
+      AuditPlanByLine: Object.keys(planByLine).sort().map(function (key) { return planByLine[key]; }),
       SummaryByCategory: categorySummary,
       SummaryByLine: Object.keys(lineSummary).sort().map(function (key) { return lineSummary[key]; }),
       TopFinding: topFinding, ActionPlanList: actionPlan

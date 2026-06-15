@@ -16,7 +16,7 @@ function saveAudit(payload, currentUser) {
         (hasPermission_(currentUser, 'audit.supervisor.create') ||
          hasPermission_(currentUser, 'audit.engineer.create') ||
          hasPermission_(currentUser, 'audit.leader.create'))) {
-      requireLineAccess_(currentUser, payload.lineId, 'Update');
+      requireLineAccess_(currentUser, payload.lineId, 'Audit');
     }
     if (!Array.isArray(payload.records) || !payload.records.length) throw new Error('At least one audit record is required.');
     payload.records.forEach(function (record, index) {
@@ -35,6 +35,10 @@ function saveAudit(payload, currentUser) {
     var now = new Date();
     var timestamp = formatDateTimeBangkok(now);
     var auditDate = formatDateBangkok_(payload.auditDate);
+    var today = formatDateBangkok_(now);
+    var lateReason = cleanString_(payload.lateReason);
+    var isBackdated = auditDate < today;
+    if (isBackdated && !lateReason) throw new Error('คุณกำลังบันทึก Audit ย้อนหลัง กรุณาระบุเหตุผล');
     var auditTime = cleanString_(payload.auditTime) || Utilities.formatDate(now, APP_TIMEZONE, 'HH:mm:ss');
     var periodMonth = getPeriodMonth(parseDate_(auditDate) || now);
     var line = findById_(SHEET_NAMES.LINES, 'LineID', payload.lineId) || {};
@@ -43,6 +47,14 @@ function saveAudit(payload, currentUser) {
     var stationName = cleanString_(payload.stationName) || cleanString_(station.StationName);
     var area = cleanString_(payload.area) || cleanString_(station.Area) || cleanString_(line.Area);
     var auditId = generateId('LPA', SHEET_NAMES.AUDIT_SESSIONS, 'AuditID', periodMonth);
+    var matchingPlan = findMatchingPlanForAudit_(payload);
+    if (matchingPlan && (!valuesEqual_(matchingPlan.AuditLayer, payload.auditLayer) ||
+        !valuesEqual_(matchingPlan.LineID, payload.lineId) || !valuesEqual_(matchingPlan.StationID, payload.stationId))) {
+      throw new Error('Audit Plan does not match the selected audit scope.');
+    }
+    var planDueAt = matchingPlan ? cleanString_(matchingPlan.DueDate) + ' ' + (cleanString_(matchingPlan.DueTime) || '17:00') + ':00' : '';
+    var isLate = isBackdated || (planDueAt && timestamp > planDueAt);
+    var planStatus = matchingPlan ? (isLate ? 'Late Submitted' : 'Completed') : '';
     var totals = { OK: 0, NG: 0, NA: 0 };
     payload.records.forEach(function (record) { totals[normalizeAuditResult_(record.result).replace('/', '')]++; });
     var checked = totals.OK + totals.NG;
@@ -56,10 +68,11 @@ function saveAudit(payload, currentUser) {
       AuditorName: currentUser.FullName, AuditorRole: currentUser.Role, AuditLayer: payload.auditLayer,
       TotalCheck: payload.records.length, TotalOK: totals.OK, TotalNG: totals.NG, TotalNA: totals.NA,
       ResultSummary: resultSummary, NGRate: ngRate, SubmitStatus: payload.submitStatus || 'Submitted',
-      Remark: payload.remark || '', CreatedAt: timestamp, CreatedBy: currentUser.UserID,
+      Remark: payload.remark || '', SubmittedAt: timestamp, IsLate: isLate ? 'Yes' : 'No',
+      LateReason: lateReason, PlanID: matchingPlan ? matchingPlan.PlanID : cleanString_(payload.planId),
+      PlanStatus: planStatus, CreatedAt: timestamp, CreatedBy: currentUser.UserID,
       UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
     });
-
     var findingIds = [];
     payload.records.forEach(function (record) {
       var checklist = findById_(SHEET_NAMES.CHECKLIST, 'ChecklistID', record.checklistId) || {};
@@ -123,8 +136,13 @@ function saveAudit(payload, currentUser) {
         findingIds.push(findingId);
       }
     });
+    completeAuditPlan_(matchingPlan, auditId, timestamp, isLate, lateReason, currentUser);
+    invalidateDashboardCachesForUser_(currentUser);
 
-    return jsonResponse(true, 'Audit saved successfully.', { AuditID: auditId, FindingIDs: findingIds });
+    return jsonResponse(true, 'Audit saved successfully.', {
+      AuditID: auditId, FindingIDs: findingIds, PlanID: matchingPlan ? matchingPlan.PlanID : '',
+      IsLate: isLate ? 'Yes' : 'No', PlanStatus: planStatus
+    });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
