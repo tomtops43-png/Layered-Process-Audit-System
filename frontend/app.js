@@ -61,7 +61,7 @@ function bindEvents() {
   $('#printReportButton').addEventListener('click', () => window.print());
   $('#exportCsvButton').addEventListener('click', exportReportCsv);
   $('#loadMasterChecklistButton').addEventListener('click', loadMasterChecklist);
-  $('#findingForm').addEventListener('submit', event => { event.preventDefault(); updateFinding(); });
+  $('#findingForm').addEventListener('submit', event => event.preventDefault());
   $('#closeFindingDialog').addEventListener('click', () => $('#findingDialog').close());
   $('#cancelFindingEdit').addEventListener('click', () => $('#findingDialog').close());
   $('#submitVerificationButton').addEventListener('click', submitFindingForVerification);
@@ -407,51 +407,22 @@ function openFindingEditor(findingId) {
   const isAssignedFollowUpUser = isLeaderOrUser && assignedToMe;
   const canUpdate = status !== 'closed' && (hasPermission('findings.view.all') || hasPermission('findings.update.line') ||
     (assignedToMe && hasPermission('findings.update.assigned')));
-  const canSubmit = canUpdate && !pending && status !== 'closed';
+  const canEditFollowUp = canUpdate && !pending;
+  const canSubmit = canEditFollowUp && status !== 'closed';
   const severity = String(row.Severity || row.Priority || 'Minor').toLowerCase();
   const closePermission = severity === 'critical' ? 'findings.close.critical' : severity === 'major' ? 'findings.close.major' : 'findings.close.minor';
   $('#assignedFindingHelp').classList.toggle('hidden', !isAssignedFollowUpUser || !canSubmit);
+  $('#verifierFindingHelp').classList.toggle('hidden', !canVerify || isLeaderOrUser);
   $('#approveFindingButton').classList.toggle('hidden', isLeaderOrUser || !canVerify || !hasPermission(closePermission));
   $('#rejectFindingButton').classList.toggle('hidden', isLeaderOrUser || !canVerify);
   $('#submitVerificationButton').classList.toggle('hidden', !canSubmit);
-  $('#saveFindingButton').classList.toggle('hidden', !canUpdate || isAssignedFollowUpUser);
-  $('#editRootCause').disabled = !canUpdate;
-  $('#editCorrectiveAction').disabled = !canUpdate;
-  $('#editAssignedTo').disabled = !canUpdate || !hasPermission('findings.assign');
-  $('#editDueDate').disabled = !canUpdate;
-  $('#editCloseRemark').disabled = !canUpdate && !canVerify;
-  $('#editAfterPhoto').disabled = !canUpdate && !canVerify;
+  $('#editRootCause').disabled = !canEditFollowUp;
+  $('#editCorrectiveAction').disabled = !canEditFollowUp;
+  $('#editAssignedTo').disabled = !canEditFollowUp || !hasPermission('findings.assign');
+  $('#editDueDate').disabled = !canEditFollowUp;
+  $('#editCloseRemark').disabled = !canEditFollowUp && !canVerify;
+  $('#editAfterPhoto').disabled = !canEditFollowUp && !canVerify;
   $('#findingDialog').showModal();
-}
-
-async function updateFinding() {
-  const findingId = $('#editFindingId').value;
-  const closeRemark = $('#editCloseRemark').value.trim();
-  const file = $('#editAfterPhoto').files[0];
-  const existingPhoto = state.editingFinding ? state.editingFinding.AfterPhotoURL : '';
-  if (!window.confirm(`ยืนยันบันทึกการแก้ไข Finding ${findingId}?`)) return;
-  showLoading('กำลังบันทึก Finding...');
-  try {
-    let afterPhotoUrl = existingPhoto || '';
-    if (file) {
-      const upload = await uploadFile(file, 'Finding', findingId, 'AfterPhoto', false);
-      afterPhotoUrl = upload.DriveFileURL;
-    }
-    const common = {
-      findingId, rootCause: $('#editRootCause').value.trim(), correctiveAction: $('#editCorrectiveAction').value.trim(),
-      dueDate: $('#editDueDate').value, afterPhotoUrl, closeRemark, remark: 'Updated from web application'
-    };
-    if (hasPermission('findings.assign')) common.assignedToUserId = $('#editAssignedTo').value;
-    await apiCall('updateFinding', common);
-    $('#findingDialog').close();
-    showToast('บันทึกการแก้ไข Finding สำเร็จ', 'success');
-    await loadFindings();
-    loadDashboard(false);
-  } catch (error) {
-    showToast(error.message, 'error');
-  } finally {
-    hideLoading();
-  }
 }
 
 async function submitFindingForVerification() {
