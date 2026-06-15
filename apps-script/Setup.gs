@@ -27,7 +27,28 @@ function setupHeaders() {
       results.push(sheetName + ': unchanged');
     }
   });
+  ensureDefaultShiftLists_();
   return results;
+}
+
+function ensureDefaultShiftLists_() {
+  var properties = PropertiesService.getScriptProperties();
+  if (properties.getProperty('LPA_SHIFT_DEFAULTS_INITIALIZED') === '1') return;
+  var defaults = [
+    { ListValue: 'A', DisplayText: 'A', SortOrder: 1, ActiveStatus: 'Active' },
+    { ListValue: 'B', DisplayText: 'B', SortOrder: 2, ActiveStatus: 'Active' },
+    { ListValue: 'Day', DisplayText: 'Day', SortOrder: 3, ActiveStatus: 'Inactive' },
+    { ListValue: 'Night', DisplayText: 'Night', SortOrder: 4, ActiveStatus: 'Inactive' },
+    { ListValue: 'C', DisplayText: 'C', SortOrder: 5, ActiveStatus: 'Inactive' }
+  ];
+  defaults.forEach(function (entry) {
+    upsertCompositeRow_(SHEET_NAMES.LISTS, { ListType: 'Shift', ListValue: entry.ListValue }, {
+      ListType: 'Shift', ListValue: entry.ListValue, DisplayText: entry.DisplayText,
+      SortOrder: entry.SortOrder, ActiveStatus: entry.ActiveStatus
+    });
+  });
+  properties.setProperty('LPA_SHIFT_DEFAULTS_INITIALIZED', '1');
+  incrementMasterDataVersion_();
 }
 
 /** Creates missing RBAC sheets/headers and inserts only missing default role permissions. */
@@ -79,11 +100,11 @@ function setupRbac() {
 
 function getDefaultRolePermissions_() {
   return {
-    Admin: ['*', 'users.view', 'users.create', 'users.update', 'users.deactivate', 'users.resetPassword', 'users.managePermission'],
-    Manager: ['audit.manager.create', 'audit.view.all', 'findings.view.all', 'findings.assign', 'findings.verify', 'findings.close.minor', 'findings.close.major', 'findings.close.critical', 'dashboard.view.all', 'reports.view', 'reports.export'],
-    Supervisor: ['audit.supervisor.create', 'audit.view.line', 'dashboard.view'],
-    Engineer: ['audit.engineer.create', 'audit.view.line', 'findings.view.line', 'findings.assign', 'findings.update.line', 'findings.verify', 'findings.close.minor', 'findings.close.major', 'dashboard.view', 'reports.view'],
-    Leader: ['audit.leader.create', 'audit.view.own', 'findings.view.assigned', 'findings.view.created', 'findings.update.assigned', 'dashboard.view'],
+    Admin: ['*', 'users.view', 'users.create', 'users.update', 'users.deactivate', 'users.resetPassword', 'users.managePermission', 'audit.plan.view', 'audit.plan.manage', 'audit.plan.generate', 'audit.plan.refresh'],
+    Manager: ['audit.manager.create', 'audit.view.all', 'audit.plan.view', 'audit.plan.manage', 'audit.plan.generate', 'audit.plan.refresh', 'findings.view.all', 'findings.assign', 'findings.verify', 'findings.close.minor', 'findings.close.major', 'findings.close.critical', 'dashboard.view.all', 'reports.view', 'reports.export'],
+    Supervisor: ['audit.supervisor.create', 'audit.view.line', 'audit.plan.view', 'audit.plan.generate', 'dashboard.view'],
+    Engineer: ['audit.engineer.create', 'audit.view.line', 'audit.plan.view', 'findings.view.line', 'findings.assign', 'findings.update.line', 'findings.verify', 'findings.close.minor', 'findings.close.major', 'dashboard.view', 'reports.view'],
+    Leader: ['audit.leader.create', 'audit.view.own', 'audit.plan.view', 'findings.view.assigned', 'findings.view.created', 'findings.update.assigned', 'dashboard.view'],
     User: ['findings.view.assigned', 'findings.update.assigned', 'dashboard.view']
   };
 }
