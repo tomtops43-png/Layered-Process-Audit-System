@@ -403,15 +403,18 @@ function openFindingEditor(findingId) {
   const assignedToMe = assignedUserId
     ? assignedUserId === String(state.user.UserID || '')
     : String(row.AssignedToName || row.PICName || '') === String(state.user.FullName || '');
+  const isLeaderOrUser = ['Leader', 'User'].includes(state.user.Role);
+  const isAssignedFollowUpUser = isLeaderOrUser && assignedToMe;
   const canUpdate = status !== 'closed' && (hasPermission('findings.view.all') || hasPermission('findings.update.line') ||
     (assignedToMe && hasPermission('findings.update.assigned')));
   const canSubmit = canUpdate && !pending && status !== 'closed';
   const severity = String(row.Severity || row.Priority || 'Minor').toLowerCase();
   const closePermission = severity === 'critical' ? 'findings.close.critical' : severity === 'major' ? 'findings.close.major' : 'findings.close.minor';
-  $('#approveFindingButton').classList.toggle('hidden', !canVerify || !hasPermission(closePermission));
-  $('#rejectFindingButton').classList.toggle('hidden', !canVerify);
+  $('#assignedFindingHelp').classList.toggle('hidden', !isAssignedFollowUpUser || !canSubmit);
+  $('#approveFindingButton').classList.toggle('hidden', isLeaderOrUser || !canVerify || !hasPermission(closePermission));
+  $('#rejectFindingButton').classList.toggle('hidden', isLeaderOrUser || !canVerify);
   $('#submitVerificationButton').classList.toggle('hidden', !canSubmit);
-  $('#saveFindingButton').classList.toggle('hidden', !canUpdate);
+  $('#saveFindingButton').classList.toggle('hidden', !canUpdate || isAssignedFollowUpUser);
   $('#editRootCause').disabled = !canUpdate;
   $('#editCorrectiveAction').disabled = !canUpdate;
   $('#editAssignedTo').disabled = !canUpdate || !hasPermission('findings.assign');
@@ -457,9 +460,9 @@ async function submitFindingForVerification() {
   const correctiveAction = $('#editCorrectiveAction').value.trim();
   const existingPhoto = state.editingFinding ? state.editingFinding.AfterPhotoURL : '';
   const file = $('#editAfterPhoto').files[0];
-  if (!rootCause) return showToast('กรุณาระบุ Root Cause ก่อนส่งตรวจสอบ', 'warning');
-  if (!correctiveAction) return showToast('กรุณาระบุ Corrective Action ก่อนส่งตรวจสอบ', 'warning');
-  if (!file && !existingPhoto) return showToast('กรุณาอัปโหลด After Photo ก่อนส่งตรวจสอบ', 'warning');
+  if (!rootCause || !correctiveAction || (!file && !existingPhoto)) {
+    return showToast('กรุณากรอก Root Cause, Corrective Action และแนบ After Photo ให้ครบก่อนส่งตรวจยืนยัน', 'warning');
+  }
   if (!window.confirm(`ส่ง Finding ${findingId} เพื่อตรวจสอบ?`)) return;
   await runFindingWorkflow('submitFinding', {
     findingId, rootCause, correctiveAction,

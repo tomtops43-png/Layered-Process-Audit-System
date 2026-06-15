@@ -153,6 +153,7 @@
     <form id="findingForm" method="dialog">
       <div class="modal-head"><div><p class="eyebrow">แก้ไข Finding</p><h3 id="findingDialogTitle">-</h3></div><button type="button" class="icon-button" id="closeFindingDialog">×</button></div>
       <input id="editFindingId" type="hidden">
+      <p id="assignedFindingHelp" class="required-note hidden">กรอกข้อมูลการแก้ไขและแนบ After Photo ให้ครบ จากนั้นกดส่งให้ Engineer/Manager ตรวจยืนยัน</p>
       <div class="form-grid">
         <label>Root Cause<textarea id="editRootCause" rows="3"></textarea></label>
         <label>Corrective Action<textarea id="editCorrectiveAction" rows="3"></textarea></label>
@@ -163,7 +164,7 @@
         <label class="full-width">After Photo<input id="editAfterPhoto" type="file" accept="image/*" capture="environment"></label>
       </div>
       <div id="editPhotoPreview" class="photo-link"></div>
-      <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelFindingEdit">ยกเลิก</button><button type="button" class="btn btn-outline hidden" id="rejectFindingButton">Reject Finding</button><button type="button" class="btn btn-secondary hidden" id="approveFindingButton">Close Finding</button><button type="button" class="btn btn-primary hidden" id="submitVerificationButton">Submit for Verification</button><button type="submit" class="btn btn-primary" id="saveFindingButton">บันทึกการแก้ไข</button></div>
+      <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelFindingEdit">ยกเลิก</button><button type="button" class="btn btn-outline hidden" id="rejectFindingButton">Reject Finding</button><button type="button" class="btn btn-secondary hidden" id="approveFindingButton">Close Finding</button><button type="button" class="btn btn-primary hidden" id="submitVerificationButton">ส่งให้ตรวจยืนยัน</button><button type="submit" class="btn btn-primary" id="saveFindingButton">บันทึกการแก้ไข</button></div>
     </form>
   </dialog>
 
