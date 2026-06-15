@@ -70,7 +70,9 @@ function bindEvents() {
   $('#submitVerificationButton').addEventListener('click', submitFindingForVerification);
   $('#approveFindingButton').addEventListener('click', () => verifyFinding('Approve'));
   $('#rejectFindingButton').addEventListener('click', () => verifyFinding('Reject'));
-  $('#editCloseRemark').addEventListener('input', event => event.target.classList.remove('field-error'));
+  ['#editCloseRemark', '#editRejectReason'].forEach(selector => {
+    $(selector).addEventListener('input', event => event.target.classList.remove('field-error'));
+  });
   $('#addUserButton').addEventListener('click', () => openUserEditor());
   $('#searchUsersButton').addEventListener('click', loadUsers);
   $('#adminUsersTable').addEventListener('click', event => {
@@ -396,12 +398,13 @@ function openFindingEditor(findingId) {
   $('#editFindingId').value = row.FindingID;
   $('#editRootCause').value = row.RootCause || '';
   $('#editCorrectiveAction').value = row.CorrectiveAction || '';
-  populateFindingAssignee(row.AssignedToUserID || row.PICUserID || '');
-  $('#editDueDate').value = dateInputValue(row.DueDate);
   $('#editStatus').value = row.Status || 'Open';
   $('#editStatus').closest('label').classList.toggle('hidden', ['Leader', 'User'].includes(state.user.Role));
-  $('#editCloseRemark').value = row.CloseRemark || '';
+  $('#editActionRemark').value = row.ActionRemark || '';
+  $('#editCloseRemark').value = '';
+  $('#editRejectReason').value = '';
   $('#editCloseRemark').classList.remove('field-error');
+  $('#editRejectReason').classList.remove('field-error');
   $('#editAfterPhoto').value = '';
   $('#editPhotoPreview').innerHTML = row.AfterPhotoURL ? `<a href="${escapeAttr(row.AfterPhotoURL)}" target="_blank" rel="noopener">ดู After Photo ปัจจุบัน</a>` : '';
   const status = String(row.Status || '').toLowerCase();
@@ -419,17 +422,26 @@ function openFindingEditor(findingId) {
   const canSubmit = canEditFollowUp && status !== 'closed';
   const severity = String(row.Severity || row.Priority || 'Minor').toLowerCase();
   const closePermission = severity === 'critical' ? 'findings.close.critical' : severity === 'major' ? 'findings.close.major' : 'findings.close.minor';
+  const rejected = status === 'rejected' && Boolean(row.RejectReason);
+  const rejectedByUser = (state.masterData.users || []).find(user => String(user.UserID) === String(row.RejectedBy || ''));
+  $('#rejectionHistory').classList.toggle('hidden', !rejected);
+  $('#rejectionReasonDisplay').textContent = row.RejectReason || '-';
+  $('#rejectedByDisplay').textContent = rejectedByUser ? (rejectedByUser.FullName || rejectedByUser.Username) : (row.RejectedBy || '-');
+  $('#rejectedAtDisplay').textContent = row.RejectedAt || '-';
   $('#assignedFindingHelp').classList.toggle('hidden', !isAssignedFollowUpUser || !canSubmit);
   $('#verifierFindingHelp').classList.toggle('hidden', !canVerify || isLeaderOrUser);
+  $('#editCloseRemarkField').classList.toggle('hidden', !canVerify || isLeaderOrUser);
+  $('#editRejectReasonField').classList.toggle('hidden', !canVerify || isLeaderOrUser);
   $('#approveFindingButton').classList.toggle('hidden', isLeaderOrUser || !canVerify || !hasPermission(closePermission));
   $('#rejectFindingButton').classList.toggle('hidden', isLeaderOrUser || !canVerify);
   $('#submitVerificationButton').classList.toggle('hidden', !canSubmit);
   $('#editRootCause').disabled = !canEditFollowUp;
   $('#editCorrectiveAction').disabled = !canEditFollowUp;
-  $('#editAssignedTo').disabled = !canEditFollowUp || !hasPermission('findings.assign');
-  $('#editDueDate').disabled = !canEditFollowUp;
-  $('#editCloseRemark').disabled = !canEditFollowUp && !canVerify;
-  $('#editAfterPhoto').disabled = !canEditFollowUp && !canVerify;
+  $('#editActionRemark').disabled = !canEditFollowUp;
+  $('#editCloseRemark').disabled = !canVerify;
+  $('#editRejectReason').disabled = !canVerify;
+  $('#editAfterPhotoField').classList.toggle('hidden', !canEditFollowUp);
+  $('#editAfterPhoto').disabled = !canEditFollowUp;
   $('#findingDialog').showModal();
 }
 
@@ -445,8 +457,8 @@ async function submitFindingForVerification() {
   if (!window.confirm(`ส่ง Finding ${findingId} เพื่อตรวจสอบ?`)) return;
   await runFindingWorkflow('submitFinding', {
     findingId, rootCause, correctiveAction,
-    closeRemark: $('#editCloseRemark').value.trim(),
-    remark: $('#editCloseRemark').value.trim() || 'Submitted for verification'
+    actionRemark: $('#editActionRemark').value.trim(),
+    remark: $('#editActionRemark').value.trim() || 'Submitted for verification'
   }, {
     loadingMessage: 'กำลังส่ง Finding ให้ตรวจยืนยัน...',
     successMessage: 'ส่ง Finding เพื่อตรวจสอบแล้ว'
@@ -455,9 +467,9 @@ async function submitFindingForVerification() {
 
 async function verifyFinding(decision) {
   const findingId = $('#editFindingId').value;
-  const remarkField = $('#editCloseRemark');
-  const closeRemark = remarkField.value.trim();
-  if (!closeRemark) {
+  const remarkField = decision === 'Reject' ? $('#editRejectReason') : $('#editCloseRemark');
+  const verifierRemark = remarkField.value.trim();
+  if (!verifierRemark) {
     remarkField.classList.add('field-error');
     remarkField.focus();
     const warning = decision === 'Reject'
@@ -472,8 +484,8 @@ async function verifyFinding(decision) {
   if (!window.confirm(confirmation)) return;
   await runFindingWorkflow('verifyFinding', {
     findingId, decision,
-    rejectReason: decision === 'Reject' ? closeRemark : '',
-    closeRemark
+    rejectReason: decision === 'Reject' ? verifierRemark : '',
+    closeRemark: decision === 'Approve' ? verifierRemark : ''
   }, {
     loadingMessage: decision === 'Approve' ? 'กำลังปิด Finding...' : 'กำลัง Reject Finding...',
     successMessage: decision === 'Approve' ? 'Close Finding สำเร็จ' : 'Reject Finding สำเร็จ ส่งกลับให้ผู้รับผิดชอบแก้ไขแล้ว'

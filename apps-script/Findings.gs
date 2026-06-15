@@ -52,10 +52,10 @@ function updateFinding(payload, currentUser) {
       throw new Error('This finding cannot be edited in its current status.');
     }
 
-    var allowed = ['CorrectiveAction', 'RootCause', 'DueDate', 'Status', 'AfterPhotoURL', 'CloseRemark'];
+    var allowed = ['CorrectiveAction', 'RootCause', 'ActionRemark', 'DueDate', 'Status', 'AfterPhotoURL'];
     var aliases = {
       correctiveAction: 'CorrectiveAction', rootCause: 'RootCause', dueDate: 'DueDate', status: 'Status',
-      afterPhotoUrl: 'AfterPhotoURL', closeRemark: 'CloseRemark'
+      actionRemark: 'ActionRemark', afterPhotoUrl: 'AfterPhotoURL'
     };
     var updates = {};
     allowed.forEach(function (field) { if (Object.prototype.hasOwnProperty.call(payload, field)) updates[field] = payload[field]; });
@@ -120,6 +120,7 @@ function submitFinding(payload, currentUser) {
     if (valuesEqual_(finding.Status, 'Closed') || valuesEqual_(finding.Status, 'Pending Verification')) {
       throw new Error('Finding cannot be submitted from its current status.');
     }
+    var oldStatus = finding.Status;
     var correctiveAction = cleanString_(payload.correctiveAction || payload.CorrectiveAction || finding.CorrectiveAction);
     var rootCause = cleanString_(payload.rootCause || payload.RootCause || finding.RootCause);
     var afterPhoto = cleanString_(payload.afterPhotoUrl || payload.AfterPhotoURL || finding.AfterPhotoURL);
@@ -134,10 +135,10 @@ function submitFinding(payload, currentUser) {
       RejectedAt: '', RejectedBy: '', RejectReason: '',
       UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
     };
-    var actionRemark = cleanString_(payload.closeRemark || payload.CloseRemark);
-    if (actionRemark) updates.CloseRemark = actionRemark;
+    var actionRemark = cleanString_(payload.actionRemark || payload.ActionRemark || finding.ActionRemark);
+    updates.ActionRemark = actionRemark;
     var updated = updateObjectById(SHEET_NAMES.FINDINGS, 'FindingID', payload.findingId, updates);
-    appendActionLog_(payload.findingId, finding.Status, updates.Status, updates, payload.remark || 'Submitted for verification', payload.evidenceUrl || afterPhoto, currentUser, timestamp);
+    appendActionLog_(payload.findingId, oldStatus, updates.Status, updates, payload.remark || 'Submitted for verification', payload.evidenceUrl || afterPhoto, currentUser, timestamp);
     return jsonResponse(true, 'Finding submitted for verification.', { finding: sanitizeForClient_(updated) });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
@@ -150,6 +151,7 @@ function verifyFinding(payload, currentUser) {
     var finding = findById_(SHEET_NAMES.FINDINGS, 'FindingID', payload.findingId);
     if (!finding) throw new Error('Finding not found: ' + payload.findingId);
     if (!valuesEqual_(finding.Status, 'Pending Verification')) throw new Error('Finding is not pending verification.');
+    var oldStatus = finding.Status;
     var decision = cleanString_(payload.decision).toLowerCase();
     if (['approve', 'approved', 'reject', 'rejected'].indexOf(decision) === -1) throw new Error('Decision must be Approve or Reject.');
     if (!canVerifyFinding_(currentUser, finding)) return jsonResponse(false, 'You do not have permission to verify this finding.', {});
@@ -183,7 +185,7 @@ function verifyFinding(payload, currentUser) {
       updates.DaysOverdue = 0;
     }
     var updated = updateObjectById(SHEET_NAMES.FINDINGS, 'FindingID', payload.findingId, updates);
-    appendActionLog_(payload.findingId, finding.Status, updates.Status, updates, payload.remark || updates.RejectReason || updates.CloseRemark || '', payload.evidenceUrl || '', currentUser, timestamp);
+    appendActionLog_(payload.findingId, oldStatus, updates.Status, updates, payload.remark || updates.RejectReason || updates.CloseRemark || '', payload.evidenceUrl || '', currentUser, timestamp);
     return jsonResponse(true, updates.Status === 'Closed' ? 'Finding approved and closed.' : 'Finding rejected.', { finding: sanitizeForClient_(updated) });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});

@@ -96,6 +96,7 @@ function saveAudit(payload, currentUser) {
           ProblemDetail: findingDetail || auditRecord.Remark || auditRecord.CheckItemSnapshot,
           StandardCriteria: auditRecord.StandardCriteriaSnapshot,
           CorrectiveAction: auditRecord.CorrectiveAction, RootCause: record.rootCause || '',
+          ActionRemark: cleanString_(record.actionRemark),
           PICUserID: assignedUserId, PICName: assignedName,
           AuditorUserID: currentUser.UserID, AuditorName: currentUser.FullName, AuditorRole: currentUser.Role,
           AssignedToUserID: assignedUserId, AssignedToName: assignedName,

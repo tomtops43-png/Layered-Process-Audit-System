@@ -161,6 +161,7 @@ sheets.Findings = [{
   Severity: 'Major',
   RootCause: '',
   CorrectiveAction: '',
+  ActionRemark: '',
   AfterPhotoURL: ''
 }];
 setPermissions('Leader', ['findings.view.assigned', 'findings.update.assigned']);
@@ -207,13 +208,36 @@ sheets.Findings[0].VerificationStatus = 'Pending';
 response = context.verifyFinding({
   findingId: 'F-WORKFLOW',
   decision: 'Reject',
-  closeRemark: 'Correct the evidence'
+  rejectReason: 'Correct the evidence'
 }, workflowManager);
 assert.strictEqual(response.success, true, response.message);
 assert.strictEqual(sheets.Findings[0].Status, 'Rejected');
 assert.strictEqual(sheets.Findings[0].VerificationStatus, 'Rejected');
 assert.strictEqual(sheets.Findings[0].RejectReason, 'Correct the evidence');
 assert.strictEqual(sheets.Findings[0].RejectedBy, workflowManager.UserID);
+assert.strictEqual(sheets.Findings[0].CloseRemark, 'Verified and complete');
+assert.strictEqual(sheets.Findings[0].ActionRemark, '');
+assert(
+  sheets.ActionLogs.some(log => log.NewStatus === 'Rejected' && log.Remark === 'Correct the evidence'),
+  'Reject reason must remain in the action log'
+);
+
+setPermissions('Leader', ['findings.view.assigned', 'findings.update.assigned']);
+response = context.submitFinding({
+  findingId: 'F-WORKFLOW',
+  rootCause: 'Revised root cause',
+  correctiveAction: 'Revised correction',
+  actionRemark: 'Updated evidence after rejection'
+}, workflowLeader);
+assert.strictEqual(response.success, true, response.message);
+assert.strictEqual(sheets.Findings[0].ActionRemark, 'Updated evidence after rejection');
+assert.strictEqual(sheets.Findings[0].RejectReason, '');
+assert.strictEqual(sheets.Findings[0].RejectedBy, '');
+assert.strictEqual(sheets.Findings[0].RejectedAt, '');
+assert(
+  sheets.ActionLogs.some(log => log.OldStatus === 'Rejected' && log.NewStatus === 'Pending Verification'),
+  'Resubmission after rejection must remain in the action log'
+);
 
 const setupSource = fs.readFileSync('apps-script/Setup.gs', 'utf8');
 const leaderDefaults = setupSource.match(/Leader:\s*\[([^\]]*)\]/);
@@ -224,5 +248,8 @@ const codeSource = fs.readFileSync('apps-script/Code.gs', 'utf8');
 ['updateFinding', 'submitFinding', 'verifyFinding', 'closeFinding'].forEach(action => {
   assert(codeSource.includes(`${action}: function (user)`), `Code.gs must route ${action}`);
 });
+
+const configSource = fs.readFileSync('apps-script/Config.gs', 'utf8');
+assert(configSource.includes("'ActionRemark'"), 'Findings schema must include ActionRemark');
 
 console.log('Finding visibility authorization tests passed.');

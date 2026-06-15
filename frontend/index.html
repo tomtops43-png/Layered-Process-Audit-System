@@ -158,11 +158,16 @@
       <div class="form-grid">
         <label>Root Cause<textarea id="editRootCause" rows="3"></textarea></label>
         <label>Corrective Action<textarea id="editCorrectiveAction" rows="3"></textarea></label>
-        <label>Assign To<select id="editAssignedTo"><option value="">ไม่ระบุผู้รับผิดชอบ</option></select></label>
-        <label>Due Date<input id="editDueDate" type="date"></label>
         <label>Status<input id="editStatus" readonly></label>
-        <label class="full-width">Close Remark / Action Remark<textarea id="editCloseRemark" rows="2"></textarea></label>
-        <label class="full-width">After Photo<input id="editAfterPhoto" type="file" accept="image/*" capture="environment"></label>
+        <label class="full-width">Action Remark<textarea id="editActionRemark" rows="2"></textarea></label>
+        <label id="editCloseRemarkField" class="full-width hidden">Close Remark<textarea id="editCloseRemark" rows="2"></textarea></label>
+        <label id="editRejectReasonField" class="full-width hidden">Reject Reason<textarea id="editRejectReason" rows="2"></textarea></label>
+        <section id="rejectionHistory" class="rejection-history full-width hidden">
+          <strong>เหตุผลที่ถูก Reject</strong>
+          <p id="rejectionReasonDisplay">-</p>
+          <div><span>Rejected By: <strong id="rejectedByDisplay">-</strong></span><span>Rejected At: <strong id="rejectedAtDisplay">-</strong></span></div>
+        </section>
+        <label id="editAfterPhotoField" class="full-width">After Photo<input id="editAfterPhoto" type="file" accept="image/*" capture="environment"></label>
       </div>
       <div id="editPhotoPreview" class="photo-link"></div>
       <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelFindingEdit">ยกเลิก</button><button type="button" class="btn btn-outline hidden" id="rejectFindingButton">Reject Finding</button><button type="button" class="btn btn-secondary hidden" id="approveFindingButton">Close Finding</button><button type="button" class="btn btn-primary hidden" id="submitVerificationButton">ส่งให้ตรวจยืนยัน</button></div>
