@@ -27,6 +27,8 @@ function doPost(e) {
       saveAudit: function (user) { return saveAudit(payload, user); },
       getAuditList: function (user) { return getAuditList(payload, user); },
       getAuditPlan: function (user) { return getAuditPlan(payload, user); },
+      getAuditPlanRules: function (user) { return getAuditPlanRules(payload, user); },
+      upsertAuditPlanRule: function (user) { return upsertAuditPlanRule(payload, user); },
       generateAuditPlan: function (user) { return generateAuditPlan(payload, user); },
       refreshAuditPlanStatus: function (user) { return refreshAuditPlanStatus(payload, user); },
       getMyAuditPlanSummary: function (user) { return getMyAuditPlanSummary(payload, user); },

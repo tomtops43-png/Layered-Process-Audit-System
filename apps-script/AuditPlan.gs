@@ -386,7 +386,8 @@ function invalidateDashboardCachesForUser_(user) {
   var lineAccess = getUserLineAccess_(user);
   safeCacheRemove_([
     dashboardCacheKey_(user, period, lineAccess, ''),
-    auditPlanSummaryCacheKey_(user, period, lineAccess)
+    auditPlanSummaryCacheKey_(user, period, lineAccess),
+    auditRuleSummaryCacheKey_(user, formatDateBangkok_(new Date()), lineAccess)
   ]);
 }
 

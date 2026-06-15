@@ -92,6 +92,7 @@ function hasApiAccess_(user, action) {
     saveAudit: ['audit.manager.create', 'audit.supervisor.create', 'audit.engineer.create', 'audit.leader.create'],
     getAuditList: ['audit.view.all', 'audit.view.line', 'audit.view.own'],
     getAuditPlan: ['audit.plan.view'], getMyAuditPlanSummary: ['audit.plan.view'],
+    getAuditPlanRules: ['audit.plan.view'], upsertAuditPlanRule: ['audit.plan.manage'],
     generateAuditPlan: ['audit.plan.generate'], refreshAuditPlanStatus: ['audit.plan.refresh'],
     getFindings: ['findings.view.all', 'findings.view.line', 'findings.view.assigned', 'findings.view.created', 'findings.verify'],
     updateFinding: ['findings.update.assigned', 'findings.update.line', 'findings.assign', 'findings.view.all'],
