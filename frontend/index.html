@@ -36,7 +36,8 @@
       <div class="sidebar-head"><strong>เมนูหลัก</strong><button id="closeMenuButton" class="icon-button mobile-only" aria-label="ปิดเมนู">×</button></div>
       <nav id="mainNav" class="main-nav">
         <button data-page="dashboard" class="nav-item active"><span>▦</span>Dashboard</button>
-        <button data-page="audit" class="nav-item"><span>✓</span>ตรวจ LPA</button>
+        <button data-page="audit" class="nav-item"><span>✓</span>ตรวจ LPA <b id="auditNavBadge" class="nav-badge hidden">0</b></button>
+        <button data-page="audit-plan" class="nav-item" data-permission-any="audit.plan.view"><span>▣</span>แผนการตรวจ LPA</button>
         <button data-page="findings" class="nav-item"><span>!</span>Finding Tracking <b id="findingNavBadge" class="nav-badge hidden">0</b></button>
         <button data-page="report" class="nav-item" data-permission-any="reports.view,reports.export"><span>▤</span>Monthly Report</button>
         <button data-page="checklist" class="nav-item" data-permission-any="checklist.view,checklist.manage"><span>☷</span>Checklist Master</button>
@@ -50,6 +51,7 @@
       <section id="page-dashboard" class="page active-page">
         <div class="page-heading"><div><p class="eyebrow">ภาพรวมระบบ</p><h2>Dashboard</h2></div><button class="btn btn-outline" id="refreshDashboard">↻ รีเฟรช</button></div>
         <div id="dashboardCards" class="metric-grid"></div>
+        <div id="auditPlanAlert" class="plan-alert hidden"></div>
         <div class="content-grid two-columns">
           <article class="panel"><div class="panel-title"><h3>ผลการตรวจรายเดือน</h3></div><div id="monthlyAuditChart" class="bar-chart empty-state">กำลังโหลด...</div></article>
           <article class="panel"><div class="panel-title"><h3>สรุปตาม Line</h3></div><div id="lineSummary" class="table-wrap"></div></article>
@@ -63,20 +65,46 @@
           <article class="panel">
             <div class="form-grid audit-meta-grid">
               <label>Audit Date<input id="auditDate" type="date" required></label>
+              <input id="auditPlanId" type="hidden">
               <label>Audit Time<input id="auditTime" type="time" required></label>
               <label>Line<select id="auditLine" required><option value="">เลือก Line</option></select></label>
               <label>Station<select id="auditStation" required><option value="">เลือก Station</option></select></label>
               <label>Area<input id="auditArea" readonly placeholder="เลือก Line / Station"></label>
-              <label>Shift<select id="auditShift" required><option value="">เลือก Shift</option><option>Day</option><option>Night</option><option>A</option><option>B</option><option>C</option></select></label>
+              <label>Shift<select id="auditShift" required><option value="">เลือก Shift</option></select></label>
               <label>Audit Layer<select id="auditLayer" required><option value="">กำลังโหลดสิทธิ์...</option></select></label>
               <label>Checklist Language<select id="checklistLanguage"><option value="TH" selected>ไทย</option><option value="EN">English</option></select></label>
               <label>Remark<input id="auditRemark" placeholder="หมายเหตุ (ถ้ามี)"></label>
+              <label id="lateReasonField" class="full-width hidden">Late Reason *<textarea id="auditLateReason" rows="2" placeholder="ระบุเหตุผลการบันทึกย้อนหลัง"></textarea><small class="late-warning">คุณกำลังบันทึก Audit ย้อนหลัง กรุณาระบุเหตุผล</small></label>
             </div>
             <button id="loadChecklistButton" class="btn btn-secondary btn-large" type="button">โหลด Checklist</button>
           </article>
           <div id="auditChecklist" class="checklist-stack"><div class="empty-state">เลือก Line, Station และ Audit Layer แล้วกด “โหลด Checklist”</div></div>
           <div id="auditSaveBar" class="save-bar hidden"><div><strong id="auditProgress">ยังไม่ได้ตอบ</strong><small>กรุณาตอบ Checklist ให้ครบทุกข้อ</small></div><button class="btn btn-primary btn-large" type="submit">บันทึก Audit</button></div>
         </form>
+      </section>
+
+      <section id="page-audit-plan" class="page">
+        <div class="page-heading"><div><p class="eyebrow">LPA SCHEDULE / CALENDAR</p><h2>แผนการตรวจ LPA</h2><p class="page-helper">ใช้หน้านี้เพื่อดูแผนการตรวจ LPA ว่าใครต้องตรวจ Line/Station ไหน และตรวจครบตามรอบหรือยัง</p></div><button id="refreshAuditPlanButton" class="btn btn-outline">↻ อัปเดตสถานะแผน</button></div>
+        <div id="auditPlanSummaryCards" class="metric-grid plan-summary-grid">
+          <article class="metric-card orange"><span class="metric-label">Due Today</span><strong class="metric-value" data-plan-count="Due Today">0</strong><small class="metric-note">ครบกำหนดวันนี้</small></article>
+          <article class="metric-card red"><span class="metric-label">Overdue</span><strong class="metric-value" data-plan-count="Overdue">0</strong><small class="metric-note">เกินกำหนดตรวจ</small></article>
+          <article class="metric-card green"><span class="metric-label">Completed</span><strong class="metric-value" data-plan-count="Completed">0</strong><small class="metric-note">ตรวจเรียบร้อย</small></article>
+          <article class="metric-card orange-red"><span class="metric-label">Late Submitted</span><strong class="metric-value" data-plan-count="Late Submitted">0</strong><small class="metric-note">ส่งผลล่าช้า</small></article>
+          <article class="metric-card dark-red"><span class="metric-label">Missed</span><strong class="metric-value" data-plan-count="Missed">0</strong><small class="metric-note">พลาดรอบการตรวจ</small></article>
+        </div>
+        <article class="panel filters-panel">
+          <div class="form-grid filter-grid">
+            <label>เดือน<input id="planMonth" type="month"></label>
+            <label>Line<select id="planLine"><option value="">ทั้งหมด</option></select></label>
+            <label>Station<select id="planStation"><option value="">ทั้งหมด</option></select></label>
+            <label>บทบาทผู้ตรวจ<select id="planRole"><option value="">ทั้งหมด</option><option>Leader</option><option>Supervisor</option><option>Manager</option></select></label>
+            <label>สถานะ<select id="planStatus"><option value="">ทั้งหมด</option><option>Planned</option><option>Due Today</option><option>Completed</option><option>Overdue</option><option>Missed</option><option>Late Submitted</option></select></label>
+            <label class="check-label"><input id="planMine" type="checkbox"> เฉพาะแผนของฉัน</label>
+            <label id="includeWeekendsField" class="check-label"><input id="planIncludeWeekends" type="checkbox"> รวมวันเสาร์-อาทิตย์</label>
+          </div>
+          <div class="button-row"><button id="loadAuditPlanButton" class="btn btn-secondary">โหลดแผนการตรวจ</button><button id="generateAuditPlanButton" class="btn btn-primary">สร้างแผนการตรวจ</button></div>
+        </article>
+        <article class="panel"><div id="auditPlanTable" class="table-wrap"><div class="empty-state">เลือกเดือนเพื่อดูแผนการตรวจ</div></div></article>
       </section>
 
       <section id="page-findings" class="page">
@@ -134,12 +162,25 @@
           <button id="searchUsersButton" class="btn btn-secondary">ค้นหาผู้ใช้</button>
         </article>
         <article class="panel"><div id="adminUsersTable" class="table-wrap"><div class="empty-state">กำลังโหลดผู้ใช้...</div></div></article>
+        <article id="shiftManagementPanel" class="panel hidden">
+          <div class="section-heading"><div><p class="eyebrow">MASTER LIST</p><h3>จัดการ Shift</h3></div><button id="addShiftButton" type="button" class="btn btn-primary">+ เพิ่ม Shift</button></div>
+          <p class="section-help">ปิดใช้งาน Shift ที่ไม่ต้องการแสดงในฟอร์มตรวจ โดยไม่ลบข้อมูลที่เคยใช้งาน</p>
+          <form id="shiftForm" class="form-grid filter-grid hidden">
+            <label>Value<input id="shiftListValue" required maxlength="30"></label>
+            <label>Display Name<input id="shiftDisplayText" required maxlength="60"></label>
+            <label>Sort Order<input id="shiftSortOrder" value="Auto" readonly aria-readonly="true"><small class="field-help">ระบบกำหนดลำดับให้อัตโนมัติ</small></label>
+            <label>Status<select id="shiftActiveStatus"><option>Active</option><option>Inactive</option></select></label>
+            <div class="button-row"><button type="button" id="cancelShiftButton" class="btn btn-outline">ยกเลิก</button><button type="submit" class="btn btn-primary">บันทึก Shift</button></div>
+          </form>
+          <div id="shiftListTable" class="table-wrap"><div class="empty-state">กำลังโหลด Shift...</div></div>
+        </article>
       </section>
     </main>
 
     <nav class="bottom-nav" aria-label="เมนูมือถือ">
       <button data-page="dashboard" class="active"><span>▦</span>Dashboard</button>
       <button data-page="audit"><span>✓</span>Audit</button>
+      <button data-page="audit-plan" data-permission-any="audit.plan.view"><span>▣</span>แผนตรวจ</button>
       <button data-page="findings"><span>!</span>Finding</button>
       <button data-page="report"><span>▤</span>Report</button>
       <button data-page="checklist"><span>☷</span>Checklist</button>
