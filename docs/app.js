@@ -14,6 +14,7 @@ const state = {
   report: null,
   editingFinding: null,
   adminUsers: [],
+  adminMasterLists: [],
   editingUser: null
 };
 
@@ -92,6 +93,13 @@ function bindEvents() {
   });
   $('#addUserButton').addEventListener('click', () => openUserEditor());
   $('#searchUsersButton').addEventListener('click', loadUsers);
+  $('#addShiftButton').addEventListener('click', () => openShiftEditor());
+  $('#cancelShiftButton').addEventListener('click', closeShiftEditor);
+  $('#shiftForm').addEventListener('submit', event => { event.preventDefault(); saveShift(); });
+  $('#shiftListTable').addEventListener('click', event => {
+    const button = event.target.closest('[data-shift-value]');
+    if (button) openShiftEditor(button.dataset.shiftValue);
+  });
   $('#adminUsersTable').addEventListener('click', event => {
     const button = event.target.closest('[data-user-id]');
     if (button) openUserEditor(button.dataset.userId);
@@ -798,6 +806,69 @@ function renderAdminUsers() {
   $('#adminUsersTable').innerHTML = `<table class="data-table"><thead><tr><th>User</th><th>Full Name</th><th>Role</th><th>Line Access</th><th>Status</th><th>Last Login</th><th></th></tr></thead><tbody>${rows.map(user => `<tr><td>${escapeHtml(user.Username)}</td><td>${escapeHtml(user.FullName)}</td><td>${escapeHtml(user.Role)}</td><td>${escapeHtml((user.LineAccess || []).map(line => line.LineName || line.LineID).join(', ') || user.LineDefault || '-')}</td><td><span class="status-badge ${String(user.ActiveStatus).toLowerCase() === 'active' ? 'status-closed' : 'status-na'}">${escapeHtml(user.ActiveStatus || '-')}</span></td><td>${escapeHtml(user.LastLogin || '-')}</td><td><button type="button" class="btn btn-outline" data-user-id="${escapeAttr(user.UserID)}">Edit</button></td></tr>`).join('')}</tbody></table>`;
 }
 
+async function loadShiftLists() {
+  if (String(state.user?.Role || '').toLowerCase() !== 'admin') return;
+  try {
+    const data = await apiCall('getMasterLists', { listType: 'Shift' });
+    state.adminMasterLists = data.lists || [];
+    renderShiftLists();
+  } catch (error) {
+    $('#shiftListTable').innerHTML = emptyHtml(error.message || 'ไม่สามารถโหลด Shift ได้');
+    showToast(error.message, 'error');
+  }
+}
+
+function renderShiftLists() {
+  const rows = state.adminMasterLists;
+  if (!rows.length) {
+    $('#shiftListTable').innerHTML = emptyHtml('ยังไม่มี Shift ใน Master List');
+    return;
+  }
+  $('#shiftListTable').innerHTML = `<table class="data-table"><thead><tr><th>Value</th><th>Display Name</th><th>Sort</th><th>Status</th><th></th></tr></thead><tbody>${rows.map(row =>
+    `<tr><td>${escapeHtml(row.ListValue)}</td><td>${escapeHtml(row.DisplayText || row.ListValue)}</td><td>${escapeHtml(row.SortOrder ?? 0)}</td><td><span class="status-badge ${String(row.ActiveStatus).toLowerCase() === 'active' ? 'status-closed' : 'status-na'}">${escapeHtml(row.ActiveStatus)}</span></td><td><button type="button" class="btn btn-outline btn-compact" data-shift-value="${escapeAttr(row.ListValue)}">แก้ไข</button></td></tr>`
+  ).join('')}</tbody></table>`;
+}
+
+function openShiftEditor(listValue = '') {
+  const row = state.adminMasterLists.find(item => String(item.ListValue) === String(listValue));
+  $('#shiftListValue').value = row?.ListValue || '';
+  $('#shiftListValue').readOnly = Boolean(row);
+  $('#shiftDisplayText').value = row?.DisplayText || row?.ListValue || '';
+  $('#shiftSortOrder').value = row?.SortOrder ?? 0;
+  $('#shiftActiveStatus').value = row?.ActiveStatus || 'Active';
+  $('#shiftForm').classList.remove('hidden');
+  $('#shiftListValue').focus();
+}
+
+function closeShiftEditor() {
+  $('#shiftForm').reset();
+  $('#shiftListValue').readOnly = false;
+  $('#shiftForm').classList.add('hidden');
+}
+
+async function saveShift() {
+  const payload = {
+    listType: 'Shift',
+    listValue: $('#shiftListValue').value.trim(),
+    displayText: $('#shiftDisplayText').value.trim(),
+    sortOrder: Number($('#shiftSortOrder').value || 0),
+    activeStatus: $('#shiftActiveStatus').value
+  };
+  if (!payload.listValue || !payload.displayText) return showToast('กรุณากรอกข้อมูล Shift ให้ครบ', 'warning');
+  showLoading('กำลังบันทึก Shift...');
+  try {
+    await apiCall('upsertMasterList', payload);
+    state.masterDataLoadedAt = 0;
+    closeShiftEditor();
+    await Promise.all([loadShiftLists(), ensureMasterDataLoaded(false)]);
+    showToast('บันทึก Shift สำเร็จ', 'success');
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
 async function openUserEditor(userId = '') {
   const user = state.adminUsers.find(item => item.UserID === userId) || null;
   if (userId && !user) {
@@ -964,6 +1035,10 @@ function populateAllMasterSelects() {
   populateStationSelect('#planStation', '', true);
   populateSelect('#adminLineFilter', state.masterData.lines || [], 'LineID', 'LineName', 'ทั้งหมด');
   populateSelect('#adminLineDefault', state.masterData.lines || [], 'LineID', 'LineName', 'ไม่ระบุ');
+  const shifts = (state.masterData.lists || [])
+    .filter(row => String(row.ListType || '').toLowerCase() === 'shift')
+    .sort((a, b) => Number(a.SortOrder || 0) - Number(b.SortOrder || 0));
+  populateSelect('#auditShift', shifts, 'ListValue', 'DisplayText', 'เลือก Shift');
 }
 
 function populateStationSelect(selector, lineId, allowAll) {
@@ -1027,6 +1102,7 @@ async function navigateTo(page) {
   if (page === 'findings' && !state.findings.length) loadFindings();
   if (page === 'audit-plan' && !state.auditPlans.length) loadAuditPlan();
   if (page === 'admin' && hasPermission('users.view')) loadUsers();
+  if (page === 'admin' && String(state.user?.Role || '').toLowerCase() === 'admin') loadShiftLists();
 }
 
 function showLogin() { $('#loginView').classList.remove('hidden'); $('#appView').classList.add('hidden'); $('#username').focus(); }
@@ -1147,6 +1223,7 @@ function applyPermissionVisibility() {
   $('#generateAuditPlanButton').classList.toggle('hidden', !canGeneratePlan);
   $('#includeWeekendsField').classList.toggle('hidden', !canGeneratePlan);
   $('#refreshAuditPlanButton').classList.toggle('hidden', !hasPermission('audit.plan.refresh'));
+  $('#shiftManagementPanel').classList.toggle('hidden', String(state.user?.Role || '').toLowerCase() !== 'admin');
 }
 
 function applyAuditPlanRoleScope() {

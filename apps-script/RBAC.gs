@@ -87,6 +87,7 @@ function hasApiAccess_(user, action) {
     listRolePermissions: ['users.managePermission'], updateRolePermissions: ['users.managePermission'],
     listUserPermissions: ['users.managePermission'], updateUserPermissions: ['users.managePermission'],
     listUserLineAccess: ['users.managePermission'], updateUserLineAccess: ['users.managePermission'],
+    getMasterLists: ['users.managePermission'], upsertMasterList: ['users.managePermission'],
     getChecklist: ['checklist.view', 'checklist.manage', 'audit.manager.create', 'audit.supervisor.create', 'audit.engineer.create', 'audit.leader.create'],
     saveAudit: ['audit.manager.create', 'audit.supervisor.create', 'audit.engineer.create', 'audit.leader.create'],
     getAuditList: ['audit.view.all', 'audit.view.line', 'audit.view.own'],

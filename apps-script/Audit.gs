@@ -19,6 +19,12 @@ function saveAudit(payload, currentUser) {
       requireLineAccess_(currentUser, payload.lineId, 'Audit');
     }
     if (!Array.isArray(payload.records) || !payload.records.length) throw new Error('At least one audit record is required.');
+    var shift = cleanString_(payload.shift);
+    if (!shift) throw new Error('กรุณาเลือก Shift');
+    var activeShift = getActiveListRows_('Shift').some(function (row) {
+      return valuesEqual_(row.ListValue, shift);
+    });
+    if (!activeShift) throw new Error('Shift ที่เลือกไม่ได้เปิดใช้งาน กรุณาเลือก Shift ใหม่');
     payload.records.forEach(function (record, index) {
       try { requireFields_(record, ['checklistId', 'result']); } catch (error) { throw new Error('Record ' + (index + 1) + ': ' + error.message); }
       var validatedResult = normalizeAuditResult_(record.result);
@@ -64,7 +70,7 @@ function saveAudit(payload, currentUser) {
     appendObject(SHEET_NAMES.AUDIT_SESSIONS, {
       AuditID: auditId, AuditDate: auditDate, AuditTime: auditTime, PeriodMonth: periodMonth,
       LineID: payload.lineId, LineName: lineName, StationID: payload.stationId, StationName: stationName,
-      Area: area, Shift: payload.shift || '', AuditorUserID: currentUser.UserID,
+      Area: area, Shift: shift, AuditorUserID: currentUser.UserID,
       AuditorName: currentUser.FullName, AuditorRole: currentUser.Role, AuditLayer: payload.auditLayer,
       TotalCheck: payload.records.length, TotalOK: totals.OK, TotalNG: totals.NG, TotalNA: totals.NA,
       ResultSummary: resultSummary, NGRate: ngRate, SubmitStatus: payload.submitStatus || 'Submitted',

@@ -3,7 +3,7 @@ function getMasterData(payload, currentUser) {
   try {
     var lineAccess = getUserLineAccess_(currentUser);
     var cacheKey = 'LPA_MASTER_' + cleanString_(currentUser.UserID) + '_' + cleanString_(currentUser.Role) + '_' +
-      lineAccessScopeKey_(lineAccess);
+      lineAccessScopeKey_(lineAccess) + '_' + getMasterDataVersion_();
     var cached = safeCacheGetJson_(cacheKey);
     if (cached) return jsonResponse(true, 'Master data loaded from cache.', cached);
     var lines = getRowsAsObjects(SHEET_NAMES.LINES).filter(function (row) { return isActive_(row.ActiveStatus); }).map(sanitizeForClient_);
@@ -22,6 +22,26 @@ function getMasterData(payload, currentUser) {
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
+}
+
+function getMasterDataVersion_() {
+  return PropertiesService.getScriptProperties().getProperty('LPA_MASTER_DATA_VERSION') || '1';
+}
+
+function incrementMasterDataVersion_() {
+  var properties = PropertiesService.getScriptProperties();
+  var next = toNumber_(properties.getProperty('LPA_MASTER_DATA_VERSION')) + 1;
+  properties.setProperty('LPA_MASTER_DATA_VERSION', String(next));
+  return next;
+}
+
+function getActiveListRows_(listType) {
+  return getRowsAsObjects(SHEET_NAMES.LISTS).filter(function (row) {
+    return valuesEqual_(row.ListType, listType) && isActive_(row.ActiveStatus);
+  }).sort(function (a, b) {
+    return toNumber_(a.SortOrder) - toNumber_(b.SortOrder) ||
+      cleanString_(a.ListValue).localeCompare(cleanString_(b.ListValue));
+  });
 }
 
 function getChecklist(payload, currentUser) {

@@ -21,6 +21,8 @@ function doPost(e) {
       login: function () { return login(payload); },
       getCurrentUser: function (user) { return getCurrentUser(user); },
       getMasterData: function (user) { return getMasterData(payload, user); },
+      getMasterLists: function (user) { return getMasterLists(payload, user); },
+      upsertMasterList: function (user) { return upsertMasterList(payload, user); },
       getChecklist: function (user) { return getChecklist(payload, user); },
       saveAudit: function (user) { return saveAudit(payload, user); },
       getAuditList: function (user) { return getAuditList(payload, user); },

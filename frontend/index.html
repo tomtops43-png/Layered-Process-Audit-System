@@ -70,7 +70,7 @@
               <label>Line<select id="auditLine" required><option value="">เลือก Line</option></select></label>
               <label>Station<select id="auditStation" required><option value="">เลือก Station</option></select></label>
               <label>Area<input id="auditArea" readonly placeholder="เลือก Line / Station"></label>
-              <label>Shift<select id="auditShift" required><option value="">เลือก Shift</option><option>Day</option><option>Night</option><option>A</option><option>B</option><option>C</option></select></label>
+              <label>Shift<select id="auditShift" required><option value="">เลือก Shift</option></select></label>
               <label>Audit Layer<select id="auditLayer" required><option value="">กำลังโหลดสิทธิ์...</option></select></label>
               <label>Checklist Language<select id="checklistLanguage"><option value="TH" selected>ไทย</option><option value="EN">English</option></select></label>
               <label>Remark<input id="auditRemark" placeholder="หมายเหตุ (ถ้ามี)"></label>
@@ -162,6 +162,18 @@
           <button id="searchUsersButton" class="btn btn-secondary">ค้นหาผู้ใช้</button>
         </article>
         <article class="panel"><div id="adminUsersTable" class="table-wrap"><div class="empty-state">กำลังโหลดผู้ใช้...</div></div></article>
+        <article id="shiftManagementPanel" class="panel hidden">
+          <div class="section-heading"><div><p class="eyebrow">MASTER LIST</p><h3>จัดการ Shift</h3></div><button id="addShiftButton" type="button" class="btn btn-primary">+ เพิ่ม Shift</button></div>
+          <p class="section-help">ปิดใช้งาน Shift ที่ไม่ต้องการแสดงในฟอร์มตรวจ โดยไม่ลบข้อมูลที่เคยใช้งาน</p>
+          <form id="shiftForm" class="form-grid filter-grid hidden">
+            <label>Value<input id="shiftListValue" required maxlength="30"></label>
+            <label>Display Name<input id="shiftDisplayText" required maxlength="60"></label>
+            <label>Sort Order<input id="shiftSortOrder" type="number" min="0" value="0"></label>
+            <label>Status<select id="shiftActiveStatus"><option>Active</option><option>Inactive</option></select></label>
+            <div class="button-row"><button type="button" id="cancelShiftButton" class="btn btn-outline">ยกเลิก</button><button type="submit" class="btn btn-primary">บันทึก Shift</button></div>
+          </form>
+          <div id="shiftListTable" class="table-wrap"><div class="empty-state">กำลังโหลด Shift...</div></div>
+        </article>
       </section>
     </main>
 
