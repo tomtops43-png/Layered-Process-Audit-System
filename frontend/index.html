@@ -84,18 +84,25 @@
       </section>
 
       <section id="page-audit-plan" class="page">
-        <div class="page-heading"><div><p class="eyebrow">LPA SCHEDULE / CALENDAR</p><h2>แผนการตรวจ LPA</h2></div><button id="refreshAuditPlanButton" class="btn btn-outline">↻ Refresh Status</button></div>
+        <div class="page-heading"><div><p class="eyebrow">LPA SCHEDULE / CALENDAR</p><h2>แผนการตรวจ LPA</h2><p class="page-helper">ใช้หน้านี้เพื่อดูแผนการตรวจ LPA ว่าใครต้องตรวจ Line/Station ไหน และตรวจครบตามรอบหรือยัง</p></div><button id="refreshAuditPlanButton" class="btn btn-outline">↻ อัปเดตสถานะแผน</button></div>
+        <div id="auditPlanSummaryCards" class="metric-grid plan-summary-grid">
+          <article class="metric-card orange"><span class="metric-label">Due Today</span><strong class="metric-value" data-plan-count="Due Today">0</strong><small class="metric-note">ครบกำหนดวันนี้</small></article>
+          <article class="metric-card red"><span class="metric-label">Overdue</span><strong class="metric-value" data-plan-count="Overdue">0</strong><small class="metric-note">เกินกำหนดตรวจ</small></article>
+          <article class="metric-card green"><span class="metric-label">Completed</span><strong class="metric-value" data-plan-count="Completed">0</strong><small class="metric-note">ตรวจเรียบร้อย</small></article>
+          <article class="metric-card orange-red"><span class="metric-label">Late Submitted</span><strong class="metric-value" data-plan-count="Late Submitted">0</strong><small class="metric-note">ส่งผลล่าช้า</small></article>
+          <article class="metric-card dark-red"><span class="metric-label">Missed</span><strong class="metric-value" data-plan-count="Missed">0</strong><small class="metric-note">พลาดรอบการตรวจ</small></article>
+        </div>
         <article class="panel filters-panel">
           <div class="form-grid filter-grid">
-            <label>Month<input id="planMonth" type="month"></label>
+            <label>เดือน<input id="planMonth" type="month"></label>
             <label>Line<select id="planLine"><option value="">ทั้งหมด</option></select></label>
             <label>Station<select id="planStation"><option value="">ทั้งหมด</option></select></label>
-            <label>Role<select id="planRole"><option value="">ทั้งหมด</option><option>Leader</option><option>Supervisor</option><option>Manager</option></select></label>
-            <label>Status<select id="planStatus"><option value="">ทั้งหมด</option><option>Planned</option><option>Due Today</option><option>Completed</option><option>Overdue</option><option>Missed</option><option>Late Submitted</option></select></label>
-            <label class="check-label"><input id="planMine" type="checkbox"> My Plan only</label>
-            <label id="includeWeekendsField" class="check-label"><input id="planIncludeWeekends" type="checkbox"> Include weekends</label>
+            <label>บทบาทผู้ตรวจ<select id="planRole"><option value="">ทั้งหมด</option><option>Leader</option><option>Supervisor</option><option>Manager</option></select></label>
+            <label>สถานะ<select id="planStatus"><option value="">ทั้งหมด</option><option>Planned</option><option>Due Today</option><option>Completed</option><option>Overdue</option><option>Missed</option><option>Late Submitted</option></select></label>
+            <label class="check-label"><input id="planMine" type="checkbox"> เฉพาะแผนของฉัน</label>
+            <label id="includeWeekendsField" class="check-label"><input id="planIncludeWeekends" type="checkbox"> รวมวันเสาร์-อาทิตย์</label>
           </div>
-          <div class="button-row"><button id="loadAuditPlanButton" class="btn btn-secondary">Loading Audit Plan</button><button id="generateAuditPlanButton" class="btn btn-primary">Generate Audit Plan</button></div>
+          <div class="button-row"><button id="loadAuditPlanButton" class="btn btn-secondary">โหลดแผนการตรวจ</button><button id="generateAuditPlanButton" class="btn btn-primary">สร้างแผนการตรวจ</button></div>
         </article>
         <article class="panel"><div id="auditPlanTable" class="table-wrap"><div class="empty-state">เลือกเดือนเพื่อดูแผนการตรวจ</div></div></article>
       </section>
@@ -161,6 +168,7 @@
     <nav class="bottom-nav" aria-label="เมนูมือถือ">
       <button data-page="dashboard" class="active"><span>▦</span>Dashboard</button>
       <button data-page="audit"><span>✓</span>Audit</button>
+      <button data-page="audit-plan" data-permission-any="audit.plan.view"><span>▣</span>แผนตรวจ</button>
       <button data-page="findings"><span>!</span>Finding</button>
       <button data-page="report"><span>▤</span>Report</button>
       <button data-page="checklist"><span>☷</span>Checklist</button>

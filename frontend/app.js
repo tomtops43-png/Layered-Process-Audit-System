@@ -69,7 +69,7 @@ function bindEvents() {
     const plan = state.auditPlans.find(item => String(item.PlanID) === button.dataset.planId);
     if (!plan) return;
     if (button.dataset.planAction === 'start') startAuditFromPlan(plan);
-    if (button.dataset.planAction === 'view') navigateTo('audit');
+    if (button.dataset.planAction === 'view') viewAuditFromPlan(plan);
   });
   $('#findingLine').addEventListener('change', () => populateStationSelect('#findingStation', $('#findingLine').value, true));
   $('#checklistLine').addEventListener('change', () => populateStationSelect('#checklistStation', $('#checklistLine').value, false));
@@ -245,9 +245,16 @@ function renderDashboard(data) {
   const auditNotificationCount = number(data.AuditPlanSummary?.DueToday) + number(data.AuditPlanSummary?.Overdue);
   $('#auditNavBadge').textContent = auditNotificationCount;
   $('#auditNavBadge').classList.toggle('hidden', auditNotificationCount < 1);
+  const dueToday = number(data.AuditPlanSummary?.DueToday);
+  const overdue = number(data.AuditPlanSummary?.Overdue);
   const alert = $('#auditPlanAlert');
   alert.classList.toggle('hidden', auditNotificationCount < 1);
-  alert.innerHTML = auditNotificationCount ? `<strong>แจ้งเตือนแผน LPA</strong><span>วันนี้ต้องตรวจ ${number(data.AuditPlanSummary?.DueToday)} รายการ และ Overdue ${number(data.AuditPlanSummary?.Overdue)} รายการ</span><button class="btn btn-outline" type="button" onclick="navigateTo('audit-plan')">ดูแผนการตรวจ</button>` : '';
+  const reminderMessages = [];
+  if (dueToday > 0) reminderMessages.push(`วันนี้คุณมี LPA ที่ต้องตรวจ ${dueToday} รายการ`);
+  if (overdue > 0) reminderMessages.push(`คุณมี LPA Overdue ${overdue} รายการ`);
+  alert.innerHTML = auditNotificationCount ? `<div><strong>แจ้งเตือนแผน LPA</strong>${reminderMessages.map(message => `<span>${escapeHtml(message)}</span>`).join('')}</div><button id="dashboardOpenAuditPlan" class="btn btn-outline" type="button">ดูแผนการตรวจ</button>` : '';
+  const openPlanButton = $('#dashboardOpenAuditPlan');
+  if (openPlanButton) openPlanButton.addEventListener('click', () => navigateTo('audit-plan'));
   renderMonthlyBars(data.MonthlyAuditResult || []);
   $('#lineSummary').innerHTML = tableHtml(['Line', 'Total Audit', 'Total NG', 'Open Finding'], (data.SummaryByLine || []).map(row => [row.LineName || row.LineID, row.TotalAudit, row.TotalNG, row.OpenFinding]));
   const nearDue = data.ActionsNearDueDate || [];
@@ -370,6 +377,7 @@ async function saveAudit() {
     const data = await apiCall('saveAudit', payload);
     const findingText = (data.FindingIDs || []).length ? ` | Finding: ${data.FindingIDs.join(', ')}` : '';
     showToast(`บันทึกสำเร็จ AuditID: ${data.AuditID}${findingText}`, 'success', 7000);
+    state.auditPlans = [];
     resetAuditForm();
     loadDashboard(false);
   } catch (error) {
@@ -570,7 +578,7 @@ async function loadMonthlyReport() {
 
 async function loadAuditPlan() {
   if (!hasPermission('audit.plan.view')) return;
-  showLoading('Loading Audit Plan');
+  showLoading('กำลังโหลดแผนการตรวจ...');
   try {
     const data = await apiCall('getAuditPlan', {
       periodMonth: $('#planMonth').value, lineId: optionalFilterValue($('#planLine').value),
@@ -587,9 +595,12 @@ async function loadAuditPlan() {
 }
 
 async function generateAuditPlan() {
+  if (!hasPermission('audit.plan.generate')) return showToast('คุณไม่มีสิทธิ์สร้างแผนการตรวจ', 'error');
   if (!$('#planMonth').value) return showToast('กรุณาเลือกเดือน', 'warning');
-  if (!window.confirm('ยืนยันสร้างแผน LPA สำหรับขอบเขตที่เลือก?')) return;
-  showLoading('Generating Audit Plan');
+  if (!window.confirm('ยืนยันสร้างแผนการตรวจสำหรับเดือนและ Line ที่เลือก?')) return;
+  const generatingAll = !$('#planLine').value && !$('#planStation').value;
+  if (generatingAll && !window.confirm('คุณกำลังสร้างแผนสำหรับทุก Line/Station อาจมีรายการจำนวนมาก ต้องการดำเนินการต่อหรือไม่?')) return;
+  showLoading('กำลังสร้างแผนการตรวจ...');
   try {
     const result = await apiCall('generateAuditPlan', {
       periodMonth: $('#planMonth').value, lineId: $('#planLine').value || 'ALL',
@@ -605,7 +616,8 @@ async function generateAuditPlan() {
 }
 
 async function refreshAuditPlanStatus() {
-  showLoading('Refreshing Audit Plan');
+  if (!hasPermission('audit.plan.refresh')) return showToast('คุณไม่มีสิทธิ์อัปเดตสถานะแผน', 'error');
+  showLoading('กำลังอัปเดตสถานะแผน...');
   try {
     const result = await apiCall('refreshAuditPlanStatus', { periodMonth: $('#planMonth').value });
     showToast(`อัปเดตสถานะแผน ${result.updated} รายการ`, 'success');
@@ -619,32 +631,56 @@ async function refreshAuditPlanStatus() {
 }
 
 function renderAuditPlan() {
+  renderAuditPlanSummary();
   if (!state.auditPlans.length) {
     $('#auditPlanTable').innerHTML = emptyHtml('ไม่พบแผนการตรวจตามตัวกรอง');
     return;
   }
-  $('#auditPlanTable').innerHTML = `<table class="data-table"><thead><tr><th>Due Date</th><th>Required Role</th><th>Auditor</th><th>Line</th><th>Station</th><th>Frequency</th><th>Status</th><th>Completed AuditID</th><th>SubmittedAt</th><th>IsLate</th><th>LateReason</th><th>Action</th></tr></thead><tbody>${state.auditPlans.map(plan => {
+  $('#auditPlanTable').innerHTML = `<table class="data-table audit-plan-table"><thead><tr><th>Due Date</th><th>Role</th><th>Auditor</th><th>Line</th><th>Station</th><th>Frequency</th><th>Status</th><th>Completed AuditID</th><th>Submitted At</th><th>Late</th><th>Late Reason</th><th>Action</th></tr></thead><tbody>${state.auditPlans.map(plan => {
     const completed = ['Completed', 'Late Submitted'].includes(plan.Status);
     const action = completed
-      ? `<button class="btn btn-outline" data-plan-action="view" data-plan-id="${escapeAttr(plan.PlanID)}">View Audit</button>`
-      : `<button class="btn btn-primary" data-plan-action="start" data-plan-id="${escapeAttr(plan.PlanID)}">Start Audit</button>`;
-    return `<tr class="${plan.Status === 'Overdue' || plan.Status === 'Missed' ? 'plan-row-overdue' : ''}"><td>${escapeHtml(formatDate(plan.DueDate))} ${escapeHtml(plan.DueTime || '')}</td><td>${escapeHtml(plan.RequiredRole || '-')}</td><td>${escapeHtml(plan.RequiredUserName || 'ตาม Role')}</td><td>${escapeHtml(plan.LineName || plan.LineID)}</td><td>${escapeHtml(plan.StationName || plan.StationID)}</td><td>${escapeHtml(plan.Frequency || '-')}</td><td><span class="status-badge ${statusClass(plan.Status)}">${escapeHtml(plan.Status)}</span></td><td>${escapeHtml(plan.CompletedAuditID || '-')}</td><td>${escapeHtml(plan.SubmittedAt || '-')}</td><td>${escapeHtml(plan.IsLate || 'No')}</td><td>${escapeHtml(plan.LateReason || '-')}</td><td>${action}</td></tr>`;
+      ? `<button class="btn btn-outline btn-compact" data-plan-action="view" data-plan-id="${escapeAttr(plan.PlanID)}">ดูผลตรวจ</button>`
+      : `<button class="btn btn-primary btn-compact" data-plan-action="start" data-plan-id="${escapeAttr(plan.PlanID)}">เริ่มตรวจ</button>`;
+    return `<tr class="${plan.Status === 'Overdue' || plan.Status === 'Missed' ? 'plan-row-overdue' : ''}"><td>${escapeHtml(formatDate(plan.DueDate))}<small class="table-subtext">${escapeHtml(plan.DueTime || '')}</small></td><td>${escapeHtml(plan.RequiredRole || '-')}</td><td>${escapeHtml(plan.RequiredUserName || 'ตาม Role')}</td><td>${escapeHtml(plan.LineName || plan.LineID)}</td><td>${escapeHtml(plan.StationName || plan.StationID)}</td><td>${escapeHtml(plan.Frequency || '-')}</td><td><span class="status-badge ${auditPlanStatusClass(plan.Status)}">${escapeHtml(plan.Status)}</span></td><td>${escapeHtml(plan.CompletedAuditID || '-')}</td><td>${escapeHtml(plan.SubmittedAt || '-')}</td><td>${escapeHtml(plan.IsLate || 'No')}</td><td class="late-reason-cell">${escapeHtml(plan.LateReason || '-')}</td><td>${action}</td></tr>`;
   }).join('')}</tbody></table>`;
 }
 
-function startAuditFromPlan(plan) {
-  navigateTo('audit');
-  $('#auditPlanId').value = plan.PlanID || '';
-  $('#auditDate').value = dateInputValue(plan.DueDate);
-  $('#auditLine').value = plan.LineID || '';
-  handleAuditLineChange();
-  $('#auditStation').value = plan.StationID || '';
-  updateAuditArea();
+function renderAuditPlanSummary() {
+  const counts = { 'Due Today': 0, Overdue: 0, Completed: 0, 'Late Submitted': 0, Missed: 0 };
+  state.auditPlans.forEach(plan => {
+    if (Object.prototype.hasOwnProperty.call(counts, plan.Status)) counts[plan.Status]++;
+  });
+  $$('[data-plan-count]').forEach(element => {
+    element.textContent = counts[element.dataset.planCount] || 0;
+  });
+}
+
+async function startAuditFromPlan(plan) {
   const layerOption = Array.from($('#auditLayer').options).find(option => option.value === plan.AuditLayer);
-  if (!layerOption) return showToast('คุณไม่มีสิทธิ์เริ่ม Audit Layer ของแผนนี้', 'error');
-  $('#auditLayer').value = plan.AuditLayer;
-  updateLateReasonVisibility();
-  showToast(`โหลดแผน ${plan.PlanID} แล้ว กรุณาโหลด Checklist`, 'success');
+  if (!layerOption) return showToast('คุณไม่มีสิทธิ์เริ่มตรวจ Audit Layer นี้', 'error');
+  showLoading('กำลังโหลดแผนเข้าสู่ฟอร์มตรวจ...');
+  try {
+    await Promise.resolve();
+    navigateTo('audit');
+    $('#auditPlanId').value = plan.PlanID || '';
+    $('#auditDate').value = dateInputValue(plan.DueDate);
+    $('#auditLine').value = plan.LineID || '';
+    handleAuditLineChange();
+    $('#auditStation').value = plan.StationID || '';
+    updateAuditArea();
+    $('#auditLayer').value = plan.AuditLayer;
+    updateLateReasonVisibility();
+    showToast('โหลดแผนการตรวจแล้ว กรุณากดโหลด Checklist', 'success');
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+function viewAuditFromPlan(plan) {
+  if (!plan.CompletedAuditID) return showToast('แผนนี้ยังไม่มีผลตรวจ', 'warning');
+  showToast(`AuditID: ${plan.CompletedAuditID}`, 'info', 6000);
 }
 
 function updateLateReasonVisibility() {
@@ -1039,6 +1075,16 @@ function statusClass(status) {
   if (['overdue', 'missed', 'late-submitted'].includes(value)) return 'status-overdue';
   if (value === 'due-today') return 'status-on-going';
   return 'status-na';
+}
+
+function auditPlanStatusClass(status) {
+  const value = String(status || '').toLowerCase();
+  if (value === 'due today') return 'status-plan-due';
+  if (value === 'completed') return 'status-plan-completed';
+  if (value === 'overdue') return 'status-plan-overdue';
+  if (value === 'missed') return 'status-plan-missed';
+  if (value === 'late submitted') return 'status-plan-late';
+  return 'status-plan-planned';
 }
 
 function hasPermission(permissionKey) {

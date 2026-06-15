@@ -13,6 +13,10 @@ const dashboard = fs.readFileSync('apps-script/Dashboard.gs', 'utf8');
 const report = fs.readFileSync('apps-script/Reports.gs', 'utf8');
 const frontend = fs.readFileSync('frontend/app.js', 'utf8');
 const docs = fs.readFileSync('docs/app.js', 'utf8');
+const frontendHtml = fs.readFileSync('frontend/index.html', 'utf8');
+const docsHtml = fs.readFileSync('docs/index.html', 'utf8');
+const frontendStyle = fs.readFileSync('frontend/style.css', 'utf8');
+const docsStyle = fs.readFileSync('docs/style.css', 'utf8');
 
 [
   'PlanID', 'PeriodType', 'PeriodKey', 'DueDate', 'DueTime', 'RequiredRole',
@@ -46,10 +50,21 @@ assert(dashboard.includes('effectiveAuditPlan_(row, audits, now)'));
 assert(report.includes('PlannedAuditCount'));
 assert(report.includes("slice(0, 7).replace('-', '') === period"));
 assert(report.includes('effectiveAuditPlan_(row, allAuditSessions, reportNow)'));
-assert(frontend.includes('Loading Audit Plan'));
-assert(frontend.includes('Generating Audit Plan'));
-assert(frontend.includes('Refreshing Audit Plan'));
+assert(frontend.includes('กำลังโหลดแผนการตรวจ...'));
+assert(frontend.includes('กำลังสร้างแผนการตรวจ...'));
+assert(frontend.includes('กำลังอัปเดตสถานะแผน...'));
+assert(frontend.includes('กำลังโหลดแผนเข้าสู่ฟอร์มตรวจ...'));
 assert(frontend.includes('startAuditFromPlan'));
+assert(frontend.includes('renderAuditPlanSummary'));
+assert(frontend.includes('คุณไม่มีสิทธิ์เริ่มตรวจ Audit Layer นี้'));
+assert(frontend.includes('คุณกำลังสร้างแผนสำหรับทุก Line/Station'));
+assert(frontendHtml.includes('ใช้หน้านี้เพื่อดูแผนการตรวจ LPA'));
+assert(frontendHtml.includes('data-page="audit-plan" data-permission-any="audit.plan.view"'));
+assert(frontendHtml.includes('data-plan-count="Due Today"'));
+assert(frontendStyle.includes('.status-plan-completed'));
+assert(frontendStyle.includes('.status-plan-missed'));
 assert.strictEqual(frontend, docs, 'frontend/app.js and docs/app.js must stay synchronized');
+assert.strictEqual(frontendHtml, docsHtml, 'frontend/index.html and docs/index.html must stay synchronized');
+assert.strictEqual(frontendStyle, docsStyle, 'frontend/style.css and docs/style.css must stay synchronized');
 
 console.log('Audit plan feature tests passed.');
