@@ -390,35 +390,43 @@ function openFindingEditor(findingId) {
   $('#editRootCause').value = row.RootCause || '';
   $('#editCorrectiveAction').value = row.CorrectiveAction || '';
   populateFindingAssignee(row.AssignedToUserID || row.PICUserID || '');
-  $('#editAssignedTo').disabled = !hasPermission('findings.assign');
   $('#editDueDate').value = dateInputValue(row.DueDate);
-  $('#editStatus').value = normalizeEditableStatus(row.Status);
+  $('#editStatus').value = row.Status || 'Open';
   $('#editCloseRemark').value = row.CloseRemark || '';
   $('#editAfterPhoto').value = '';
   $('#editPhotoPreview').innerHTML = row.AfterPhotoURL ? `<a href="${escapeAttr(row.AfterPhotoURL)}" target="_blank" rel="noopener">ดู After Photo ปัจจุบัน</a>` : '';
-  const pending = String(row.Status).toLowerCase() === 'pending verification';
+  const status = String(row.Status || '').toLowerCase();
+  const pending = status === 'pending verification';
   const canVerify = pending && hasPermission('findings.verify');
-  const assignedToMe = String(row.AssignedToUserID || row.PICUserID || '') === String(state.user.UserID || '') ||
-    String(row.AssignedToName || row.PICName || '') === String(state.user.FullName || '');
+  const assignedUserId = String(row.AssignedToUserID || row.PICUserID || '');
+  const assignedToMe = assignedUserId
+    ? assignedUserId === String(state.user.UserID || '')
+    : String(row.AssignedToName || row.PICName || '') === String(state.user.FullName || '');
+  const canUpdate = status !== 'closed' && (hasPermission('findings.view.all') || hasPermission('findings.update.line') ||
+    (assignedToMe && hasPermission('findings.update.assigned')));
+  const canSubmit = canUpdate && !pending && status !== 'closed';
   const severity = String(row.Severity || row.Priority || 'Minor').toLowerCase();
   const closePermission = severity === 'critical' ? 'findings.close.critical' : severity === 'major' ? 'findings.close.major' : 'findings.close.minor';
   $('#approveFindingButton').classList.toggle('hidden', !canVerify || !hasPermission(closePermission));
   $('#rejectFindingButton').classList.toggle('hidden', !canVerify);
-  $('#submitVerificationButton').classList.toggle('hidden', (!assignedToMe && !['Admin', 'Manager'].includes(state.user.Role)) || pending || String(row.Status).toLowerCase() === 'closed');
-  const closedOption = Array.from($('#editStatus').options).find(option => option.value === 'Closed');
-  if (closedOption) closedOption.disabled = !hasPermission(closePermission);
+  $('#submitVerificationButton').classList.toggle('hidden', !canSubmit);
+  $('#saveFindingButton').classList.toggle('hidden', !canUpdate);
+  $('#editRootCause').disabled = !canUpdate;
+  $('#editCorrectiveAction').disabled = !canUpdate;
+  $('#editAssignedTo').disabled = !canUpdate || !hasPermission('findings.assign');
+  $('#editDueDate').disabled = !canUpdate;
+  $('#editCloseRemark').disabled = !canUpdate && !canVerify;
+  $('#editAfterPhoto').disabled = !canUpdate && !canVerify;
   $('#findingDialog').showModal();
 }
 
 async function updateFinding() {
   const findingId = $('#editFindingId').value;
-  const targetStatus = $('#editStatus').value;
   const closeRemark = $('#editCloseRemark').value.trim();
   const file = $('#editAfterPhoto').files[0];
   const existingPhoto = state.editingFinding ? state.editingFinding.AfterPhotoURL : '';
-  if (targetStatus === 'Closed' && !file && !existingPhoto && !closeRemark) return showToast('การปิด Finding ต้องมี After Photo หรือ Close Remark', 'warning');
-  if (!window.confirm(targetStatus === 'Closed' ? `ยืนยันปิด Finding ${findingId}?` : `ยืนยันบันทึก Finding ${findingId}?`)) return;
-  showLoading(targetStatus === 'Closed' ? 'กำลังปิด Finding...' : 'กำลังบันทึก Finding...');
+  if (!window.confirm(`ยืนยันบันทึกการแก้ไข Finding ${findingId}?`)) return;
+  showLoading('กำลังบันทึก Finding...');
   try {
     let afterPhotoUrl = existingPhoto || '';
     if (file) {
@@ -430,10 +438,9 @@ async function updateFinding() {
       dueDate: $('#editDueDate').value, afterPhotoUrl, closeRemark, remark: 'Updated from web application'
     };
     if (hasPermission('findings.assign')) common.assignedToUserId = $('#editAssignedTo').value;
-    if (targetStatus === 'Closed') await closeFinding({ ...common });
-    else await apiCall('updateFinding', { ...common, status: targetStatus });
+    await apiCall('updateFinding', common);
     $('#findingDialog').close();
-    showToast(targetStatus === 'Closed' ? 'ปิด Finding สำเร็จ' : 'อัปเดต Finding สำเร็จ', 'success');
+    showToast('บันทึกการแก้ไข Finding สำเร็จ', 'success');
     await loadFindings();
     loadDashboard(false);
   } catch (error) {
@@ -445,21 +452,30 @@ async function updateFinding() {
 
 async function submitFindingForVerification() {
   const findingId = $('#editFindingId').value;
+  const rootCause = $('#editRootCause').value.trim();
+  const correctiveAction = $('#editCorrectiveAction').value.trim();
+  const existingPhoto = state.editingFinding ? state.editingFinding.AfterPhotoURL : '';
+  const file = $('#editAfterPhoto').files[0];
+  if (!rootCause) return showToast('กรุณาระบุ Root Cause ก่อนส่งตรวจสอบ', 'warning');
+  if (!correctiveAction) return showToast('กรุณาระบุ Corrective Action ก่อนส่งตรวจสอบ', 'warning');
+  if (!file && !existingPhoto) return showToast('กรุณาอัปโหลด After Photo ก่อนส่งตรวจสอบ', 'warning');
   if (!window.confirm(`ส่ง Finding ${findingId} เพื่อตรวจสอบ?`)) return;
   await runFindingWorkflow('submitFinding', {
-    findingId,
-    rootCause: $('#editRootCause').value.trim(),
-    correctiveAction: $('#editCorrectiveAction').value.trim()
+    findingId, rootCause, correctiveAction,
+    closeRemark: $('#editCloseRemark').value.trim(),
+    remark: $('#editCloseRemark').value.trim() || 'Submitted for verification'
   }, 'ส่ง Finding เพื่อตรวจสอบแล้ว');
 }
 
 async function verifyFinding(decision) {
   const findingId = $('#editFindingId').value;
-  const rejectReason = decision === 'Reject' ? window.prompt('กรุณาระบุเหตุผลที่ Reject') : '';
-  if (decision === 'Reject' && !rejectReason) return;
+  const closeRemark = $('#editCloseRemark').value.trim();
+  if (decision === 'Approve' && !closeRemark) return showToast('กรุณาระบุ Close Remark ก่อนปิด Finding', 'warning');
+  const rejectReason = decision === 'Reject' ? (window.prompt('กรุณาระบุเหตุผลที่ Reject', closeRemark) || '').trim() : '';
+  if (decision === 'Reject' && !rejectReason) return showToast('กรุณาระบุเหตุผลที่ Reject', 'warning');
   if (!window.confirm(`${decision} Finding ${findingId}?`)) return;
   await runFindingWorkflow('verifyFinding', {
-    findingId, decision, rejectReason, closeRemark: $('#editCloseRemark').value.trim()
+    findingId, decision, rejectReason, closeRemark: decision === 'Reject' ? rejectReason : closeRemark
   }, decision === 'Approve' ? 'อนุมัติและปิด Finding แล้ว' : 'Reject Finding แล้ว');
 }
 

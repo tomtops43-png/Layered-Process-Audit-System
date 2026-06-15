@@ -48,35 +48,52 @@ function updateFinding(payload, currentUser) {
     var finding = findById_(SHEET_NAMES.FINDINGS, 'FindingID', payload.findingId);
     if (!finding) throw new Error('Finding not found: ' + payload.findingId);
     if (!canUpdateFinding_(currentUser, finding)) return jsonResponse(false, 'You can update only findings assigned to you.', {});
+    if (valuesEqual_(finding.Status, 'Closed') || valuesEqual_(finding.Status, 'Pending Verification')) {
+      throw new Error('This finding cannot be edited in its current status.');
+    }
 
-    var allowed = ['CorrectiveAction', 'RootCause', 'PICName', 'PICUserID', 'AssignedToUserID', 'AssignedToName', 'AssignedToRole', 'DueDate', 'Status', 'Priority', 'Severity', 'AfterPhotoURL', 'CloseRemark'];
+    var allowed = ['CorrectiveAction', 'RootCause', 'DueDate', 'Status', 'AfterPhotoURL', 'CloseRemark'];
     var aliases = {
-      correctiveAction: 'CorrectiveAction', rootCause: 'RootCause', picName: 'PICName', picUserId: 'PICUserID',
-      assignedToUserId: 'AssignedToUserID', assignedToName: 'AssignedToName', assignedToRole: 'AssignedToRole',
-      dueDate: 'DueDate', status: 'Status', priority: 'Priority', severity: 'Severity',
+      correctiveAction: 'CorrectiveAction', rootCause: 'RootCause', dueDate: 'DueDate', status: 'Status',
       afterPhotoUrl: 'AfterPhotoURL', closeRemark: 'CloseRemark'
     };
     var updates = {};
     allowed.forEach(function (field) { if (Object.prototype.hasOwnProperty.call(payload, field)) updates[field] = payload[field]; });
     Object.keys(aliases).forEach(function (key) { if (Object.prototype.hasOwnProperty.call(payload, key)) updates[aliases[key]] = payload[key]; });
-    if (!Object.keys(updates).length) throw new Error('No supported finding fields were provided to update.');
-    if (updates.AssignedToUserID && !valuesEqual_(updates.AssignedToUserID, finding.AssignedToUserID || finding.PICUserID)) {
+
+    if (Object.prototype.hasOwnProperty.call(payload, 'assignedToUserId')) {
       requirePermission_(currentUser, 'findings.assign');
-      var assignee = findById_(SHEET_NAMES.USERS, 'UserID', updates.AssignedToUserID);
-      if (!assignee || !isActive_(assignee.ActiveStatus)) throw new Error('Assigned user was not found or is inactive.');
-      updates.AssignedToName = assignee.FullName;
-      updates.AssignedToRole = assignee.Role;
-      updates.PICUserID = assignee.UserID;
-      updates.PICName = assignee.FullName;
-      if (!updates.Status || valuesEqual_(updates.Status, 'Open')) updates.Status = 'Assigned';
+      var assignedUserId = cleanString_(payload.assignedToUserId);
+      var assignee = assignedUserId ? findById_(SHEET_NAMES.USERS, 'UserID', assignedUserId) : null;
+      if (assignedUserId && (!assignee || !isActive_(assignee.ActiveStatus))) {
+        throw new Error('Assigned user was not found or is inactive.');
+      }
+      updates.AssignedToUserID = assignedUserId;
+      updates.AssignedToName = assignee ? assignee.FullName : '';
+      updates.AssignedToRole = assignee ? assignee.Role : '';
+      updates.PICUserID = assignedUserId;
+      updates.PICName = assignee ? assignee.FullName : '';
     }
+    if (!Object.keys(updates).length) throw new Error('No supported finding fields were provided to update.');
     if (updates.DueDate) updates.DueDate = formatDateBangkok_(updates.DueDate);
 
-    var oldStatus = finding.Status;
-    var newStatus = updates.Status !== undefined ? updates.Status : oldStatus;
-    if (valuesEqual_(newStatus, 'Pending Verification')) throw new Error('Use submitFinding to submit for verification.');
-    if (isClosedStatus_(newStatus) && !isClosedStatus_(oldStatus)) {
-      throw new Error('Use closeFinding to close a finding. AfterPhotoURL or CloseRemark must be verified.');
+    var oldStatus = cleanString_(finding.Status) || 'Open';
+    var newStatus = oldStatus;
+    if (updates.Status !== undefined && !valuesEqual_(updates.Status, oldStatus)) {
+      var requestedStatus = cleanString_(updates.Status);
+      if (!valuesEqual_(requestedStatus, 'In Progress') ||
+          (!valuesEqual_(oldStatus, 'Assigned') && !valuesEqual_(oldStatus, 'Rejected'))) {
+        throw new Error('Invalid status transition. Use Submit for Verification, Close Finding, or Reject Finding.');
+      }
+      newStatus = 'In Progress';
+      updates.Status = newStatus;
+    } else {
+      delete updates.Status;
+    }
+    if (Object.prototype.hasOwnProperty.call(payload, 'assignedToUserId') &&
+        (valuesEqual_(oldStatus, 'Open') || valuesEqual_(oldStatus, 'Assigned'))) {
+      newStatus = updates.AssignedToUserID ? 'Assigned' : 'Open';
+      updates.Status = newStatus;
     }
     var overdue = calculateOverdue(updates.DueDate || finding.DueDate, newStatus);
     var timestamp = formatDateTimeBangkok(new Date());
@@ -97,12 +114,16 @@ function submitFinding(payload, currentUser) {
     requireFields_(payload, ['findingId']);
     var finding = findById_(SHEET_NAMES.FINDINGS, 'FindingID', payload.findingId);
     if (!finding) throw new Error('Finding not found: ' + payload.findingId);
-    if (!isAssignedToUser_(finding, currentUser) && ['Admin', 'Manager'].indexOf(currentUser.Role) === -1) {
-      return jsonResponse(false, 'Only the assigned user can submit this finding.', {});
+    if (!canSubmitFinding_(currentUser, finding)) {
+      return jsonResponse(false, 'Only the assigned user or an authorized finding manager can submit this finding.', {});
+    }
+    if (valuesEqual_(finding.Status, 'Closed') || valuesEqual_(finding.Status, 'Pending Verification')) {
+      throw new Error('Finding cannot be submitted from its current status.');
     }
     var correctiveAction = cleanString_(payload.correctiveAction || payload.CorrectiveAction || finding.CorrectiveAction);
     var rootCause = cleanString_(payload.rootCause || payload.RootCause || finding.RootCause);
     var afterPhoto = cleanString_(payload.afterPhotoUrl || payload.AfterPhotoURL || finding.AfterPhotoURL);
+    if (!rootCause) throw new Error('RootCause is required before submission.');
     if (!correctiveAction) throw new Error('CorrectiveAction is required before submission.');
     if (!afterPhoto) throw new Error('AfterPhotoURL is required before submission.');
     var timestamp = formatDateTimeBangkok(new Date());
@@ -113,6 +134,8 @@ function submitFinding(payload, currentUser) {
       RejectedAt: '', RejectedBy: '', RejectReason: '',
       UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
     };
+    var actionRemark = cleanString_(payload.closeRemark || payload.CloseRemark);
+    if (actionRemark) updates.CloseRemark = actionRemark;
     var updated = updateObjectById(SHEET_NAMES.FINDINGS, 'FindingID', payload.findingId, updates);
     appendActionLog_(payload.findingId, finding.Status, updates.Status, updates, payload.remark || 'Submitted for verification', payload.evidenceUrl || afterPhoto, currentUser, timestamp);
     return jsonResponse(true, 'Finding submitted for verification.', { finding: sanitizeForClient_(updated) });
@@ -139,20 +162,23 @@ function verifyFinding(payload, currentUser) {
       UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
     };
     if (decision === 'reject' || decision === 'rejected') {
-      var rejectReason = cleanString_(payload.rejectReason || payload.RejectReason);
+      var rejectReason = cleanString_(payload.rejectReason || payload.RejectReason || payload.closeRemark || payload.CloseRemark);
       if (!rejectReason) throw new Error('RejectReason is required.');
       updates.Status = 'Rejected';
       updates.VerificationStatus = 'Rejected';
       updates.RejectedAt = timestamp;
       updates.RejectedBy = currentUser.UserID;
       updates.RejectReason = rejectReason;
+      updates.CloseRemark = rejectReason;
     } else {
+      var closeRemark = cleanString_(payload.closeRemark || payload.CloseRemark);
+      if (!closeRemark) throw new Error('CloseRemark is required to close a finding.');
       updates.Status = 'Closed';
       updates.VerificationStatus = 'Approved';
       updates.ClosedDate = timestamp;
       updates.ClosedAt = timestamp;
       updates.ClosedBy = currentUser.UserID;
-      updates.CloseRemark = cleanString_(payload.closeRemark || payload.CloseRemark || finding.CloseRemark);
+      updates.CloseRemark = closeRemark;
       updates.OverdueFlag = 'No';
       updates.DaysOverdue = 0;
     }
@@ -170,9 +196,13 @@ function closeFinding(payload, currentUser) {
     var finding = findById_(SHEET_NAMES.FINDINGS, 'FindingID', payload.findingId);
     if (!finding) throw new Error('Finding not found: ' + payload.findingId);
     if (!canCloseFinding_(currentUser, finding)) return jsonResponse(false, 'Your role cannot close this finding.', {});
+    var directMinorClosure = canDirectlyCloseMinorFinding_(currentUser, finding);
+    if (!valuesEqual_(finding.Status, 'Pending Verification') && !directMinorClosure) {
+      throw new Error('Finding must be Pending Verification before it can be closed.');
+    }
     var afterPhoto = payload.afterPhotoUrl || payload.AfterPhotoURL || finding.AfterPhotoURL;
-    var closeRemark = payload.closeRemark || payload.CloseRemark || finding.CloseRemark;
-    if (!afterPhoto && !closeRemark) throw new Error('AfterPhotoURL or CloseRemark is required to close a finding.');
+    var closeRemark = cleanString_(payload.closeRemark || payload.CloseRemark);
+    if (!closeRemark) throw new Error('CloseRemark is required to close a finding.');
 
     var timestamp = formatDateTimeBangkok(new Date());
     var updates = {
@@ -219,6 +249,13 @@ function isCreatedByUser_(finding, currentUser) {
 
 function canUpdateFinding_(currentUser, finding) {
   if (isAdmin_(currentUser)) return true;
+  if (hasPermission_(currentUser, 'findings.view.all')) return true;
+  if (isAssignedToUser_(finding, currentUser) && hasPermission_(currentUser, 'findings.update.assigned')) return true;
+  return hasPermission_(currentUser, 'findings.update.line') && canAccessLine_(currentUser, finding.LineID, 'Update');
+}
+
+function canSubmitFinding_(currentUser, finding) {
+  if (isAdmin_(currentUser) || hasPermission_(currentUser, 'findings.view.all')) return true;
   if (isAssignedToUser_(finding, currentUser) && hasPermission_(currentUser, 'findings.update.assigned')) return true;
   return hasPermission_(currentUser, 'findings.update.line') && canAccessLine_(currentUser, finding.LineID, 'Update');
 }
@@ -226,7 +263,7 @@ function canUpdateFinding_(currentUser, finding) {
 function canVerifyFinding_(currentUser, finding) {
   if (!hasPermission_(currentUser, 'findings.verify')) return false;
   return isAdmin_(currentUser) || hasPermission_(currentUser, 'findings.view.all') ||
-    canAccessLine_(currentUser, finding.LineID, 'Update');
+    canAccessLine_(currentUser, finding.LineID, 'View');
 }
 
 function canCloseFinding_(currentUser, finding) {
@@ -234,12 +271,17 @@ function canCloseFinding_(currentUser, finding) {
   var permissionKey = severity === 'critical' ? 'findings.close.critical' :
     (severity === 'major' ? 'findings.close.major' : 'findings.close.minor');
   if (!hasPermission_(currentUser, permissionKey)) return false;
+  return canVerifyFinding_(currentUser, finding) || canDirectlyCloseMinorFinding_(currentUser, finding);
+}
+
+function canDirectlyCloseMinorFinding_(currentUser, finding) {
+  var severity = cleanString_(finding.Severity || finding.Priority).toLowerCase();
+  if (severity !== 'minor' || !hasPermission_(currentUser, 'findings.close.minor') ||
+      !isAssignedToUser_(finding, currentUser)) return false;
   var audit = findById_(SHEET_NAMES.AUDIT_SESSIONS, 'AuditID', finding.AuditID) || {};
   var layer = cleanString_(audit.AuditLayer).toLowerCase();
   var verificationRequired = cleanString_(finding.VerificationRequired).toLowerCase();
-  var directMinorClosure = severity === 'minor' && isAssignedToUser_(finding, currentUser) &&
-    (verificationRequired === 'no' || (!verificationRequired && (!layer || layer === 'leader')));
-  return directMinorClosure || canVerifyFinding_(currentUser, finding);
+  return verificationRequired === 'no' || (!verificationRequired && (!layer || layer === 'leader'));
 }
 
 function canViewFindingRbac_(currentUser, finding) {

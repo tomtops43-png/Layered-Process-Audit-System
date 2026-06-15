@@ -6,7 +6,10 @@ const sheets = {
   Findings: [],
   RolePermissions: [],
   UserPermissions: [],
-  UserLineAccess: []
+  UserLineAccess: [],
+  Users: [],
+  AuditSessions: [],
+  ActionLogs: []
 };
 
 const context = {
@@ -15,15 +18,40 @@ const context = {
     FINDINGS: 'Findings',
     ROLE_PERMISSIONS: 'RolePermissions',
     USER_PERMISSIONS: 'UserPermissions',
-    USER_LINE_ACCESS: 'UserLineAccess'
+    USER_LINE_ACCESS: 'UserLineAccess',
+    USERS: 'Users',
+    AUDIT_SESSIONS: 'AuditSessions',
+    ACTION_LOGS: 'ActionLogs'
   },
   getRowsAsObjects: name => (sheets[name] || []).map(row => ({ ...row })),
+  findById_: (name, field, value) => (sheets[name] || []).find(row => String(row[field]) === String(value)) || null,
+  updateObjectById: (name, field, value, updates) => {
+    const row = (sheets[name] || []).find(item => String(item[field]) === String(value));
+    if (!row) throw new Error(`Missing ${name} row`);
+    Object.assign(row, updates);
+    return { ...row };
+  },
+  appendObject: (name, row) => {
+    if (!sheets[name]) sheets[name] = [];
+    sheets[name].push({ ...row });
+  },
+  generateId: prefix => `${prefix}-TEST`,
   getDefaultRolePermissions_: () => ({}),
+  requireFields_: (payload, fields) => {
+    fields.forEach(field => {
+      if (payload[field] === undefined || payload[field] === null || payload[field] === '') {
+        throw new Error(`${field} is required.`);
+      }
+    });
+  },
   cleanString_: value => value === null || value === undefined ? '' : String(value).trim(),
   valuesEqual_: (left, right) => String(left || '').trim().toLowerCase() === String(right || '').trim().toLowerCase(),
   isActive_: value => String(value || '').trim().toLowerCase() === 'active',
   sanitizeForClient_: value => value,
   calculateOverdue: () => ({ OverdueFlag: 'No', DaysOverdue: 0 }),
+  formatDateBangkok_: value => value,
+  formatDateTimeBangkok: () => '2026-06-15 12:00:00',
+  getPeriodMonth: () => '202606',
   jsonResponse: (success, message, data) => ({ success, message, data }),
   safeErrorMessage_: error => error.message
 };
@@ -99,5 +127,70 @@ sheets.Findings = [
 setPermissions('User', ['findings.view.assigned']);
 assert.deepStrictEqual(visibleIds(user), ['assigned', 'pending-verification']);
 assert.deepStrictEqual(visibleIds(user, { myFindings: 'verification' }), ['pending-verification']);
+
+const workflowLeader = { UserID: 'USR-LEADER', FullName: 'Leader', Role: 'Leader' };
+const workflowManager = { UserID: 'USR-MANAGER', FullName: 'Manager', Role: 'Manager' };
+const outsider = { UserID: 'USR-OUTSIDER', FullName: 'Outsider', Role: 'User' };
+sheets.Findings = [{
+  FindingID: 'F-WORKFLOW',
+  AssignedToUserID: workflowLeader.UserID,
+  AssignedToName: workflowLeader.FullName,
+  Status: 'Assigned',
+  Severity: 'Major',
+  RootCause: '',
+  CorrectiveAction: '',
+  AfterPhotoURL: ''
+}];
+setPermissions('Leader', ['findings.view.assigned', 'findings.update.assigned']);
+let response = context.submitFinding({
+  findingId: 'F-WORKFLOW',
+  correctiveAction: 'Corrected',
+  afterPhotoUrl: 'https://example.test/after.jpg'
+}, workflowLeader);
+assert.strictEqual(response.success, false);
+assert.match(response.message, /RootCause is required/);
+
+response = context.submitFinding({
+  findingId: 'F-WORKFLOW',
+  rootCause: 'Root cause',
+  correctiveAction: 'Corrected',
+  afterPhotoUrl: 'https://example.test/after.jpg'
+}, workflowLeader);
+assert.strictEqual(response.success, true, response.message);
+assert.strictEqual(sheets.Findings[0].Status, 'Pending Verification');
+assert.strictEqual(sheets.Findings[0].VerificationStatus, 'Pending');
+assert.strictEqual(sheets.Findings[0].SubmittedBy, workflowLeader.UserID);
+
+setPermissions('User', ['findings.close.major']);
+response = context.closeFinding({ findingId: 'F-WORKFLOW', closeRemark: 'Unauthorized close' }, outsider);
+assert.strictEqual(response.success, false);
+
+setPermissions('Manager', ['findings.view.all', 'findings.verify', 'findings.close.major']);
+response = context.verifyFinding({ findingId: 'F-WORKFLOW', decision: 'Approve' }, workflowManager);
+assert.strictEqual(response.success, false);
+assert.match(response.message, /CloseRemark is required/);
+
+response = context.verifyFinding({
+  findingId: 'F-WORKFLOW',
+  decision: 'Approve',
+  closeRemark: 'Verified and complete'
+}, workflowManager);
+assert.strictEqual(response.success, true, response.message);
+assert.strictEqual(sheets.Findings[0].Status, 'Closed');
+assert.strictEqual(sheets.Findings[0].VerificationStatus, 'Approved');
+assert.strictEqual(sheets.Findings[0].ClosedBy, workflowManager.UserID);
+
+sheets.Findings[0].Status = 'Pending Verification';
+sheets.Findings[0].VerificationStatus = 'Pending';
+response = context.verifyFinding({
+  findingId: 'F-WORKFLOW',
+  decision: 'Reject',
+  closeRemark: 'Correct the evidence'
+}, workflowManager);
+assert.strictEqual(response.success, true, response.message);
+assert.strictEqual(sheets.Findings[0].Status, 'Rejected');
+assert.strictEqual(sheets.Findings[0].VerificationStatus, 'Rejected');
+assert.strictEqual(sheets.Findings[0].RejectReason, 'Correct the evidence');
+assert.strictEqual(sheets.Findings[0].RejectedBy, workflowManager.UserID);
 
 console.log('Finding visibility authorization tests passed.');
