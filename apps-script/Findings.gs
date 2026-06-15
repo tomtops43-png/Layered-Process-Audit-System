@@ -164,13 +164,14 @@ function verifyFinding(payload, currentUser) {
       UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
     };
     if (decision === 'reject' || decision === 'rejected') {
-      var rejectReason = cleanString_(payload.rejectReason || payload.RejectReason);
+      var rejectReason = cleanString_(payload.rejectReason || payload.RejectReason || payload.closeRemark || payload.CloseRemark);
       if (!rejectReason) throw new Error('RejectReason is required.');
       updates.Status = 'Rejected';
       updates.VerificationStatus = 'Rejected';
       updates.RejectedAt = timestamp;
       updates.RejectedBy = currentUser.UserID;
       updates.RejectReason = rejectReason;
+      updates.CloseRemark = rejectReason;
     } else {
       var closeRemark = cleanString_(payload.closeRemark || payload.CloseRemark);
       if (!closeRemark) throw new Error('CloseRemark is required to close a finding.');
