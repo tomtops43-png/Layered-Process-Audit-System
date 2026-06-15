@@ -6,6 +6,7 @@ const vm = require('vm');
 
 const config = fs.readFileSync('apps-script/Config.gs', 'utf8');
 const schedule = fs.readFileSync('apps-script/ScheduleRules.gs', 'utf8');
+const setup = fs.readFileSync('apps-script/Setup.gs', 'utf8');
 const dashboard = fs.readFileSync('apps-script/Dashboard.gs', 'utf8');
 const code = fs.readFileSync('apps-script/Code.gs', 'utf8');
 const rbac = fs.readFileSync('apps-script/RBAC.gs', 'utf8');
@@ -20,6 +21,8 @@ assert(config.includes("AUDIT_PLAN_RULES: 'AuditPlanRules'"));
   'StationID', 'StationName', 'Frequency', 'DayOfWeek', 'DayOfMonth', 'DueTime',
   'ActiveStatus', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'
 ].forEach(header => assert(config.includes(`'${header}'`), `missing AuditPlanRules header ${header}`));
+assert(setup.includes('SHEET_HEADERS[SHEET_NAMES.AUDIT_PLAN_RULES] = AUDIT_PLAN_RULE_HEADERS_.slice()'));
+assert(schedule.includes('AuditPlanRules sheet is not set up. Run setupHeaders()'));
 
 ['getAuditPlanRules', 'upsertAuditPlanRule'].forEach(action => {
   assert(code.includes(`${action}:`), `missing route ${action}`);

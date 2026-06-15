@@ -5,7 +5,7 @@ function getAuditPlanRules(payload, currentUser) {
     var lineAccess = getUserLineAccess_(currentUser);
     var canViewAll = isAdmin_(currentUser) || hasPermission_(currentUser, 'audit.view.all');
     var limit = Math.min(Math.max(toNumber_(payload.limit || payload.pageSize) || 100, 1), 300);
-    var rows = getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN_RULES).filter(function (row) {
+    var rows = getAuditPlanRuleRows_().filter(function (row) {
       return (isAllFilter_(payload.lineId) || valuesEqual_(row.LineID, payload.lineId)) &&
         (isAllFilter_(payload.stationId) || valuesEqual_(row.StationID, payload.stationId)) &&
         (isAllFilter_(payload.requiredRole) || valuesEqual_(row.RequiredRole, payload.requiredRole)) &&
@@ -42,7 +42,7 @@ function upsertAuditPlanRule(payload, currentUser) {
       findById_(SHEET_NAMES.USERS, 'UserID', payload.requiredUserId) : null;
     if (payload.requiredUserId && (!assignedUser || !isActive_(assignedUser.ActiveStatus))) throw new Error('Assigned user was not found or is inactive.');
     if (assignedUser && !valuesEqual_(assignedUser.Role, role)) throw new Error('Assigned user role must match RequiredRole.');
-    var duplicate = getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN_RULES).some(function (row) {
+    var duplicate = getAuditPlanRuleRows_().some(function (row) {
       return !valuesEqual_(row.RuleID, payload.ruleId) &&
         valuesEqual_(row.RequiredRole, role) &&
         valuesEqual_(row.RequiredUserID, assignedUser ? assignedUser.UserID : '') &&
@@ -84,7 +84,7 @@ function getRuleBasedAuditSummary_(currentUser, now, lineAccess, auditRows) {
   var cacheKey = auditRuleSummaryCacheKey_(currentUser, today, lineAccess || []);
   var cached = safeCacheGetJson_(cacheKey);
   if (cached) return cached;
-  var rules = getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN_RULES).filter(function (rule) {
+  var rules = getAuditPlanRuleRows_().filter(function (rule) {
     return isActive_(rule.ActiveStatus) && valuesEqual_(rule.RequiredRole, currentUser.Role) &&
       (!cleanString_(rule.RequiredUserID) || valuesEqual_(rule.RequiredUserID, currentUser.UserID)) &&
       canAccessLineFromRows_(currentUser, rule.LineID, 'View', lineAccess || []);
@@ -107,6 +107,17 @@ function getRuleBasedAuditSummary_(currentUser, now, lineAccess, auditRows) {
   });
   safeCachePutJson_(cacheKey, summary, 60);
   return summary;
+}
+
+function getAuditPlanRuleRows_() {
+  try {
+    return getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN_RULES);
+  } catch (error) {
+    if (/Required sheet not found/.test(safeErrorMessage_(error))) {
+      throw new Error('AuditPlanRules sheet is not set up. Run setupHeaders() in Apps Script, then try again.');
+    }
+    throw error;
+  }
 }
 
 function auditRuleSummaryCacheKey_(user, date, lineAccess) {
