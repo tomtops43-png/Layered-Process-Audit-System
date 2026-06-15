@@ -147,7 +147,7 @@ async function login() {
     showApplication();
     showToast(`ยินดีต้อนรับ ${state.user.FullName || state.user.Username}`, 'success');
     hideLoading();
-    await initializeAuthenticatedApp(true);
+    await initializeAuthenticatedApp(false);
   } catch (error) {
     showToast(error.message, 'error');
   } finally {
@@ -191,7 +191,7 @@ async function initializeAuthenticatedApp(validateSession = true) {
   applyAuditPlanRoleScope();
   applyAuditLayerPermissions();
   showDashboardSkeleton();
-  navigateTo('dashboard');
+  await navigateTo('dashboard');
 }
 
 async function loadMasterData(withLoading = true) {
@@ -609,7 +609,8 @@ async function loadAuditPlan() {
     const data = await apiCall('getAuditPlan', {
       periodMonth: $('#planMonth').value, lineId: optionalFilterValue($('#planLine').value),
       stationId: optionalFilterValue($('#planStation').value), requiredRole: optionalFilterValue($('#planRole').value),
-      status: optionalFilterValue($('#planStatus').value), myPlanOnly: $('#planMine').checked
+      status: optionalFilterValue($('#planStatus').value), myPlanOnly: $('#planMine').checked,
+      page: 1, pageSize: 100
     });
     state.auditPlans = data.plans || [];
     renderAuditPlan();
@@ -688,7 +689,7 @@ async function startAuditFromPlan(plan) {
   showLoading('กำลังโหลดแผนเข้าสู่ฟอร์มตรวจ...');
   try {
     await Promise.resolve();
-    navigateTo('audit');
+    await navigateTo('audit');
     $('#auditPlanId').value = plan.PlanID || '';
     $('#auditDate').value = dateInputValue(plan.DueDate);
     $('#auditLine').value = plan.LineID || '';

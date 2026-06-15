@@ -106,29 +106,15 @@ function summarizeAuditPlansForDashboard_(currentUser, now, auditRows, lineAcces
     return { DueToday: 0, Overdue: 0, ThisWeek: 0, ThisMonth: 0, Completed: 0, LateSubmitted: 0, Missed: 0, Total: 0 };
   }
   var today = formatDateBangkok_(now);
-  var week = isoWeekKey_(now);
   var month = today.slice(0, 7);
-  var summary = { DueToday: 0, Overdue: 0, ThisWeek: 0, ThisMonth: 0, Completed: 0, LateSubmitted: 0, Missed: 0, Total: 0 };
+  var cacheKey = auditPlanSummaryCacheKey_(currentUser, month.replace('-', ''), lineAccess || []);
+  var cached = safeCacheGetJson_(cacheKey);
+  if (cached) return cached;
   var audits = (auditRows || []).filter(function (row) {
     return normalizeFindingPeriod_(row.PeriodMonth || row.AuditDate) === month.replace('-', '');
   });
-  var auditIndex = buildAuditPlanMatchIndex_(audits);
-  getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN).filter(function (row) {
-    return cleanString_(row.DueDate).slice(0, 7) === month;
-  }).map(function (row) {
-    return effectiveAuditPlan_(row, audits, now, auditIndex);
-  }).filter(function (row) {
-    return canViewAuditPlanFromRows_(currentUser, row, true, lineAccess || [], canViewAll);
-  }).forEach(function (row) {
-    summary.Total++;
-    if (valuesEqual_(row.DueDate, today) && ['Completed', 'Late Submitted'].indexOf(cleanString_(row.Status)) === -1) summary.DueToday++;
-    if (valuesEqual_(row.Status, 'Overdue')) summary.Overdue++;
-    if (valuesEqual_(row.PeriodKey, week)) summary.ThisWeek++;
-    if (cleanString_(row.DueDate).slice(0, 7) === month) summary.ThisMonth++;
-    if (valuesEqual_(row.Status, 'Completed')) summary.Completed++;
-    if (valuesEqual_(row.Status, 'Late Submitted')) summary.LateSubmitted++;
-    if (valuesEqual_(row.Status, 'Missed')) summary.Missed++;
-  });
+  var summary = summarizeAuditPlanRows_(currentUser, month, now, audits, lineAccess || [], canViewAll, true);
+  safeCachePutJson_(cacheKey, summary, 60);
   return summary;
 }
 

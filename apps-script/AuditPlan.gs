@@ -130,15 +130,19 @@ function getAuditPlan(payload, currentUser) {
 function refreshAuditPlanStatus(payload, currentUser) {
   try {
     requirePermission_(currentUser, 'audit.plan.refresh');
-    var rows = getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN);
-    var month = normalizePlanMonth_(payload.periodMonth);
-    var audits = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
+    var month = normalizePlanMonth_(payload.periodMonth) || formatDateBangkok_(new Date()).slice(0, 7);
+    var period = month.replace('-', '');
+    var rows = getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN).filter(function (plan) {
+      return cleanString_(plan.DueDate).slice(0, 7) === month;
+    });
+    var audits = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS).filter(function (audit) {
+      return normalizeFindingPeriod_(audit.PeriodMonth || audit.AuditDate) === period;
+    });
     var auditIndex = buildAuditPlanMatchIndex_(audits);
     var now = new Date();
     var today = formatDateBangkok_(now);
     var updated = 0;
     rows.forEach(function (plan) {
-      if (month && cleanString_(plan.DueDate).slice(0, 7) !== month) return;
       if (!canViewAuditPlan_(currentUser, plan, false)) return;
       var audit = findMatchingAuditForPlan_(plan, audits, auditIndex);
       var changes = audit ? completedPlanChanges_(plan, audit, now, currentUser.UserID) :
@@ -161,9 +165,7 @@ function getMyAuditPlanSummary(payload, currentUser) {
   try {
     requirePermission_(currentUser, 'audit.plan.view');
     var now = new Date();
-    var today = formatDateBangkok_(now);
-    var weekKey = isoWeekKey_(now);
-    var month = today.slice(0, 7);
+    var month = normalizePlanMonth_(payload.periodMonth) || formatDateBangkok_(now).slice(0, 7);
     var lineAccess = getUserLineAccess_(currentUser);
     var cacheKey = auditPlanSummaryCacheKey_(currentUser, month.replace('-', ''), lineAccess);
     var cached = safeCacheGetJson_(cacheKey);
@@ -172,33 +174,39 @@ function getMyAuditPlanSummary(payload, currentUser) {
     var audits = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS).filter(function (row) {
       return normalizeFindingPeriod_(row.PeriodMonth || row.AuditDate) === month.replace('-', '');
     });
-    var auditIndex = buildAuditPlanMatchIndex_(audits);
-    var plans = getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN).filter(function (row) {
-      return cleanString_(row.DueDate).slice(0, 7) === month;
-    }).map(function (row) {
-      return effectiveAuditPlan_(row, audits, now, auditIndex);
-    }).filter(function (row) {
-      return canViewAuditPlanFromRows_(currentUser, row, true, lineAccess, canViewAll);
-    });
-    var summary = {
-      DueToday: 0, Overdue: 0, ThisWeek: 0, ThisMonth: 0,
-      Completed: 0, LateSubmitted: 0, Missed: 0, Total: plans.length
-    };
-    plans.forEach(function (row) {
-      var status = cleanString_(row.Status);
-      if (valuesEqual_(row.DueDate, today) && ['Completed', 'Late Submitted'].indexOf(status) === -1) summary.DueToday++;
-      if (status === 'Overdue') summary.Overdue++;
-      if (cleanString_(row.PeriodKey) === weekKey) summary.ThisWeek++;
-      if (cleanString_(row.DueDate).slice(0, 7) === month) summary.ThisMonth++;
-      if (status === 'Completed') summary.Completed++;
-      if (status === 'Late Submitted') summary.LateSubmitted++;
-      if (status === 'Missed') summary.Missed++;
-    });
+    var summary = summarizeAuditPlanRows_(
+      currentUser, month, now, audits, lineAccess, canViewAll, true
+    );
     safeCachePutJson_(cacheKey, summary, 60);
     return jsonResponse(true, 'Audit plan summary loaded.', summary);
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
+}
+
+function summarizeAuditPlanRows_(currentUser, month, now, audits, lineAccess, canViewAll, myPlanOnly) {
+  var today = formatDateBangkok_(now);
+  var weekKey = isoWeekKey_(now);
+  var auditIndex = buildAuditPlanMatchIndex_(audits || []);
+  var summary = {
+    DueToday: 0, Overdue: 0, ThisWeek: 0, ThisMonth: 0,
+    Completed: 0, LateSubmitted: 0, Missed: 0, Total: 0
+  };
+  getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN).forEach(function (plan) {
+    if (cleanString_(plan.DueDate).slice(0, 7) !== month) return;
+    var row = effectiveAuditPlan_(plan, audits || [], now, auditIndex);
+    if (!canViewAuditPlanFromRows_(currentUser, row, myPlanOnly, lineAccess || [], canViewAll)) return;
+    var status = cleanString_(row.Status);
+    summary.Total++;
+    if (valuesEqual_(row.DueDate, today) && ['Completed', 'Late Submitted'].indexOf(status) === -1) summary.DueToday++;
+    if (status === 'Overdue') summary.Overdue++;
+    if (cleanString_(row.PeriodKey) === weekKey) summary.ThisWeek++;
+    summary.ThisMonth++;
+    if (status === 'Completed') summary.Completed++;
+    if (status === 'Late Submitted') summary.LateSubmitted++;
+    if (status === 'Missed') summary.Missed++;
+  });
+  return summary;
 }
 
 function findMatchingPlanForAudit_(payload) {
@@ -336,7 +344,11 @@ function canViewAuditPlan_(user, row, myPlanOnly) {
 }
 
 function canViewAuditPlanFromRows_(user, row, myPlanOnly, lineAccess, canViewAll) {
-  if (isAdmin_(user) || canViewAll) return !myPlanOnly || !row.RequiredUserID || valuesEqual_(row.RequiredUserID, user.UserID);
+  if (isAdmin_(user)) return true;
+  if (canViewAll && !(myPlanOnly === true || isAllowed_(myPlanOnly))) return true;
+  if (canViewAll && (myPlanOnly === true || isAllowed_(myPlanOnly))) {
+    return row.RequiredUserID ? valuesEqual_(row.RequiredUserID, user.UserID) : valuesEqual_(row.RequiredRole, user.Role);
+  }
   if (!canAccessLineFromRows_(user, row.LineID, 'View', lineAccess)) return false;
   if (myPlanOnly === true || isAllowed_(myPlanOnly)) {
     return row.RequiredUserID ? valuesEqual_(row.RequiredUserID, user.UserID) : valuesEqual_(row.RequiredRole, user.Role);
