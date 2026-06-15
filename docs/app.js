@@ -147,7 +147,7 @@ async function login() {
     showApplication();
     showToast(`ยินดีต้อนรับ ${state.user.FullName || state.user.Username}`, 'success');
     hideLoading();
-    await initializeAuthenticatedApp(false);
+    await initializeAuthenticatedApp(true);
   } catch (error) {
     showToast(error.message, 'error');
   } finally {

@@ -144,10 +144,9 @@ function getMyAuditPlanSummary(payload, currentUser) {
     var weekKey = isoWeekKey_(now);
     var month = today.slice(0, 7);
     var lineAccess = getUserLineAccess_(currentUser);
-    var cache = CacheService.getScriptCache();
     var cacheKey = auditPlanSummaryCacheKey_(currentUser, month.replace('-', ''), lineAccess);
-    var cached = cache.get(cacheKey);
-    if (cached) return jsonResponse(true, 'Audit plan summary loaded from cache.', JSON.parse(cached));
+    var cached = safeCacheGetJson_(cacheKey);
+    if (cached) return jsonResponse(true, 'Audit plan summary loaded from cache.', cached);
     var canViewAll = isAdmin_(currentUser) || hasPermission_(currentUser, 'audit.view.all');
     var audits = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS).filter(function (row) {
       return normalizeFindingPeriod_(row.PeriodMonth || row.AuditDate) === month.replace('-', '');
@@ -174,7 +173,7 @@ function getMyAuditPlanSummary(payload, currentUser) {
       if (status === 'Late Submitted') summary.LateSubmitted++;
       if (status === 'Missed') summary.Missed++;
     });
-    cache.put(cacheKey, JSON.stringify(summary), 60);
+    safeCachePutJson_(cacheKey, summary, 60);
     return jsonResponse(true, 'Audit plan summary loaded.', summary);
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
@@ -352,9 +351,10 @@ function invalidateDashboardCachesForUser_(user) {
   if (!user) return;
   var period = getPeriodMonth(new Date());
   var lineAccess = getUserLineAccess_(user);
-  var cache = CacheService.getScriptCache();
-  cache.remove(dashboardCacheKey_(user, period, lineAccess, ''));
-  cache.remove(auditPlanSummaryCacheKey_(user, period, lineAccess));
+  safeCacheRemove_([
+    dashboardCacheKey_(user, period, lineAccess, ''),
+    auditPlanSummaryCacheKey_(user, period, lineAccess)
+  ]);
 }
 
 function dateBelongsToPlan_(auditDate, plan) {

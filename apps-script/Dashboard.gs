@@ -9,10 +9,9 @@ function getDashboard(payload, currentUser) {
     var now = new Date();
     var currentPeriod = getPeriodMonth(now);
     var lineAccess = getUserLineAccess_(currentUser);
-    var cache = CacheService.getScriptCache();
     var cacheKey = dashboardCacheKey_(currentUser, currentPeriod, lineAccess, payload.lineId);
-    var cached = cache.get(cacheKey);
-    if (cached) return jsonResponse(true, 'Dashboard loaded from cache.', JSON.parse(cached));
+    var cached = safeCacheGetJson_(cacheKey);
+    if (cached) return jsonResponse(true, 'Dashboard loaded from cache.', cached);
     var audits = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
     var findings = getRowsAsObjects(SHEET_NAMES.FINDINGS).map(refreshOverdueForRead_);
     var allFindings = findings.slice();
@@ -95,7 +94,7 @@ function getDashboard(payload, currentUser) {
       SummaryByLine: Object.keys(byLine).sort().map(function (key) { return byLine[key]; }),
       ActionsNearDueDate: nearDue
     };
-    cache.put(cacheKey, JSON.stringify(result), 60);
+    safeCachePutJson_(cacheKey, result, 60);
     return jsonResponse(true, 'Dashboard loaded.', result);
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});

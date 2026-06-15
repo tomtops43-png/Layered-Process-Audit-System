@@ -148,6 +148,35 @@ function jsonResponse(success, message, data) {
   })).setMimeType(ContentService.MimeType.JSON);
 }
 
+function safeCacheGetJson_(key) {
+  try {
+    var value = CacheService.getScriptCache().get(key);
+    return value ? JSON.parse(value) : null;
+  } catch (error) {
+    console.warn('Cache read skipped for ' + key + ': ' + safeErrorMessage_(error));
+    return null;
+  }
+}
+
+function safeCachePutJson_(key, value, ttlSeconds) {
+  try {
+    CacheService.getScriptCache().put(key, JSON.stringify(value), ttlSeconds);
+    return true;
+  } catch (error) {
+    console.warn('Cache write skipped for ' + key + ': ' + safeErrorMessage_(error));
+    return false;
+  }
+}
+
+function safeCacheRemove_(keys) {
+  try {
+    var values = Array.isArray(keys) ? keys : [keys];
+    CacheService.getScriptCache().removeAll(values.filter(Boolean));
+  } catch (error) {
+    console.warn('Cache removal skipped: ' + safeErrorMessage_(error));
+  }
+}
+
 function formatDateTimeBangkok(date) {
   return Utilities.formatDate(date instanceof Date ? date : new Date(date), APP_TIMEZONE, 'yyyy-MM-dd HH:mm:ss');
 }
