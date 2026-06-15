@@ -87,8 +87,8 @@ function hasApiAccess_(user, action) {
     listRolePermissions: ['users.managePermission'], updateRolePermissions: ['users.managePermission'],
     listUserPermissions: ['users.managePermission'], updateUserPermissions: ['users.managePermission'],
     listUserLineAccess: ['users.managePermission'], updateUserLineAccess: ['users.managePermission'],
-    getChecklist: ['checklist.view', 'checklist.manage', 'audit.manager.create', 'audit.engineer.create', 'audit.leader.create'],
-    saveAudit: ['audit.manager.create', 'audit.engineer.create', 'audit.leader.create'],
+    getChecklist: ['checklist.view', 'checklist.manage', 'audit.manager.create', 'audit.supervisor.create', 'audit.engineer.create', 'audit.leader.create'],
+    saveAudit: ['audit.manager.create', 'audit.supervisor.create', 'audit.engineer.create', 'audit.leader.create'],
     getAuditList: ['audit.view.all', 'audit.view.line', 'audit.view.own'],
     getFindings: ['findings.view.all', 'findings.view.line', 'findings.view.assigned', 'findings.view.created', 'findings.verify'],
     updateFinding: ['findings.update.assigned', 'findings.update.line', 'findings.assign', 'findings.view.all'],
@@ -98,7 +98,7 @@ function hasApiAccess_(user, action) {
     getDashboard: ['dashboard.view', 'dashboard.view.all'],
     getMonthlyReport: ['reports.view'], exportReportCsv: ['reports.export'],
     uploadFile: ['findings.update.assigned', 'findings.update.line', 'findings.verify', 'findings.view.all',
-      'audit.manager.create', 'audit.engineer.create', 'audit.leader.create']
+      'audit.manager.create', 'audit.supervisor.create', 'audit.engineer.create', 'audit.leader.create']
   };
   if (['getCurrentUser', 'getMasterData'].indexOf(action) !== -1) return true;
   if (!actionPermissions[action]) return false;

@@ -16,7 +16,7 @@ const state = {
 
 const PERMISSION_CATALOG = [
   'users.view', 'users.create', 'users.update', 'users.deactivate', 'users.resetPassword', 'users.managePermission',
-  'audit.manager.create', 'audit.engineer.create', 'audit.leader.create', 'audit.view.all', 'audit.view.line', 'audit.view.own',
+  'audit.manager.create', 'audit.supervisor.create', 'audit.engineer.create', 'audit.leader.create', 'audit.view.all', 'audit.view.line', 'audit.view.own',
   'findings.view.all', 'findings.view.line', 'findings.view.assigned', 'findings.view.created', 'findings.assign',
   'findings.update.line', 'findings.update.assigned', 'findings.verify', 'findings.close.minor',
   'findings.close.major', 'findings.close.critical', 'dashboard.view', 'dashboard.view.all',
@@ -165,6 +165,7 @@ async function initializeAuthenticatedApp() {
   $('#currentUserName').textContent = state.user.FullName || state.user.Username || '-';
   $('#currentUserRole').textContent = state.user.Role || '-';
   applyPermissionVisibility();
+  applyAuditLayerPermissions();
   navigateTo('dashboard');
   try {
     await loadMasterData(false);
@@ -937,6 +938,27 @@ function applyPermissionVisibility() {
   $('#adminNavButton').classList.toggle('hidden', !canViewAdmin);
   $('#addUserButton').classList.toggle('hidden', !hasPermission('users.create'));
   $('#exportCsvButton').classList.toggle('hidden', !hasPermission('reports.export'));
+}
+
+function applyAuditLayerPermissions() {
+  const layerPermissions = [
+    ['Leader', 'audit.leader.create'],
+    ['Engineer', 'audit.engineer.create'],
+    ['Supervisor', 'audit.supervisor.create'],
+    ['Manager', 'audit.manager.create']
+  ];
+  const allowedLayers = layerPermissions
+    .filter(([, permission]) => hasPermission(permission))
+    .map(([layer]) => layer);
+  const select = $('#auditLayer');
+  const loadButton = $('#loadChecklistButton');
+  select.innerHTML = allowedLayers.length
+    ? allowedLayers.map(layer => `<option value="${layer}">${layer}</option>`).join('')
+    : '<option value="">ไม่มีสิทธิ์สร้าง Audit</option>';
+  select.disabled = allowedLayers.length <= 1;
+  loadButton.disabled = allowedLayers.length === 0;
+  if (allowedLayers.length === 1) select.value = allowedLayers[0];
+  if (!allowedLayers.length) showToast('คุณไม่มีสิทธิ์สร้างรายการตรวจ LPA', 'warning');
 }
 
 function setDefaultDates() {

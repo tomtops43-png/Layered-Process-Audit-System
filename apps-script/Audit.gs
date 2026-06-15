@@ -2,11 +2,20 @@
 function saveAudit(payload, currentUser) {
   try {
     requireFields_(payload, ['auditDate', 'lineId', 'stationId', 'auditLayer', 'records']);
-    var auditPermission = cleanString_(payload.auditLayer).toLowerCase() === 'manager' ? 'audit.manager.create' :
-      (cleanString_(payload.auditLayer).toLowerCase() === 'engineer' ? 'audit.engineer.create' : 'audit.leader.create');
-    requirePermission_(currentUser, auditPermission);
+    var auditLayerPermissions = {
+      leader: 'audit.leader.create',
+      engineer: 'audit.engineer.create',
+      supervisor: 'audit.supervisor.create',
+      manager: 'audit.manager.create'
+    };
+    var auditPermission = auditLayerPermissions[cleanString_(payload.auditLayer).toLowerCase()];
+    if (!auditPermission || !hasPermission_(currentUser, auditPermission)) {
+      throw new Error('คุณไม่มีสิทธิ์สร้าง Audit Layer นี้');
+    }
     if (!isAdmin_(currentUser) && !hasPermission_(currentUser, 'audit.view.all') &&
-        (hasPermission_(currentUser, 'audit.engineer.create') || hasPermission_(currentUser, 'audit.leader.create'))) {
+        (hasPermission_(currentUser, 'audit.supervisor.create') ||
+         hasPermission_(currentUser, 'audit.engineer.create') ||
+         hasPermission_(currentUser, 'audit.leader.create'))) {
       requireLineAccess_(currentUser, payload.lineId, 'Update');
     }
     if (!Array.isArray(payload.records) || !payload.records.length) throw new Error('At least one audit record is required.');

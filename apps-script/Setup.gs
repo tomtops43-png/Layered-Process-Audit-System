@@ -81,7 +81,7 @@ function getDefaultRolePermissions_() {
   return {
     Admin: ['*', 'users.view', 'users.create', 'users.update', 'users.deactivate', 'users.resetPassword', 'users.managePermission'],
     Manager: ['audit.manager.create', 'audit.view.all', 'findings.view.all', 'findings.assign', 'findings.verify', 'findings.close.minor', 'findings.close.major', 'findings.close.critical', 'dashboard.view.all', 'reports.view', 'reports.export'],
-    Supervisor: [],
+    Supervisor: ['audit.supervisor.create', 'audit.view.line', 'dashboard.view'],
     Engineer: ['audit.engineer.create', 'audit.view.line', 'findings.view.line', 'findings.assign', 'findings.update.line', 'findings.verify', 'findings.close.minor', 'findings.close.major', 'dashboard.view', 'reports.view'],
     Leader: ['audit.leader.create', 'audit.view.own', 'findings.view.assigned', 'findings.view.created', 'findings.update.assigned', 'dashboard.view'],
     User: ['findings.view.assigned', 'findings.update.assigned', 'dashboard.view']
