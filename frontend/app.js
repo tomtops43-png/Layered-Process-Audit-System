@@ -25,6 +25,9 @@ const PERMISSION_CATALOG = [
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+let busyDepth = 0;
+const busyMessages = [];
+const busyDisabledState = new Map();
 
 window.addEventListener('DOMContentLoaded', initApp);
 
@@ -67,6 +70,7 @@ function bindEvents() {
   $('#submitVerificationButton').addEventListener('click', submitFindingForVerification);
   $('#approveFindingButton').addEventListener('click', () => verifyFinding('Approve'));
   $('#rejectFindingButton').addEventListener('click', () => verifyFinding('Reject'));
+  $('#editCloseRemark').addEventListener('input', event => event.target.classList.remove('field-error'));
   $('#addUserButton').addEventListener('click', () => openUserEditor());
   $('#searchUsersButton').addEventListener('click', loadUsers);
   $('#adminUsersTable').addEventListener('click', event => {
@@ -111,7 +115,7 @@ async function login() {
   const button = $('#loginButton');
   button.disabled = true;
   button.textContent = 'กำลังเข้าสู่ระบบ...';
-  showLoading('กำลังตรวจสอบผู้ใช้...');
+  showLoading('กำลังเข้าสู่ระบบ...');
   try {
     const data = await apiCall('login', { username, password });
     state.token = data.token;
@@ -146,19 +150,20 @@ function logout(notify = true) {
 }
 
 async function initializeAuthenticatedApp() {
+  showLoading('กำลังเตรียมข้อมูล...');
   try {
     const current = await apiCall('getCurrentUser', {});
     state.user = current;
     localStorage.setItem('lpa_user', JSON.stringify(state.user));
   } catch (error) {
     showToast(error.message, 'error');
+    hideLoading();
     return;
   }
   $('#currentUserName').textContent = state.user.FullName || state.user.Username || '-';
   $('#currentUserRole').textContent = state.user.Role || '-';
   applyPermissionVisibility();
   navigateTo('dashboard');
-  showLoading('กำลังเตรียมข้อมูล...');
   try {
     await loadMasterData(false);
     await loadDashboard(false);
@@ -311,7 +316,7 @@ async function saveAudit() {
     records.push(record);
   }
   if (!window.confirm(`ยืนยันบันทึก Audit จำนวน ${records.length} ข้อ?`)) return;
-  showLoading('กำลังอัปโหลดรูปและบันทึก Audit...');
+  showLoading('กำลังบันทึก Audit และอัปโหลดรูป...');
   try {
     for (const record of records) {
       if (record._photo) {
@@ -343,7 +348,9 @@ async function saveAudit() {
 
 async function uploadFile(file, relatedType, relatedId, fileType, manageLoading = true) {
   if (!file) throw new Error('ไม่พบไฟล์สำหรับอัปโหลด');
-  if (manageLoading) showLoading('กำลังอัปโหลดไฟล์...');
+  const uploadMessage = fileType === 'BeforePhoto' ? 'กำลังอัปโหลด Before Photo...' :
+    (fileType === 'AfterPhoto' ? 'กำลังอัปโหลด After Photo...' : 'กำลังอัปโหลดไฟล์...');
+  if (manageLoading) showLoading(uploadMessage);
   try {
     const base64Data = await fileToBase64(file);
     return await apiCall('uploadFile', { relatedType, relatedId, fileType, fileName: file.name, mimeType: file.type || 'application/octet-stream', base64Data });
@@ -394,6 +401,7 @@ function openFindingEditor(findingId) {
   $('#editStatus').value = row.Status || 'Open';
   $('#editStatus').closest('label').classList.toggle('hidden', ['Leader', 'User'].includes(state.user.Role));
   $('#editCloseRemark').value = row.CloseRemark || '';
+  $('#editCloseRemark').classList.remove('field-error');
   $('#editAfterPhoto').value = '';
   $('#editPhotoPreview').innerHTML = row.AfterPhotoURL ? `<a href="${escapeAttr(row.AfterPhotoURL)}" target="_blank" rel="noopener">ดู After Photo ปัจจุบัน</a>` : '';
   const status = String(row.Status || '').toLowerCase();
@@ -439,23 +447,44 @@ async function submitFindingForVerification() {
     findingId, rootCause, correctiveAction,
     closeRemark: $('#editCloseRemark').value.trim(),
     remark: $('#editCloseRemark').value.trim() || 'Submitted for verification'
-  }, 'ส่ง Finding เพื่อตรวจสอบแล้ว');
+  }, {
+    loadingMessage: 'กำลังส่ง Finding ให้ตรวจยืนยัน...',
+    successMessage: 'ส่ง Finding เพื่อตรวจสอบแล้ว'
+  });
 }
 
 async function verifyFinding(decision) {
   const findingId = $('#editFindingId').value;
-  const closeRemark = $('#editCloseRemark').value.trim();
-  if (decision === 'Approve' && !closeRemark) return showToast('กรุณาระบุ Close Remark ก่อนปิด Finding', 'warning');
-  const rejectReason = decision === 'Reject' ? (window.prompt('กรุณาระบุเหตุผลที่ Reject', closeRemark) || '').trim() : '';
-  if (decision === 'Reject' && !rejectReason) return showToast('กรุณาระบุเหตุผลที่ Reject', 'warning');
-  if (!window.confirm(`${decision} Finding ${findingId}?`)) return;
+  const remarkField = $('#editCloseRemark');
+  const closeRemark = remarkField.value.trim();
+  if (!closeRemark) {
+    remarkField.classList.add('field-error');
+    remarkField.focus();
+    const warning = decision === 'Reject'
+      ? 'กรุณาระบุเหตุผลการ Reject ก่อนส่งกลับให้ผู้รับผิดชอบแก้ไข'
+      : 'กรุณาระบุ Close Remark ก่อนปิด Finding';
+    return showToast(warning, 'warning');
+  }
+  remarkField.classList.remove('field-error');
+  const confirmation = decision === 'Reject'
+    ? 'ยืนยัน Reject Finding นี้และส่งกลับให้ผู้รับผิดชอบแก้ไข?'
+    : 'ยืนยันปิด Finding นี้?';
+  if (!window.confirm(confirmation)) return;
   await runFindingWorkflow('verifyFinding', {
-    findingId, decision, rejectReason, closeRemark: decision === 'Reject' ? rejectReason : closeRemark
-  }, decision === 'Approve' ? 'อนุมัติและปิด Finding แล้ว' : 'Reject Finding แล้ว');
+    findingId, decision,
+    rejectReason: decision === 'Reject' ? closeRemark : '',
+    closeRemark
+  }, {
+    loadingMessage: decision === 'Approve' ? 'กำลังปิด Finding...' : 'กำลัง Reject Finding...',
+    successMessage: decision === 'Approve' ? 'Close Finding สำเร็จ' : 'Reject Finding สำเร็จ ส่งกลับให้ผู้รับผิดชอบแก้ไขแล้ว'
+  });
 }
 
-async function runFindingWorkflow(action, payload, successMessage) {
-  showLoading('กำลังบันทึก Finding...');
+async function runFindingWorkflow(action, payload, options) {
+  const settings = typeof options === 'string'
+    ? { successMessage: options, loadingMessage: 'กำลังบันทึก Finding...' }
+    : options;
+  showLoading(settings.loadingMessage);
   try {
     const file = $('#editAfterPhoto').files[0];
     if (file) {
@@ -466,9 +495,9 @@ async function runFindingWorkflow(action, payload, successMessage) {
     }
     await apiCall(action, payload);
     $('#findingDialog').close();
-    showToast(successMessage, 'success');
     await loadFindings();
-    loadDashboard(false);
+    await loadDashboard(false);
+    showToast(settings.successMessage, 'success');
   } catch (error) {
     showToast(error.message, 'error');
   } finally {
@@ -483,7 +512,7 @@ async function closeFinding(payload) {
 async function loadMonthlyReport() {
   const periodMonth = monthToPeriod($('#reportMonth').value);
   if (!periodMonth) return showToast('กรุณาเลือกเดือน', 'warning');
-  showLoading('กำลังจัดทำรายงาน...');
+  showLoading('กำลังโหลด Monthly Report...');
   try {
     state.report = await apiCall('getMonthlyReport', { periodMonth });
     renderMonthlyReport(state.report);
@@ -549,7 +578,7 @@ async function loadUsers() {
     return;
   }
   container.innerHTML = emptyHtml('กำลังโหลดผู้ใช้...');
-  showLoading('กำลังโหลดผู้ใช้...');
+  showLoading('กำลังโหลดข้อมูลผู้ใช้...');
   try {
     const data = await apiCall('listUsers', {
       search: $('#adminUserSearch').value.trim(),
@@ -617,7 +646,7 @@ async function openUserEditor(userId = '') {
 }
 
 async function loadUserAccessEditors(userId) {
-  showLoading('กำลังโหลดสิทธิ์ผู้ใช้...');
+  showLoading('กำลังโหลดข้อมูลผู้ใช้...');
   try {
     const [permissionData, lineData] = await Promise.all([
       apiCall('listUserPermissions', { userId }),
@@ -653,7 +682,7 @@ async function saveUser() {
   if (!userId) payload.password = $('#adminPassword').value;
   $('#userFormError').textContent = '';
   $('#userFormError').classList.add('hidden');
-  showLoading('กำลังบันทึกผู้ใช้...');
+  showLoading('กำลังบันทึกข้อมูลผู้ใช้...');
   try {
     const result = await apiCall(userId ? 'updateUser' : 'createUser', userId ? { ...payload, userId } : payload);
     const savedUserId = userId || result.user.UserID;
@@ -672,35 +701,50 @@ async function saveUser() {
 }
 
 async function saveUserAccess(userId) {
+  showLoading('กำลังอัปเดตสิทธิ์ผู้ใช้...');
   const permissions = $$('[data-user-permission]').map(input => ({ permissionKey: input.dataset.userPermission, allowed: input.value, reason: 'Updated from Admin Panel' }));
   const lineAccess = $$('[data-line-access]').map(input => ({
     lineId: input.dataset.lineAccess,
     accessLevel: $(`[data-line-level="${cssEscape(input.dataset.lineAccess)}"]`).value,
     activeStatus: input.checked ? 'Active' : 'Inactive'
   }));
-  await apiCall('updateUserPermissions', { userId, permissions });
-  await apiCall('updateUserLineAccess', { userId, lineAccess });
+  try {
+    await apiCall('updateUserPermissions', { userId, permissions });
+    await apiCall('updateUserLineAccess', { userId, lineAccess });
+  } finally {
+    hideLoading();
+  }
 }
 
 async function deactivateSelectedUser() {
   const userId = $('#adminEditUserId').value;
   if (!userId || !window.confirm('ยืนยันปิดใช้งานผู้ใช้นี้?')) return;
+  showLoading('กำลังบันทึกข้อมูลผู้ใช้...');
   try {
     await apiCall('deactivateUser', { userId });
     $('#userDialog').close();
     showToast('ปิดใช้งานผู้ใช้แล้ว', 'success');
     await loadUsers();
-  } catch (error) { showToast(error.message, 'error'); }
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    hideLoading();
+  }
 }
 
 async function resetSelectedUserPassword() {
   const userId = $('#adminEditUserId').value;
   const password = window.prompt('รหัสผ่านใหม่อย่างน้อย 8 ตัวอักษร');
   if (!userId || !password) return;
+  showLoading('กำลังบันทึกข้อมูลผู้ใช้...');
   try {
     await apiCall('resetUserPassword', { userId, password });
     showToast('Reset password สำเร็จ', 'success');
-  } catch (error) { showToast(error.message, 'error'); }
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    hideLoading();
+  }
 }
 
 function renderMasterChecklist(rows) {
@@ -773,8 +817,47 @@ function showLogin() { $('#loginView').classList.remove('hidden'); $('#appView')
 function showApplication() { $('#loginView').classList.add('hidden'); $('#appView').classList.remove('hidden'); }
 function openSidebar() { $('#sidebar').classList.add('open'); $('#sidebarBackdrop').classList.remove('hidden'); }
 function closeSidebar() { $('#sidebar').classList.remove('open'); $('#sidebarBackdrop').classList.add('hidden'); }
-function showLoading(message = 'กำลังโหลด...') { $('#loadingText').textContent = message; $('#loadingOverlay').classList.remove('hidden'); }
-function hideLoading() { $('#loadingOverlay').classList.add('hidden'); }
+function showLoading(message = 'กำลังโหลด...') {
+  busyDepth++;
+  busyMessages.push(message);
+  $('#loadingText').textContent = message;
+  $('#loadingOverlay').classList.remove('hidden');
+  document.body.classList.add('is-busy');
+  document.body.setAttribute('aria-busy', 'true');
+  if (busyDepth === 1) {
+    $$('button, input, select, textarea').forEach(element => {
+      busyDisabledState.set(element, element.disabled);
+      element.disabled = true;
+    });
+  }
+}
+
+function hideLoading() {
+  if (busyDepth > 0) busyDepth--;
+  busyMessages.pop();
+  if (busyDepth > 0) {
+    $('#loadingText').textContent = busyMessages[busyMessages.length - 1] || 'กำลังโหลด...';
+    return;
+  }
+  busyDepth = 0;
+  busyMessages.length = 0;
+  $('#loadingOverlay').classList.add('hidden');
+  document.body.classList.remove('is-busy');
+  document.body.removeAttribute('aria-busy');
+  busyDisabledState.forEach((wasDisabled, element) => {
+    if (element.isConnected) element.disabled = wasDisabled;
+  });
+  busyDisabledState.clear();
+}
+
+async function withBusy(message, asyncFunction) {
+  showLoading(message);
+  try {
+    return await asyncFunction();
+  } finally {
+    hideLoading();
+  }
+}
 
 function showToast(message, type = 'info', duration = 4500) {
   const toast = document.createElement('div');
