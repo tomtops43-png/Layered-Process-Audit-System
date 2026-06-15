@@ -33,22 +33,28 @@ function setupHeaders() {
 
 function ensureDefaultShiftLists_() {
   var properties = PropertiesService.getScriptProperties();
-  if (properties.getProperty('LPA_SHIFT_DEFAULTS_INITIALIZED') === '1') return;
-  var defaults = [
-    { ListValue: 'A', DisplayText: 'A', SortOrder: 1, ActiveStatus: 'Active' },
-    { ListValue: 'B', DisplayText: 'B', SortOrder: 2, ActiveStatus: 'Active' },
-    { ListValue: 'Day', DisplayText: 'Day', SortOrder: 3, ActiveStatus: 'Inactive' },
-    { ListValue: 'Night', DisplayText: 'Night', SortOrder: 4, ActiveStatus: 'Inactive' },
-    { ListValue: 'C', DisplayText: 'C', SortOrder: 5, ActiveStatus: 'Inactive' }
-  ];
-  defaults.forEach(function (entry) {
-    upsertCompositeRow_(SHEET_NAMES.LISTS, { ListType: 'Shift', ListValue: entry.ListValue }, {
-      ListType: 'Shift', ListValue: entry.ListValue, DisplayText: entry.DisplayText,
-      SortOrder: entry.SortOrder, ActiveStatus: entry.ActiveStatus
+  if (properties.getProperty('LPA_SHIFT_DEFAULTS_INITIALIZED') !== '1') {
+    var defaults = [
+      { ListValue: 'A', DisplayText: 'A', SortOrder: 1, ActiveStatus: 'Active' },
+      { ListValue: 'B', DisplayText: 'B', SortOrder: 2, ActiveStatus: 'Active' },
+      { ListValue: 'Day', DisplayText: 'Day', SortOrder: 3, ActiveStatus: 'Inactive' },
+      { ListValue: 'Night', DisplayText: 'Night', SortOrder: 4, ActiveStatus: 'Inactive' },
+      { ListValue: 'C', DisplayText: 'C', SortOrder: 5, ActiveStatus: 'Inactive' }
+    ];
+    defaults.forEach(function (entry) {
+      upsertCompositeRow_(SHEET_NAMES.LISTS, { ListType: 'Shift', ListValue: entry.ListValue }, {
+        ListType: 'Shift', ListValue: entry.ListValue, DisplayText: entry.DisplayText,
+        SortOrder: entry.SortOrder, ActiveStatus: entry.ActiveStatus
+      });
     });
-  });
-  properties.setProperty('LPA_SHIFT_DEFAULTS_INITIALIZED', '1');
-  incrementMasterDataVersion_();
+    properties.setProperty('LPA_SHIFT_DEFAULTS_INITIALIZED', '1');
+    incrementMasterDataVersion_();
+  }
+  if (properties.getProperty('LPA_SHIFT_SORT_NORMALIZED') !== '1') {
+    normalizeMasterListSortOrders_('Shift');
+    properties.setProperty('LPA_SHIFT_SORT_NORMALIZED', '1');
+    incrementMasterDataVersion_();
+  }
 }
 
 /** Creates missing RBAC sheets/headers and inserts only missing default role permissions. */

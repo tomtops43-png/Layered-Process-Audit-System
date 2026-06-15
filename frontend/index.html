@@ -168,7 +168,7 @@
           <form id="shiftForm" class="form-grid filter-grid hidden">
             <label>Value<input id="shiftListValue" required maxlength="30"></label>
             <label>Display Name<input id="shiftDisplayText" required maxlength="60"></label>
-            <label>Sort Order<input id="shiftSortOrder" type="number" min="0" value="0"></label>
+            <label>Sort Order<input id="shiftSortOrder" value="Auto" readonly aria-readonly="true"><small class="field-help">ระบบกำหนดลำดับให้อัตโนมัติ</small></label>
             <label>Status<select id="shiftActiveStatus"><option>Active</option><option>Inactive</option></select></label>
             <div class="button-row"><button type="button" id="cancelShiftButton" class="btn btn-outline">ยกเลิก</button><button type="submit" class="btn btn-primary">บันทึก Shift</button></div>
           </form>

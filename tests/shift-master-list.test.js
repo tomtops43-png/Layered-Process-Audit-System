@@ -24,6 +24,10 @@ assert(masterData.includes('getMasterDataVersion_()'));
 assert(masterLists.includes('function getMasterLists('));
 assert(masterLists.includes('function upsertMasterList('));
 assert(masterLists.includes('incrementMasterDataVersion_()'));
+assert(masterLists.includes('function normalizeMasterListSortOrders_'));
+assert(masterLists.includes('function deactivateDuplicateMasterListRows_'));
+assert(masterLists.includes('rows.reduce(function (maximum, row)'));
+assert(!masterLists.includes('payload.sortOrder'));
 assert(code.includes('getMasterLists:'));
 assert(code.includes('upsertMasterList:'));
 assert(rbac.includes("getMasterLists: ['users.managePermission']"));
@@ -39,5 +43,7 @@ assert(frontend.includes("populateSelect('#auditShift', shifts, 'ListValue', 'Di
 assert(frontend.includes(".filter(row => String(row.ListType || '').toLowerCase() === 'shift')"));
 assert(html.includes('id="shiftManagementPanel"'));
 assert(frontend.includes("apiCall('upsertMasterList', payload)"));
+assert(!frontend.includes("sortOrder: Number($('#shiftSortOrder')"));
+assert(html.includes('id="shiftSortOrder" value="Auto" readonly'));
 
 console.log('Shift master list tests passed.');

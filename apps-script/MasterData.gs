@@ -9,7 +9,17 @@ function getMasterData(payload, currentUser) {
     var lines = getRowsAsObjects(SHEET_NAMES.LINES).filter(function (row) { return isActive_(row.ActiveStatus); }).map(sanitizeForClient_);
     var stations = getRowsAsObjects(SHEET_NAMES.STATIONS).filter(function (row) { return isActive_(row.ActiveStatus); }).map(sanitizeForClient_);
     var users = getRowsAsObjects(SHEET_NAMES.USERS).filter(function (row) { return isActive_(row.ActiveStatus); }).map(publicUser_);
-    var lists = getRowsAsObjects(SHEET_NAMES.LISTS).filter(function (row) { return !row.ActiveStatus || isActive_(row.ActiveStatus); }).map(sanitizeForClient_);
+    var listKeys = {};
+    var lists = getRowsAsObjects(SHEET_NAMES.LISTS)
+      .filter(function (row) { return !row.ActiveStatus || isActive_(row.ActiveStatus); })
+      .sort(function (a, b) {
+        return cleanString_(a.ListType).localeCompare(cleanString_(b.ListType)) || compareMasterListRows_(a, b);
+      }).filter(function (row) {
+        var key = (cleanString_(row.ListType) + '|' + cleanString_(row.ListValue)).toLowerCase();
+        if (!key || listKeys[key]) return false;
+        listKeys[key] = true;
+        return true;
+      }).map(sanitizeForClient_);
     var safeSettings = ['APP_NAME', 'TIMEZONE', 'DEFAULT_DUE_DAYS', 'CUSTOMER_NAME', 'COMPANY_NAME'];
     var settingRows = getRowsAsObjects(SHEET_NAMES.SETTINGS);
     var settingMap = {};
@@ -36,12 +46,26 @@ function incrementMasterDataVersion_() {
 }
 
 function getActiveListRows_(listType) {
+  var seen = {};
   return getRowsAsObjects(SHEET_NAMES.LISTS).filter(function (row) {
     return valuesEqual_(row.ListType, listType) && isActive_(row.ActiveStatus);
-  }).sort(function (a, b) {
-    return toNumber_(a.SortOrder) - toNumber_(b.SortOrder) ||
-      cleanString_(a.ListValue).localeCompare(cleanString_(b.ListValue));
+  }).sort(compareMasterListRows_).filter(function (row) {
+    var key = cleanString_(row.ListValue).toLowerCase();
+    if (!key || seen[key]) return false;
+    seen[key] = true;
+    return true;
   });
+}
+
+function compareMasterListRows_(a, b) {
+  var left = Number(a.SortOrder);
+  var right = Number(b.SortOrder);
+  var leftValid = isFinite(left) && left > 0 && Math.floor(left) === left;
+  var rightValid = isFinite(right) && right > 0 && Math.floor(right) === right;
+  if (leftValid && rightValid && left !== right) return left - right;
+  if (leftValid !== rightValid) return leftValid ? -1 : 1;
+  return toNumber_(a._rowNumber) - toNumber_(b._rowNumber) ||
+    cleanString_(a.ListValue).localeCompare(cleanString_(b.ListValue));
 }
 
 function getChecklist(payload, currentUser) {

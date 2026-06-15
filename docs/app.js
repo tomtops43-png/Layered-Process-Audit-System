@@ -834,7 +834,7 @@ function openShiftEditor(listValue = '') {
   $('#shiftListValue').value = row?.ListValue || '';
   $('#shiftListValue').readOnly = Boolean(row);
   $('#shiftDisplayText').value = row?.DisplayText || row?.ListValue || '';
-  $('#shiftSortOrder').value = row?.SortOrder ?? 0;
+  $('#shiftSortOrder').value = row ? row.SortOrder : 'Auto';
   $('#shiftActiveStatus').value = row?.ActiveStatus || 'Active';
   $('#shiftForm').classList.remove('hidden');
   $('#shiftListValue').focus();
@@ -851,7 +851,6 @@ async function saveShift() {
     listType: 'Shift',
     listValue: $('#shiftListValue').value.trim(),
     displayText: $('#shiftDisplayText').value.trim(),
-    sortOrder: Number($('#shiftSortOrder').value || 0),
     activeStatus: $('#shiftActiveStatus').value
   };
   if (!payload.listValue || !payload.displayText) return showToast('กรุณากรอกข้อมูล Shift ให้ครบ', 'warning');
