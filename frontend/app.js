@@ -15,7 +15,9 @@ const state = {
   editingFinding: null,
   adminUsers: [],
   adminMasterLists: [],
-  editingUser: null
+  editingUser: null,
+  auditSaveInProgress: false,
+  auditClientSubmissionId: ''
 };
 
 const PERMISSION_CATALOG = [
@@ -358,12 +360,23 @@ function updateAuditProgress() {
 }
 
 async function saveAudit() {
-  if (!state.checklist.length) return showToast('กรุณาโหลด Checklist ก่อนบันทึก', 'warning');
-  if (Object.keys(state.auditAnswers).length !== state.checklist.length) return showToast('กรุณาระบุผลให้ครบทุกข้อ', 'warning');
+  if (state.auditSaveInProgress) return;
+  setAuditSavingState(true);
+  if (!state.checklist.length) {
+    setAuditSavingState(false);
+    return showToast('กรุณาโหลด Checklist ก่อนบันทึก', 'warning');
+  }
+  if (Object.keys(state.auditAnswers).length !== state.checklist.length) {
+    setAuditSavingState(false);
+    return showToast('กรุณาระบุผลให้ครบทุกข้อ', 'warning');
+  }
   const auditDateValue = $('#auditDate').value;
   const isBackdated = auditDateValue && auditDateValue < localDateInput(new Date());
   const lateReason = $('#auditLateReason').value.trim();
-  if (isBackdated && !lateReason) return showToast('คุณกำลังบันทึก Audit ย้อนหลัง กรุณาระบุเหตุผล', 'warning');
+  if (isBackdated && !lateReason) {
+    setAuditSavingState(false);
+    return showToast('คุณกำลังบันทึก Audit ย้อนหลัง กรุณาระบุเหตุผล', 'warning');
+  }
   const records = [];
   for (const item of state.checklist) {
     const card = $(`.checklist-card[data-checklist-id="${cssEscape(item.ChecklistID)}"]`);
@@ -384,13 +397,20 @@ async function saveAudit() {
       record.status = assignedUser ? 'Assigned' : 'Open';
       record.findingStatus = record.status;
       const photo = fieldFile(card, 'beforePhoto');
-      if (!record.findingDetail || !record.correctiveAction || !record.dueDate || !photo) return showToast(`กรุณากรอก Finding และ Before Photo ของ ${item.ChecklistID} ให้ครบ`, 'warning');
+      if (!record.findingDetail || !record.correctiveAction || !record.dueDate || !photo) {
+        setAuditSavingState(false);
+        return showToast(`กรุณากรอก Finding และ Before Photo ของ ${item.ChecklistID} ให้ครบ`, 'warning');
+      }
       record._photo = photo;
     }
     records.push(record);
   }
-  if (!window.confirm(`ยืนยันบันทึก Audit จำนวน ${records.length} ข้อ?`)) return;
-  showLoading('กำลังบันทึก Audit และอัปโหลดรูป...');
+  if (!window.confirm(`ยืนยันบันทึก Audit จำนวน ${records.length} ข้อ?`)) {
+    setAuditSavingState(false);
+    return;
+  }
+  if (!state.auditClientSubmissionId) state.auditClientSubmissionId = createClientSubmissionId();
+  showLoading('กำลังบันทึกข้อมูล กรุณารอสักครู่');
   try {
     for (const record of records) {
       if (record._photo) {
@@ -406,7 +426,8 @@ async function saveAudit() {
       stationId: $('#auditStation').value, stationName: selectedText('#auditStation'),
       area: $('#auditArea').value, shift: $('#auditShift').value, auditLayer: $('#auditLayer').value,
       checklistLanguage: $('#checklistLanguage').value,
-      remark: $('#auditRemark').value.trim(), lateReason, planId: $('#auditPlanId').value, records
+      remark: $('#auditRemark').value.trim(), lateReason, planId: $('#auditPlanId').value,
+      clientSubmissionId: state.auditClientSubmissionId, records
     };
     const data = await apiCall('saveAudit', payload);
     const findingText = (data.FindingIDs || []).length ? ` | Finding: ${data.FindingIDs.join(', ')}` : '';
@@ -415,10 +436,25 @@ async function saveAudit() {
     resetAuditForm();
     loadDashboard(false);
   } catch (error) {
-    showToast(error.message, 'error');
+    const message = error && error.message ? error.message : 'ไม่สามารถบันทึก Audit ได้';
+    showToast(message, 'error', 7000);
+    setAuditSavingState(false);
   } finally {
     hideLoading();
   }
+}
+
+function setAuditSavingState(isSaving) {
+  state.auditSaveInProgress = isSaving;
+  const button = $('#saveAuditButton');
+  if (!button) return;
+  button.disabled = isSaving;
+  button.textContent = isSaving ? 'กำลังบันทึก...' : 'บันทึก Audit';
+}
+
+function createClientSubmissionId() {
+  if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+  return `LPA-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
 }
 
 async function uploadFile(file, relatedType, relatedId, fileType, manageLoading = true) {
@@ -1076,6 +1112,8 @@ function updateAuditArea() {
 function resetAuditForm() {
   state.checklist = [];
   state.auditAnswers = {};
+  state.auditClientSubmissionId = '';
+  setAuditSavingState(false);
   $('#auditChecklist').innerHTML = emptyHtml('เลือก Line, Station และ Audit Layer แล้วกด “โหลด Checklist”');
   $('#auditSaveBar').classList.add('hidden');
   $('#auditRemark').value = '';
