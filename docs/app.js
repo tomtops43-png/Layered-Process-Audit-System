@@ -4,6 +4,8 @@ const state = {
   token: localStorage.getItem('lpa_token') || '',
   user: readStoredJson('lpa_user'),
   masterData: { lines: [], stations: [], users: [], lists: [], settings: {} },
+  masterDataLoadedAt: 0,
+  masterDataPromise: null,
   checklist: [],
   auditAnswers: {},
   findings: [],
@@ -144,7 +146,8 @@ async function login() {
     $('#password').value = '';
     showApplication();
     showToast(`ยินดีต้อนรับ ${state.user.FullName || state.user.Username}`, 'success');
-    await initializeAuthenticatedApp();
+    hideLoading();
+    await initializeAuthenticatedApp(false);
   } catch (error) {
     showToast(error.message, 'error');
   } finally {
@@ -158,6 +161,8 @@ function logout(notify = true) {
   state.token = '';
   state.user = null;
   state.masterData = { lines: [], stations: [], users: [], lists: [], settings: {} };
+  state.masterDataLoadedAt = 0;
+  state.masterDataPromise = null;
   state.checklist = [];
   state.auditAnswers = {};
   localStorage.removeItem('lpa_token');
@@ -166,36 +171,33 @@ function logout(notify = true) {
   if (notify) showToast('ออกจากระบบแล้ว', 'success');
 }
 
-async function initializeAuthenticatedApp() {
-  showLoading('กำลังเตรียมข้อมูล...');
-  try {
-    const current = await apiCall('getCurrentUser', {});
-    state.user = current;
-    localStorage.setItem('lpa_user', JSON.stringify(state.user));
-  } catch (error) {
-    showToast(error.message, 'error');
-    hideLoading();
-    return;
+async function initializeAuthenticatedApp(validateSession = true) {
+  if (validateSession) {
+    showLoading('กำลังตรวจสอบ Session...');
+    try {
+      const current = await apiCall('getCurrentUser', {});
+      state.user = current;
+      localStorage.setItem('lpa_user', JSON.stringify(state.user));
+    } catch (error) {
+      showToast(error.message, 'error');
+      return;
+    } finally {
+      hideLoading();
+    }
   }
   $('#currentUserName').textContent = state.user.FullName || state.user.Username || '-';
   $('#currentUserRole').textContent = state.user.Role || '-';
   applyPermissionVisibility();
   applyAuditLayerPermissions();
+  showDashboardSkeleton();
   navigateTo('dashboard');
-  try {
-    await loadMasterData(false);
-    await loadDashboard(false);
-  } catch (error) {
-    showToast(error.message, 'error');
-  } finally {
-    hideLoading();
-  }
 }
 
 async function loadMasterData(withLoading = true) {
   if (withLoading) showLoading('กำลังโหลด Master Data...');
   try {
     state.masterData = await apiCall('getMasterData', {});
+    state.masterDataLoadedAt = Date.now();
     populateAllMasterSelects();
     return state.masterData;
   } catch (error) {
@@ -206,16 +208,38 @@ async function loadMasterData(withLoading = true) {
   }
 }
 
-async function loadDashboard(withLoading = true) {
-  if (withLoading) showLoading('กำลังโหลด Dashboard...');
+async function ensureMasterDataLoaded(withLoading = true) {
+  const freshForFiveMinutes = state.masterDataLoadedAt && Date.now() - state.masterDataLoadedAt < 300000;
+  if (freshForFiveMinutes && (state.masterData.lines || []).length) return state.masterData;
+  if (state.masterDataPromise) return state.masterDataPromise;
+  state.masterDataPromise = loadMasterData(withLoading);
+  try {
+    return await state.masterDataPromise;
+  } finally {
+    state.masterDataPromise = null;
+  }
+}
+
+async function loadDashboard() {
+  const refreshButton = $('#refreshDashboard');
+  refreshButton.disabled = true;
+  showDashboardSkeleton();
   try {
     state.dashboard = await apiCall('getDashboard', {});
     renderDashboard(state.dashboard);
   } catch (error) {
     showToast(error.message, 'error');
   } finally {
-    if (withLoading) hideLoading();
+    refreshButton.disabled = false;
   }
+}
+
+function showDashboardSkeleton() {
+  $('#dashboardCards').innerHTML = Array.from({ length: 8 }, () => '<article class="metric-card skeleton-card"><span></span><strong></strong><small></small></article>').join('');
+  $('#monthlyAuditChart').className = 'bar-chart dashboard-section-loading';
+  $('#monthlyAuditChart').innerHTML = '<div class="inline-loader"></div><span>กำลังโหลด Dashboard...</span>';
+  $('#lineSummary').innerHTML = '<div class="dashboard-section-loading"><div class="inline-loader"></div><span>กำลังโหลดข้อมูล...</span></div>';
+  $('#nearDueList').innerHTML = '<div class="dashboard-section-loading"><div class="inline-loader"></div><span>กำลังโหลดข้อมูล...</span></div>';
 }
 
 function renderDashboard(data) {
@@ -262,6 +286,7 @@ function renderDashboard(data) {
 }
 
 function renderMonthlyBars(rows) {
+  $('#monthlyAuditChart').className = 'bar-chart';
   if (!rows.length) return $('#monthlyAuditChart').innerHTML = emptyHtml('ยังไม่มีข้อมูลรายเดือน');
   const max = Math.max(1, ...rows.flatMap(row => [number(row.TotalOK), number(row.TotalNG), number(row.TotalNA)]));
   $('#monthlyAuditChart').classList.remove('empty-state');
@@ -983,12 +1008,19 @@ function resetAuditForm() {
   setDefaultDates();
 }
 
-function navigateTo(page) {
+async function navigateTo(page) {
   $$('.page').forEach(section => section.classList.toggle('active-page', section.id === `page-${page}`));
   $$('#mainNav [data-page], .bottom-nav [data-page]').forEach(button => button.classList.toggle('active', button.dataset.page === page));
   closeSidebar();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (page === 'dashboard' && !state.dashboard) loadDashboard();
+  if (['audit', 'audit-plan', 'findings', 'checklist', 'admin'].includes(page)) {
+    try {
+      await ensureMasterDataLoaded(true);
+    } catch (_) {
+      return;
+    }
+  }
   if (page === 'findings' && !state.findings.length) loadFindings();
   if (page === 'audit-plan' && !state.auditPlans.length) loadAuditPlan();
   if (page === 'admin' && hasPermission('users.view')) loadUsers();

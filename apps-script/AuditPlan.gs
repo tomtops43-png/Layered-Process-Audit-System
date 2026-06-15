@@ -56,6 +56,7 @@ function generateAuditPlan(payload, currentUser) {
         created++;
       });
     });
+    invalidateDashboardCachesForUser_(currentUser);
     return jsonResponse(true, 'Audit plan generated.', {
       created: created, skippedDuplicates: skipped, month: month,
       lineScope: lineFilter, stationScope: stationFilter, includeWeekends: includeWeekends
@@ -68,23 +69,38 @@ function generateAuditPlan(payload, currentUser) {
 function getAuditPlan(payload, currentUser) {
   try {
     requirePermission_(currentUser, 'audit.plan.view');
-    var month = normalizePlanMonth_(payload.periodMonth);
+    var month = normalizePlanMonth_(payload.periodMonth) || formatDateBangkok_(new Date()).slice(0, 7);
     var now = new Date();
-    var audits = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
-    var rows = getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN).map(function (row) {
-      return effectiveAuditPlan_(row, audits, now);
+    var pageSize = Math.min(Math.max(toNumber_(payload.pageSize || payload.limit) || 100, 1), 500);
+    var page = Math.max(toNumber_(payload.page) || 1, 1);
+    var lineAccess = getUserLineAccess_(currentUser);
+    var canViewAll = isAdmin_(currentUser) || hasPermission_(currentUser, 'audit.view.all');
+    var audits = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS).filter(function (row) {
+      return normalizeFindingPeriod_(row.PeriodMonth || row.AuditDate) === month.replace('-', '');
+    });
+    var auditIndex = buildAuditPlanMatchIndex_(audits);
+    var rows = getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN).filter(function (row) {
+      return cleanString_(row.DueDate).slice(0, 7) === month;
+    }).map(function (row) {
+      return effectiveAuditPlan_(row, audits, now, auditIndex);
     }).filter(function (row) {
-      return (!month || cleanString_(row.DueDate).slice(0, 7) === month) &&
-        (isAllFilter_(payload.lineId) || valuesEqual_(row.LineID, payload.lineId)) &&
+      return (isAllFilter_(payload.lineId) || valuesEqual_(row.LineID, payload.lineId)) &&
         (isAllFilter_(payload.stationId) || valuesEqual_(row.StationID, payload.stationId)) &&
         (isAllFilter_(payload.requiredRole) || valuesEqual_(row.RequiredRole, payload.requiredRole)) &&
         (isAllFilter_(payload.status) || valuesEqual_(row.Status, payload.status));
     });
-    rows = rows.filter(function (row) { return canViewAuditPlan_(currentUser, row, payload.myPlanOnly); });
+    rows = rows.filter(function (row) {
+      return canViewAuditPlanFromRows_(currentUser, row, payload.myPlanOnly, lineAccess, canViewAll);
+    });
     rows.sort(function (a, b) {
       return (cleanString_(a.DueDate) + cleanString_(a.DueTime)).localeCompare(cleanString_(b.DueDate) + cleanString_(b.DueTime));
     });
-    return jsonResponse(true, 'Audit plan loaded.', { plans: rows.map(sanitizeForClient_), count: rows.length });
+    var total = rows.length;
+    var offset = (page - 1) * pageSize;
+    return jsonResponse(true, 'Audit plan loaded.', {
+      plans: rows.slice(offset, offset + pageSize).map(sanitizeForClient_),
+      count: Math.min(pageSize, Math.max(total - offset, 0)), total: total, page: page, pageSize: pageSize, month: month
+    });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
@@ -96,13 +112,14 @@ function refreshAuditPlanStatus(payload, currentUser) {
     var rows = getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN);
     var month = normalizePlanMonth_(payload.periodMonth);
     var audits = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
+    var auditIndex = buildAuditPlanMatchIndex_(audits);
     var now = new Date();
     var today = formatDateBangkok_(now);
     var updated = 0;
     rows.forEach(function (plan) {
       if (month && cleanString_(plan.DueDate).slice(0, 7) !== month) return;
       if (!canViewAuditPlan_(currentUser, plan, false)) return;
-      var audit = findMatchingAuditForPlan_(plan, audits);
+      var audit = findMatchingAuditForPlan_(plan, audits, auditIndex);
       var changes = audit ? completedPlanChanges_(plan, audit, now, currentUser.UserID) :
         pendingPlanChanges_(plan, today, now, currentUser.UserID);
       if (changes.Status !== cleanString_(plan.Status) ||
@@ -112,6 +129,7 @@ function refreshAuditPlanStatus(payload, currentUser) {
         updated++;
       }
     });
+    invalidateDashboardCachesForUser_(currentUser);
     return jsonResponse(true, 'Audit plan status refreshed.', { updated: updated, checked: rows.length });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
@@ -125,11 +143,22 @@ function getMyAuditPlanSummary(payload, currentUser) {
     var today = formatDateBangkok_(now);
     var weekKey = isoWeekKey_(now);
     var month = today.slice(0, 7);
-    var audits = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
-    var plans = getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN).map(function (row) {
-      return effectiveAuditPlan_(row, audits, now);
+    var lineAccess = getUserLineAccess_(currentUser);
+    var cache = CacheService.getScriptCache();
+    var cacheKey = auditPlanSummaryCacheKey_(currentUser, month.replace('-', ''), lineAccess);
+    var cached = cache.get(cacheKey);
+    if (cached) return jsonResponse(true, 'Audit plan summary loaded from cache.', JSON.parse(cached));
+    var canViewAll = isAdmin_(currentUser) || hasPermission_(currentUser, 'audit.view.all');
+    var audits = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS).filter(function (row) {
+      return normalizeFindingPeriod_(row.PeriodMonth || row.AuditDate) === month.replace('-', '');
+    });
+    var auditIndex = buildAuditPlanMatchIndex_(audits);
+    var plans = getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN).filter(function (row) {
+      return cleanString_(row.DueDate).slice(0, 7) === month;
+    }).map(function (row) {
+      return effectiveAuditPlan_(row, audits, now, auditIndex);
     }).filter(function (row) {
-      return canViewAuditPlan_(currentUser, row, true);
+      return canViewAuditPlanFromRows_(currentUser, row, true, lineAccess, canViewAll);
     });
     var summary = {
       DueToday: 0, Overdue: 0, ThisWeek: 0, ThisMonth: 0,
@@ -145,6 +174,7 @@ function getMyAuditPlanSummary(payload, currentUser) {
       if (status === 'Late Submitted') summary.LateSubmitted++;
       if (status === 'Missed') summary.Missed++;
     });
+    cache.put(cacheKey, JSON.stringify(summary), 60);
     return jsonResponse(true, 'Audit plan summary loaded.', summary);
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
@@ -202,16 +232,36 @@ function planDefinition_(type, key, dueDate, role) {
   return { PeriodType: type, PeriodKey: key, DueDate: dueDate, DueTime: '17:00', RequiredRole: role };
 }
 
-function findMatchingAuditForPlan_(plan, audits) {
+function findMatchingAuditForPlan_(plan, audits, auditIndex) {
+  var index = auditIndex || buildAuditPlanMatchIndex_(audits || []);
   if (plan.CompletedAuditID) {
-    var linked = audits.filter(function (row) { return valuesEqual_(row.AuditID, plan.CompletedAuditID); })[0];
+    var linked = index.byAuditId[cleanString_(plan.CompletedAuditID).toLowerCase()];
     if (linked) return linked;
   }
-  return audits.filter(function (audit) {
-    return valuesEqual_(audit.AuditLayer, plan.AuditLayer) && valuesEqual_(audit.LineID, plan.LineID) &&
-      valuesEqual_(audit.StationID, plan.StationID) &&
+  var explicit = index.byPlanId[cleanString_(plan.PlanID).toLowerCase()];
+  if (explicit) return explicit;
+  return (index.byScope[auditPlanScopeKey_(plan)] || []).filter(function (audit) {
+    return valuesEqual_(audit.AuditLayer, plan.AuditLayer) &&
       (valuesEqual_(audit.PlanID, plan.PlanID) || dateBelongsToPlan_(audit.AuditDate, plan));
   }).sort(function (a, b) { return cleanString_(a.SubmittedAt || a.CreatedAt).localeCompare(cleanString_(b.SubmittedAt || b.CreatedAt)); })[0] || null;
+}
+
+function buildAuditPlanMatchIndex_(audits) {
+  var index = { byAuditId: {}, byPlanId: {}, byScope: {} };
+  (audits || []).forEach(function (audit) {
+    var auditId = cleanString_(audit.AuditID).toLowerCase();
+    var planId = cleanString_(audit.PlanID).toLowerCase();
+    var scopeKey = auditPlanScopeKey_(audit);
+    if (auditId) index.byAuditId[auditId] = audit;
+    if (planId && !index.byPlanId[planId]) index.byPlanId[planId] = audit;
+    if (!index.byScope[scopeKey]) index.byScope[scopeKey] = [];
+    index.byScope[scopeKey].push(audit);
+  });
+  return index;
+}
+
+function auditPlanScopeKey_(row) {
+  return [row.AuditLayer, row.LineID, row.StationID].map(cleanString_).join('|').toLowerCase();
 }
 
 function completedPlanChanges_(plan, audit, now, userId) {
@@ -234,10 +284,10 @@ function pendingPlanChanges_(plan, today, now, userId) {
 }
 
 /** Returns current effective status without writing, so read APIs never expose stale plan state. */
-function effectiveAuditPlan_(plan, audits, now) {
+function effectiveAuditPlan_(plan, audits, now, auditIndex) {
   var effective = {};
   Object.keys(plan || {}).forEach(function (key) { effective[key] = plan[key]; });
-  var audit = findMatchingAuditForPlan_(plan, audits || []);
+  var audit = findMatchingAuditForPlan_(plan, audits || [], auditIndex);
   var changes = audit ? completedPlanChanges_(plan, audit, now, '') :
     pendingPlanChanges_(plan, formatDateBangkok_(now), now, '');
   ['Status', 'CompletedAuditID', 'CompletedAt', 'SubmittedAt', 'IsLate', 'LateReason'].forEach(function (field) {
@@ -263,6 +313,48 @@ function canViewAuditPlan_(user, row, myPlanOnly) {
     return row.RequiredUserID ? valuesEqual_(row.RequiredUserID, user.UserID) : valuesEqual_(row.RequiredRole, 'Leader');
   }
   return true;
+}
+
+function canViewAuditPlanFromRows_(user, row, myPlanOnly, lineAccess, canViewAll) {
+  if (isAdmin_(user) || canViewAll) return !myPlanOnly || !row.RequiredUserID || valuesEqual_(row.RequiredUserID, user.UserID);
+  if (!canAccessLineFromRows_(user, row.LineID, 'View', lineAccess)) return false;
+  if (myPlanOnly === true || isAllowed_(myPlanOnly)) {
+    return row.RequiredUserID ? valuesEqual_(row.RequiredUserID, user.UserID) : valuesEqual_(row.RequiredRole, user.Role);
+  }
+  if (cleanString_(user.Role).toLowerCase() === 'leader') {
+    return row.RequiredUserID ? valuesEqual_(row.RequiredUserID, user.UserID) : valuesEqual_(row.RequiredRole, 'Leader');
+  }
+  return true;
+}
+
+function canAccessLineFromRows_(user, lineId, requiredLevel, lineAccess) {
+  if (isAdmin_(user) || isAllFilter_(lineId)) return true;
+  var levelRank = { view: 1, audit: 2, update: 2, manage: 3, all: 3 };
+  var minimum = levelRank[cleanString_(requiredLevel).toLowerCase()] || 1;
+  return (lineAccess || []).some(function (row) {
+    return (valuesEqual_(row.LineID, lineId) || valuesEqual_(row.LineID, 'ALL')) &&
+      (levelRank[cleanString_(row.AccessLevel).toLowerCase()] || 0) >= minimum;
+  });
+}
+
+function lineAccessScopeKey_(lineAccess) {
+  return (lineAccess || []).map(function (row) {
+    return cleanString_(row.LineID) + ':' + cleanString_(row.AccessLevel);
+  }).sort().join(',').slice(0, 120) || 'NONE';
+}
+
+function auditPlanSummaryCacheKey_(user, period, lineAccess) {
+  return 'LPA_PLAN_SUM_' + cleanString_(user.UserID) + '_' + cleanString_(user.Role) + '_' + period + '_' +
+    lineAccessScopeKey_(lineAccess);
+}
+
+function invalidateDashboardCachesForUser_(user) {
+  if (!user) return;
+  var period = getPeriodMonth(new Date());
+  var lineAccess = getUserLineAccess_(user);
+  var cache = CacheService.getScriptCache();
+  cache.remove(dashboardCacheKey_(user, period, lineAccess, ''));
+  cache.remove(auditPlanSummaryCacheKey_(user, period, lineAccess));
 }
 
 function dateBelongsToPlan_(auditDate, plan) {

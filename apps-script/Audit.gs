@@ -137,6 +137,7 @@ function saveAudit(payload, currentUser) {
       }
     });
     completeAuditPlan_(matchingPlan, auditId, timestamp, isLate, lateReason, currentUser);
+    invalidateDashboardCachesForUser_(currentUser);
 
     return jsonResponse(true, 'Audit saved successfully.', {
       AuditID: auditId, FindingIDs: findingIds, PlanID: matchingPlan ? matchingPlan.PlanID : '',

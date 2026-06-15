@@ -61,6 +61,11 @@ label{display:flex;flex-direction:column;gap:7px;font-size:.88rem;font-weight:70
 .metric-label{color:var(--muted);font-size:.84rem;font-weight:700}
 .metric-value{display:block;margin-top:10px;font-size:1.85rem;font-weight:900;color:var(--navy)}
 .metric-note{display:block;margin-top:4px;color:var(--muted);font-size:.76rem}
+.skeleton-card span,.skeleton-card strong,.skeleton-card small{display:block;border-radius:6px;background:linear-gradient(90deg,#edf1f4 25%,#f7f9fa 50%,#edf1f4 75%);background-size:200% 100%;animation:skeleton-wave 1.2s infinite}
+.skeleton-card span{width:65%;height:12px}.skeleton-card strong{width:38%;height:30px;margin-top:14px}.skeleton-card small{width:78%;height:10px;margin-top:10px}
+@keyframes skeleton-wave{to{background-position:-200% 0}}
+.dashboard-section-loading{min-height:110px;display:flex;align-items:center;justify-content:center;gap:10px;color:var(--muted)}
+.inline-loader{width:22px;height:22px;border:3px solid #dbe5eb;border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite}
 .content-grid{display:grid;gap:18px}
 .two-columns{grid-template-columns:1.2fr 1fr}
 .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}

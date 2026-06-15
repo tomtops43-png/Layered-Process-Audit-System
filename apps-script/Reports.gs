@@ -19,8 +19,9 @@ function getMonthlyReport(payload, currentUser) {
     }).map(refreshOverdueForRead_);
     var reportNow = new Date();
     var allAuditSessions = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
+    var auditPlanIndex = buildAuditPlanMatchIndex_(allAuditSessions);
     var plans = getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN).map(function (row) {
-      return effectiveAuditPlan_(row, allAuditSessions, reportNow);
+      return effectiveAuditPlan_(row, allAuditSessions, reportNow, auditPlanIndex);
     }).filter(function (row) {
       return cleanString_(row.DueDate).slice(0, 7).replace('-', '') === period &&
         canViewAuditPlan_(currentUser, row, false);
