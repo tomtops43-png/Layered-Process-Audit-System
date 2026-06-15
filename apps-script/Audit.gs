@@ -2,17 +2,34 @@
 function saveAudit(payload, currentUser) {
   try {
     requireFields_(payload, ['auditDate', 'lineId', 'stationId', 'auditLayer', 'records']);
-    var auditPermission = cleanString_(payload.auditLayer).toLowerCase() === 'manager' ? 'audit.manager.create' :
-      (cleanString_(payload.auditLayer).toLowerCase() === 'engineer' ? 'audit.engineer.create' : 'audit.leader.create');
-    requirePermission_(currentUser, auditPermission);
+    var auditLayerPermissions = {
+      leader: 'audit.leader.create',
+      engineer: 'audit.engineer.create',
+      supervisor: 'audit.supervisor.create',
+      manager: 'audit.manager.create'
+    };
+    var auditPermission = auditLayerPermissions[cleanString_(payload.auditLayer).toLowerCase()];
+    if (!auditPermission || !hasPermission_(currentUser, auditPermission)) {
+      throw new Error('คุณไม่มีสิทธิ์สร้าง Audit Layer นี้');
+    }
     if (!isAdmin_(currentUser) && !hasPermission_(currentUser, 'audit.view.all') &&
-        (hasPermission_(currentUser, 'audit.engineer.create') || hasPermission_(currentUser, 'audit.leader.create'))) {
+        (hasPermission_(currentUser, 'audit.supervisor.create') ||
+         hasPermission_(currentUser, 'audit.engineer.create') ||
+         hasPermission_(currentUser, 'audit.leader.create'))) {
       requireLineAccess_(currentUser, payload.lineId, 'Update');
     }
     if (!Array.isArray(payload.records) || !payload.records.length) throw new Error('At least one audit record is required.');
     payload.records.forEach(function (record, index) {
       try { requireFields_(record, ['checklistId', 'result']); } catch (error) { throw new Error('Record ' + (index + 1) + ': ' + error.message); }
-      if (!normalizeAuditResult_(record.result)) throw new Error('Record ' + (index + 1) + ': result must be OK, NG, or N/A.');
+      var validatedResult = normalizeAuditResult_(record.result);
+      if (!validatedResult) throw new Error('Record ' + (index + 1) + ': result must be OK, NG, or N/A.');
+      if (validatedResult === 'NG') {
+        var selectedUserId = cleanString_(record.assignedToUserId || record.picUserId);
+        var selectedUser = selectedUserId ? findById_(SHEET_NAMES.USERS, 'UserID', selectedUserId) : null;
+        if (selectedUserId && (!selectedUser || !isActive_(selectedUser.ActiveStatus))) {
+          throw new Error('Record ' + (index + 1) + ': assigned user was not found or is inactive.');
+        }
+      }
     });
 
     var now = new Date();
@@ -51,6 +68,14 @@ function saveAudit(payload, currentUser) {
       var defaultDays = toNumber_(getSetting('DEFAULT_DUE_DAYS')) || 7;
       var dueDate = record.dueDate ? formatDateBangkok_(record.dueDate) : (result === 'NG' ? addDays_(parseDate_(auditDate) || now, defaultDays) : '');
       var findingDetail = cleanString_(record.findingDetail);
+      var assignedUserId = result === 'NG' ? cleanString_(record.assignedToUserId || record.picUserId) : '';
+      var assignedUser = assignedUserId ? findById_(SHEET_NAMES.USERS, 'UserID', assignedUserId) : null;
+      if (assignedUserId && (!assignedUser || !isActive_(assignedUser.ActiveStatus))) {
+        throw new Error('Assigned user was not found or is inactive: ' + assignedUserId);
+      }
+      var assignedName = assignedUser ? cleanString_(assignedUser.FullName) : '';
+      var assignedRole = assignedUser ? cleanString_(assignedUser.Role) : '';
+      var initialFindingStatus = assignedUserId ? 'Assigned' : 'Open';
       var auditRecord = {
         RecordID: recordId, AuditID: auditId, AuditDate: auditDate, PeriodMonth: periodMonth,
         LineID: payload.lineId, LineName: lineName, StationID: payload.stationId, StationName: stationName,
@@ -59,8 +84,8 @@ function saveAudit(payload, currentUser) {
         StandardCriteriaSnapshot: record.standardCriteria || checklist.StandardCriteria || '',
         ChecklistRevision: record.checklistRevision || checklist.Revision || '', Result: result,
         FindingDetail: findingDetail, CorrectiveAction: record.correctiveAction || '',
-        ResponsiblePerson: record.responsiblePerson || record.picName || '', DueDate: dueDate,
-        Status: record.status || (result === 'NG' ? 'Open' : 'Completed'),
+        ResponsiblePerson: result === 'NG' ? assignedName : cleanString_(record.responsiblePerson || record.picName),
+        DueDate: dueDate, Status: result === 'NG' ? initialFindingStatus : 'Completed',
         BeforePhotoURL: record.beforePhotoUrl || '', AfterPhotoURL: record.afterPhotoUrl || '',
         Remark: record.remark || '', FindingID: '', CreatedAt: timestamp, CreatedBy: currentUser.UserID,
         UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
@@ -69,14 +94,9 @@ function saveAudit(payload, currentUser) {
 
       if (result === 'NG') {
         var findingId = generateId('F', SHEET_NAMES.FINDINGS, 'FindingID', periodMonth);
-        var assignedUserId = cleanString_(record.assignedToUserId || record.picUserId);
-        var assignedUser = assignedUserId ? findById_(SHEET_NAMES.USERS, 'UserID', assignedUserId) : null;
-        var assignedName = cleanString_(record.assignedToName || record.picName || auditRecord.ResponsiblePerson) ||
-          (assignedUser ? cleanString_(assignedUser.FullName) : '');
         var severity = cleanString_(record.severity || record.priority || checklist.Severity) || 'Minor';
         var verificationRequired = cleanString_(record.verificationRequired) ||
           (severity.toLowerCase() === 'minor' && cleanString_(payload.auditLayer).toLowerCase() === 'leader' ? 'No' : 'Yes');
-        var initialStatus = cleanString_(record.findingStatus || record.status) || (assignedUserId || assignedName ? 'Assigned' : 'Open');
         appendObject(SHEET_NAMES.FINDINGS, {
           FindingID: findingId, AuditID: auditId, RecordID: recordId, FoundDate: auditDate,
           PeriodMonth: periodMonth, LineID: payload.lineId, LineName: lineName,
@@ -85,14 +105,15 @@ function saveAudit(payload, currentUser) {
           ProblemDetail: findingDetail || auditRecord.Remark || auditRecord.CheckItemSnapshot,
           StandardCriteria: auditRecord.StandardCriteriaSnapshot,
           CorrectiveAction: auditRecord.CorrectiveAction, RootCause: record.rootCause || '',
+          ActionRemark: cleanString_(record.actionRemark),
           PICUserID: assignedUserId, PICName: assignedName,
           AuditorUserID: currentUser.UserID, AuditorName: currentUser.FullName, AuditorRole: currentUser.Role,
           AssignedToUserID: assignedUserId, AssignedToName: assignedName,
-          AssignedToRole: assignedUser ? assignedUser.Role : cleanString_(record.assignedToRole),
+          AssignedToRole: assignedRole,
           VerifierUserID: '', VerifierName: '', VerifierRole: '', Severity: severity,
           VerificationRequired: verificationRequired, VerificationStatus: 'Not Submitted',
           SubmittedAt: '', SubmittedBy: '',
-          DueDate: dueDate, Status: initialStatus, Priority: record.priority || severity,
+          DueDate: dueDate, Status: initialFindingStatus, Priority: record.priority || severity,
           BeforePhotoURL: auditRecord.BeforePhotoURL, AfterPhotoURL: auditRecord.AfterPhotoURL,
           ClosedDate: '', ClosedAt: '', ClosedBy: '', CloseRemark: '',
           RejectedAt: '', RejectedBy: '', RejectReason: '', OverdueFlag: 'No', DaysOverdue: 0,

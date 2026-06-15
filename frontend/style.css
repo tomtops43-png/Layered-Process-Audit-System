@@ -130,14 +130,30 @@ label{display:flex;flex-direction:column;gap:7px;font-size:.88rem;font-weight:70
 .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
 .full-width{grid-column:1/-1}
 .form-error{margin-bottom:14px;padding:11px 13px;border:1px solid #e7a8a8;border-radius:8px;background:var(--red-bg);color:var(--red-dark);font-weight:700}
+.field-error{border-color:var(--red)!important;box-shadow:0 0 0 3px rgba(192,38,45,.14)!important}
+.rejection-history{padding:13px 15px;border:1px solid #e7a8a8;border-radius:10px;background:var(--red-bg);color:var(--red-dark)}
+.rejection-history p{margin:8px 0;white-space:pre-wrap}
+.rejection-history div{display:flex;flex-wrap:wrap;gap:10px 24px;font-size:.8rem}
 .admin-access{margin-top:22px;padding-top:18px;border-top:1px solid var(--border)}
 .admin-access h4{margin:18px 0 10px}
+.user-form-section{margin-top:18px}
+.user-form-section:first-of-type{margin-top:0}
+.user-form-section h4{margin:0 0 12px}
+.field-help,.section-help{color:var(--muted);font-size:.78rem;font-weight:500;line-height:1.45}
+.section-help{margin:0 0 12px}
+.advanced-permissions{margin-top:20px;padding:14px;border:1px solid var(--border);border-radius:10px;background:#f8fafb}
+.advanced-permissions summary{cursor:pointer;color:var(--blue-dark);font-weight:800}
+.advanced-permissions[open] summary{margin-bottom:10px}
 .permission-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.line-access-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 .permission-item{display:flex;align-items:center;gap:8px;min-height:42px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:#f8fafb;font-size:.82rem}
 .permission-item input{width:18px;min-height:18px}
 .line-access-item{justify-content:space-between}
 .line-access-item select{width:auto;min-height:34px}
 .loading-overlay{position:fixed;z-index:100;inset:0;display:grid;place-content:center;justify-items:center;gap:16px;background:rgba(7,29,47,.68);color:#fff}
+.is-busy{cursor:wait}
+.is-busy #loginView,.is-busy #appView{pointer-events:none;user-select:none}
+.is-busy .loading-overlay{pointer-events:all}
 .loader{width:48px;height:48px;border:5px solid rgba(255,255,255,.28);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}
 }

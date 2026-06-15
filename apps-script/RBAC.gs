@@ -54,11 +54,11 @@ function requirePermission_(user, permissionKey) {
 
 function canAccessLine_(user, lineId, requiredLevel) {
   if (isAdmin_(user) || isAllFilter_(lineId)) return true;
-  var levelRank = { View: 1, Update: 2, Manage: 3 };
-  var minimum = levelRank[cleanString_(requiredLevel)] || 1;
+  var levelRank = { view: 1, audit: 1, update: 2, manage: 3, all: 3 };
+  var minimum = levelRank[cleanString_(requiredLevel).toLowerCase()] || 1;
   return getUserLineAccess_(user).some(function (row) {
     return (valuesEqual_(row.LineID, lineId) || valuesEqual_(row.LineID, 'ALL')) &&
-      (levelRank[cleanString_(row.AccessLevel)] || 1) >= minimum;
+      (levelRank[cleanString_(row.AccessLevel).toLowerCase()] || 0) >= minimum;
   });
 }
 
@@ -87,17 +87,18 @@ function hasApiAccess_(user, action) {
     listRolePermissions: ['users.managePermission'], updateRolePermissions: ['users.managePermission'],
     listUserPermissions: ['users.managePermission'], updateUserPermissions: ['users.managePermission'],
     listUserLineAccess: ['users.managePermission'], updateUserLineAccess: ['users.managePermission'],
-    getChecklist: ['checklist.view', 'checklist.manage', 'audit.manager.create', 'audit.engineer.create', 'audit.leader.create'],
-    saveAudit: ['audit.manager.create', 'audit.engineer.create', 'audit.leader.create'],
+    getChecklist: ['checklist.view', 'checklist.manage', 'audit.manager.create', 'audit.supervisor.create', 'audit.engineer.create', 'audit.leader.create'],
+    saveAudit: ['audit.manager.create', 'audit.supervisor.create', 'audit.engineer.create', 'audit.leader.create'],
     getAuditList: ['audit.view.all', 'audit.view.line', 'audit.view.own'],
     getFindings: ['findings.view.all', 'findings.view.line', 'findings.view.assigned', 'findings.view.created', 'findings.verify'],
-    updateFinding: ['findings.update.assigned', 'findings.update.line', 'findings.assign'],
-    submitFinding: ['findings.update.assigned', 'findings.update.line'],
+    updateFinding: ['findings.update.assigned', 'findings.update.line', 'findings.assign', 'findings.view.all'],
+    submitFinding: ['findings.update.assigned', 'findings.update.line', 'findings.view.all'],
     verifyFinding: ['findings.verify'],
     closeFinding: ['findings.close.minor', 'findings.close.major', 'findings.close.critical'],
     getDashboard: ['dashboard.view', 'dashboard.view.all'],
     getMonthlyReport: ['reports.view'], exportReportCsv: ['reports.export'],
-    uploadFile: ['findings.update.assigned', 'findings.update.line', 'audit.manager.create', 'audit.engineer.create', 'audit.leader.create']
+    uploadFile: ['findings.update.assigned', 'findings.update.line', 'findings.verify', 'findings.view.all',
+      'audit.manager.create', 'audit.supervisor.create', 'audit.engineer.create', 'audit.leader.create']
   };
   if (['getCurrentUser', 'getMasterData'].indexOf(action) !== -1) return true;
   if (!actionPermissions[action]) return false;

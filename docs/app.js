@@ -16,7 +16,7 @@ const state = {
 
 const PERMISSION_CATALOG = [
   'users.view', 'users.create', 'users.update', 'users.deactivate', 'users.resetPassword', 'users.managePermission',
-  'audit.manager.create', 'audit.engineer.create', 'audit.leader.create', 'audit.view.all', 'audit.view.line', 'audit.view.own',
+  'audit.manager.create', 'audit.supervisor.create', 'audit.engineer.create', 'audit.leader.create', 'audit.view.all', 'audit.view.line', 'audit.view.own',
   'findings.view.all', 'findings.view.line', 'findings.view.assigned', 'findings.view.created', 'findings.assign',
   'findings.update.line', 'findings.update.assigned', 'findings.verify', 'findings.close.minor',
   'findings.close.major', 'findings.close.critical', 'dashboard.view', 'dashboard.view.all',
@@ -25,6 +25,9 @@ const PERMISSION_CATALOG = [
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+let busyDepth = 0;
+const busyMessages = [];
+const busyDisabledState = new Map();
 
 window.addEventListener('DOMContentLoaded', initApp);
 
@@ -61,12 +64,15 @@ function bindEvents() {
   $('#printReportButton').addEventListener('click', () => window.print());
   $('#exportCsvButton').addEventListener('click', exportReportCsv);
   $('#loadMasterChecklistButton').addEventListener('click', loadMasterChecklist);
-  $('#findingForm').addEventListener('submit', event => { event.preventDefault(); updateFinding(); });
+  $('#findingForm').addEventListener('submit', event => event.preventDefault());
   $('#closeFindingDialog').addEventListener('click', () => $('#findingDialog').close());
   $('#cancelFindingEdit').addEventListener('click', () => $('#findingDialog').close());
   $('#submitVerificationButton').addEventListener('click', submitFindingForVerification);
   $('#approveFindingButton').addEventListener('click', () => verifyFinding('Approve'));
   $('#rejectFindingButton').addEventListener('click', () => verifyFinding('Reject'));
+  ['#editCloseRemark', '#editRejectReason'].forEach(selector => {
+    $(selector).addEventListener('input', event => event.target.classList.remove('field-error'));
+  });
   $('#addUserButton').addEventListener('click', () => openUserEditor());
   $('#searchUsersButton').addEventListener('click', loadUsers);
   $('#adminUsersTable').addEventListener('click', event => {
@@ -111,7 +117,7 @@ async function login() {
   const button = $('#loginButton');
   button.disabled = true;
   button.textContent = 'กำลังเข้าสู่ระบบ...';
-  showLoading('กำลังตรวจสอบผู้ใช้...');
+  showLoading('กำลังเข้าสู่ระบบ...');
   try {
     const data = await apiCall('login', { username, password });
     state.token = data.token;
@@ -146,19 +152,21 @@ function logout(notify = true) {
 }
 
 async function initializeAuthenticatedApp() {
+  showLoading('กำลังเตรียมข้อมูล...');
   try {
     const current = await apiCall('getCurrentUser', {});
     state.user = current;
     localStorage.setItem('lpa_user', JSON.stringify(state.user));
   } catch (error) {
     showToast(error.message, 'error');
+    hideLoading();
     return;
   }
   $('#currentUserName').textContent = state.user.FullName || state.user.Username || '-';
   $('#currentUserRole').textContent = state.user.Role || '-';
   applyPermissionVisibility();
+  applyAuditLayerPermissions();
   navigateTo('dashboard');
-  showLoading('กำลังเตรียมข้อมูล...');
   try {
     await loadMasterData(false);
     await loadDashboard(false);
@@ -255,16 +263,15 @@ function renderAuditChecklist() {
     return;
   }
   const userOptions = activeUserOptions();
-  const assignmentFields = hasPermission('findings.assign')
-    ? `<label>Assign To *<select data-field="assignedToUserId"><option value="">เลือกผู้รับผิดชอบ</option>${userOptions}</select></label><label>Responsible Person<input data-field="responsiblePerson" readonly></label>`
-    : `<input data-field="assignedToUserId" type="hidden"><label>Responsible Person *<input data-field="responsiblePerson"></label>`;
-  container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>Standard Criteria</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>Example OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>Example NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="N/A">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid"><label>Finding Detail *<textarea data-field="findingDetail" rows="2"></textarea></label><label>Corrective Action *<textarea data-field="correctiveAction" rows="2"></textarea></label>${assignmentFields}<label>Due Date *<input data-field="dueDate" type="date"></label><label>Status<select data-field="findingStatus"><option>Assigned</option><option>Open</option><option>In Progress</option></select></label><label>Before Photo *<input data-field="beforePhoto" type="file" accept="image/*" capture="environment"></label><label>Remark<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
+  const assignmentFields = `<label>Assign To<select data-field="assignedToUserId"><option value="">ไม่ระบุผู้รับผิดชอบ</option>${userOptions}</select></label><label>Responsible Person<input data-field="responsiblePerson" readonly></label><input data-field="findingStatus" type="hidden" value="Open">`;
+  container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>Standard Criteria</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>Example OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>Example NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="N/A">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid"><label>Finding Detail *<textarea data-field="findingDetail" rows="2"></textarea></label><label>Corrective Action *<textarea data-field="correctiveAction" rows="2"></textarea></label>${assignmentFields}<label>Due Date *<input data-field="dueDate" type="date"></label><label>Before Photo *<input data-field="beforePhoto" type="file" accept="image/*" capture="environment"></label><label>Remark<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
   $$('.checklist-card', container).forEach(card => {
     $$('.result-button', card).forEach(button => button.addEventListener('click', () => selectAuditResult(card, button.dataset.result)));
     const assigneeSelect = $('select[data-field="assignedToUserId"]', card);
     if (assigneeSelect) assigneeSelect.addEventListener('change', event => {
         const user = (state.masterData.users || []).find(item => String(item.UserID) === event.target.value);
         $('[data-field="responsiblePerson"]', card).value = user ? user.FullName : '';
+        $('[data-field="findingStatus"]', card).value = user ? 'Assigned' : 'Open';
       });
   });
   updateAuditProgress();
@@ -303,16 +310,16 @@ async function saveAudit() {
       record.assignedToRole = assignedUser ? assignedUser.Role : '';
       record.severity = item.Severity || 'Minor';
       record.dueDate = fieldValue(card, 'dueDate');
-      record.status = fieldValue(card, 'findingStatus') || 'Open';
+      record.status = assignedUser ? 'Assigned' : 'Open';
       record.findingStatus = record.status;
       const photo = fieldFile(card, 'beforePhoto');
-      if (!record.findingDetail || !record.correctiveAction || !record.responsiblePerson || !record.dueDate || !photo) return showToast(`กรุณากรอก Finding และ Before Photo ของ ${item.ChecklistID} ให้ครบ`, 'warning');
+      if (!record.findingDetail || !record.correctiveAction || !record.dueDate || !photo) return showToast(`กรุณากรอก Finding และ Before Photo ของ ${item.ChecklistID} ให้ครบ`, 'warning');
       record._photo = photo;
     }
     records.push(record);
   }
   if (!window.confirm(`ยืนยันบันทึก Audit จำนวน ${records.length} ข้อ?`)) return;
-  showLoading('กำลังอัปโหลดรูปและบันทึก Audit...');
+  showLoading('กำลังบันทึก Audit และอัปโหลดรูป...');
   try {
     for (const record of records) {
       if (record._photo) {
@@ -344,7 +351,9 @@ async function saveAudit() {
 
 async function uploadFile(file, relatedType, relatedId, fileType, manageLoading = true) {
   if (!file) throw new Error('ไม่พบไฟล์สำหรับอัปโหลด');
-  if (manageLoading) showLoading('กำลังอัปโหลดไฟล์...');
+  const uploadMessage = fileType === 'BeforePhoto' ? 'กำลังอัปโหลด Before Photo...' :
+    (fileType === 'AfterPhoto' ? 'กำลังอัปโหลด After Photo...' : 'กำลังอัปโหลดไฟล์...');
+  if (manageLoading) showLoading(uploadMessage);
   try {
     const base64Data = await fileToBase64(file);
     return await apiCall('uploadFile', { relatedType, relatedId, fileType, fileName: file.name, mimeType: file.type || 'application/octet-stream', base64Data });
@@ -390,82 +399,105 @@ function openFindingEditor(findingId) {
   $('#editFindingId').value = row.FindingID;
   $('#editRootCause').value = row.RootCause || '';
   $('#editCorrectiveAction').value = row.CorrectiveAction || '';
-  populateFindingAssignee(row.AssignedToUserID || row.PICUserID || '');
-  $('#editAssignedTo').disabled = !hasPermission('findings.assign');
-  $('#editDueDate').value = dateInputValue(row.DueDate);
-  $('#editStatus').value = normalizeEditableStatus(row.Status);
-  $('#editCloseRemark').value = row.CloseRemark || '';
+  $('#editStatus').value = row.Status || 'Open';
+  $('#editStatus').closest('label').classList.toggle('hidden', ['Leader', 'User'].includes(state.user.Role));
+  $('#editActionRemark').value = row.ActionRemark || '';
+  $('#editCloseRemark').value = '';
+  $('#editRejectReason').value = '';
+  $('#editCloseRemark').classList.remove('field-error');
+  $('#editRejectReason').classList.remove('field-error');
   $('#editAfterPhoto').value = '';
   $('#editPhotoPreview').innerHTML = row.AfterPhotoURL ? `<a href="${escapeAttr(row.AfterPhotoURL)}" target="_blank" rel="noopener">ดู After Photo ปัจจุบัน</a>` : '';
-  const pending = String(row.Status).toLowerCase() === 'pending verification';
+  const status = String(row.Status || '').toLowerCase();
+  const pending = status === 'pending verification';
   const canVerify = pending && hasPermission('findings.verify');
-  const assignedToMe = String(row.AssignedToUserID || row.PICUserID || '') === String(state.user.UserID || '') ||
-    String(row.AssignedToName || row.PICName || '') === String(state.user.FullName || '');
+  const assignedUserId = String(row.AssignedToUserID || row.PICUserID || '');
+  const assignedToMe = assignedUserId
+    ? assignedUserId === String(state.user.UserID || '')
+    : String(row.AssignedToName || row.PICName || '') === String(state.user.FullName || '');
+  const isLeaderOrUser = ['Leader', 'User'].includes(state.user.Role);
+  const isAssignedFollowUpUser = isLeaderOrUser && assignedToMe;
+  const canUpdate = status !== 'closed' && (hasPermission('findings.view.all') || hasPermission('findings.update.line') ||
+    (assignedToMe && hasPermission('findings.update.assigned')));
+  const canEditFollowUp = canUpdate && !pending;
+  const canSubmit = canEditFollowUp && status !== 'closed';
   const severity = String(row.Severity || row.Priority || 'Minor').toLowerCase();
   const closePermission = severity === 'critical' ? 'findings.close.critical' : severity === 'major' ? 'findings.close.major' : 'findings.close.minor';
-  $('#approveFindingButton').classList.toggle('hidden', !canVerify || !hasPermission(closePermission));
-  $('#rejectFindingButton').classList.toggle('hidden', !canVerify);
-  $('#submitVerificationButton').classList.toggle('hidden', (!assignedToMe && !['Admin', 'Manager'].includes(state.user.Role)) || pending || String(row.Status).toLowerCase() === 'closed');
-  const closedOption = Array.from($('#editStatus').options).find(option => option.value === 'Closed');
-  if (closedOption) closedOption.disabled = !hasPermission(closePermission);
+  const rejected = status === 'rejected' && Boolean(row.RejectReason);
+  const rejectedByUser = (state.masterData.users || []).find(user => String(user.UserID) === String(row.RejectedBy || ''));
+  $('#rejectionHistory').classList.toggle('hidden', !rejected);
+  $('#rejectionReasonDisplay').textContent = row.RejectReason || '-';
+  $('#rejectedByDisplay').textContent = rejectedByUser ? (rejectedByUser.FullName || rejectedByUser.Username) : (row.RejectedBy || '-');
+  $('#rejectedAtDisplay').textContent = row.RejectedAt || '-';
+  $('#assignedFindingHelp').classList.toggle('hidden', !isAssignedFollowUpUser || !canSubmit);
+  $('#verifierFindingHelp').classList.toggle('hidden', !canVerify || isLeaderOrUser);
+  $('#editCloseRemarkField').classList.toggle('hidden', !canVerify || isLeaderOrUser);
+  $('#editRejectReasonField').classList.toggle('hidden', !canVerify || isLeaderOrUser);
+  $('#approveFindingButton').classList.toggle('hidden', isLeaderOrUser || !canVerify || !hasPermission(closePermission));
+  $('#rejectFindingButton').classList.toggle('hidden', isLeaderOrUser || !canVerify);
+  $('#submitVerificationButton').classList.toggle('hidden', !canSubmit);
+  $('#editRootCause').disabled = !canEditFollowUp;
+  $('#editCorrectiveAction').disabled = !canEditFollowUp;
+  $('#editActionRemark').disabled = !canEditFollowUp;
+  $('#editCloseRemark').disabled = !canVerify;
+  $('#editRejectReason').disabled = !canVerify;
+  $('#editAfterPhotoField').classList.toggle('hidden', !canEditFollowUp);
+  $('#editAfterPhoto').disabled = !canEditFollowUp;
   $('#findingDialog').showModal();
-}
-
-async function updateFinding() {
-  const findingId = $('#editFindingId').value;
-  const targetStatus = $('#editStatus').value;
-  const closeRemark = $('#editCloseRemark').value.trim();
-  const file = $('#editAfterPhoto').files[0];
-  const existingPhoto = state.editingFinding ? state.editingFinding.AfterPhotoURL : '';
-  if (targetStatus === 'Closed' && !file && !existingPhoto && !closeRemark) return showToast('การปิด Finding ต้องมี After Photo หรือ Close Remark', 'warning');
-  if (!window.confirm(targetStatus === 'Closed' ? `ยืนยันปิด Finding ${findingId}?` : `ยืนยันบันทึก Finding ${findingId}?`)) return;
-  showLoading(targetStatus === 'Closed' ? 'กำลังปิด Finding...' : 'กำลังบันทึก Finding...');
-  try {
-    let afterPhotoUrl = existingPhoto || '';
-    if (file) {
-      const upload = await uploadFile(file, 'Finding', findingId, 'AfterPhoto', false);
-      afterPhotoUrl = upload.DriveFileURL;
-    }
-    const common = {
-      findingId, rootCause: $('#editRootCause').value.trim(), correctiveAction: $('#editCorrectiveAction').value.trim(),
-      dueDate: $('#editDueDate').value, afterPhotoUrl, closeRemark, remark: 'Updated from web application'
-    };
-    if (hasPermission('findings.assign')) common.assignedToUserId = $('#editAssignedTo').value;
-    if (targetStatus === 'Closed') await closeFinding({ ...common });
-    else await apiCall('updateFinding', { ...common, status: targetStatus });
-    $('#findingDialog').close();
-    showToast(targetStatus === 'Closed' ? 'ปิด Finding สำเร็จ' : 'อัปเดต Finding สำเร็จ', 'success');
-    await loadFindings();
-    loadDashboard(false);
-  } catch (error) {
-    showToast(error.message, 'error');
-  } finally {
-    hideLoading();
-  }
 }
 
 async function submitFindingForVerification() {
   const findingId = $('#editFindingId').value;
+  const rootCause = $('#editRootCause').value.trim();
+  const correctiveAction = $('#editCorrectiveAction').value.trim();
+  const existingPhoto = state.editingFinding ? state.editingFinding.AfterPhotoURL : '';
+  const file = $('#editAfterPhoto').files[0];
+  if (!rootCause || !correctiveAction || (!file && !existingPhoto)) {
+    return showToast('กรุณากรอก Root Cause, Corrective Action และแนบ After Photo ให้ครบก่อนส่งตรวจยืนยัน', 'warning');
+  }
   if (!window.confirm(`ส่ง Finding ${findingId} เพื่อตรวจสอบ?`)) return;
   await runFindingWorkflow('submitFinding', {
-    findingId,
-    rootCause: $('#editRootCause').value.trim(),
-    correctiveAction: $('#editCorrectiveAction').value.trim()
-  }, 'ส่ง Finding เพื่อตรวจสอบแล้ว');
+    findingId, rootCause, correctiveAction,
+    actionRemark: $('#editActionRemark').value.trim(),
+    remark: $('#editActionRemark').value.trim() || 'Submitted for verification'
+  }, {
+    loadingMessage: 'กำลังส่ง Finding ให้ตรวจยืนยัน...',
+    successMessage: 'ส่ง Finding เพื่อตรวจสอบแล้ว'
+  });
 }
 
 async function verifyFinding(decision) {
   const findingId = $('#editFindingId').value;
-  const rejectReason = decision === 'Reject' ? window.prompt('กรุณาระบุเหตุผลที่ Reject') : '';
-  if (decision === 'Reject' && !rejectReason) return;
-  if (!window.confirm(`${decision} Finding ${findingId}?`)) return;
+  const remarkField = decision === 'Reject' ? $('#editRejectReason') : $('#editCloseRemark');
+  const verifierRemark = remarkField.value.trim();
+  if (!verifierRemark) {
+    remarkField.classList.add('field-error');
+    remarkField.focus();
+    const warning = decision === 'Reject'
+      ? 'กรุณาระบุเหตุผลการ Reject ก่อนส่งกลับให้ผู้รับผิดชอบแก้ไข'
+      : 'กรุณาระบุ Close Remark ก่อนปิด Finding';
+    return showToast(warning, 'warning');
+  }
+  remarkField.classList.remove('field-error');
+  const confirmation = decision === 'Reject'
+    ? 'ยืนยัน Reject Finding นี้และส่งกลับให้ผู้รับผิดชอบแก้ไข?'
+    : 'ยืนยันปิด Finding นี้?';
+  if (!window.confirm(confirmation)) return;
   await runFindingWorkflow('verifyFinding', {
-    findingId, decision, rejectReason, closeRemark: $('#editCloseRemark').value.trim()
-  }, decision === 'Approve' ? 'อนุมัติและปิด Finding แล้ว' : 'Reject Finding แล้ว');
+    findingId, decision,
+    rejectReason: decision === 'Reject' ? verifierRemark : '',
+    closeRemark: decision === 'Approve' ? verifierRemark : ''
+  }, {
+    loadingMessage: decision === 'Approve' ? 'กำลังปิด Finding...' : 'กำลัง Reject Finding...',
+    successMessage: decision === 'Approve' ? 'Close Finding สำเร็จ' : 'Reject Finding สำเร็จ ส่งกลับให้ผู้รับผิดชอบแก้ไขแล้ว'
+  });
 }
 
-async function runFindingWorkflow(action, payload, successMessage) {
-  showLoading('กำลังบันทึก Finding...');
+async function runFindingWorkflow(action, payload, options) {
+  const settings = typeof options === 'string'
+    ? { successMessage: options, loadingMessage: 'กำลังบันทึก Finding...' }
+    : options;
+  showLoading(settings.loadingMessage);
   try {
     const file = $('#editAfterPhoto').files[0];
     if (file) {
@@ -476,9 +508,9 @@ async function runFindingWorkflow(action, payload, successMessage) {
     }
     await apiCall(action, payload);
     $('#findingDialog').close();
-    showToast(successMessage, 'success');
     await loadFindings();
-    loadDashboard(false);
+    await loadDashboard(false);
+    showToast(settings.successMessage, 'success');
   } catch (error) {
     showToast(error.message, 'error');
   } finally {
@@ -493,7 +525,7 @@ async function closeFinding(payload) {
 async function loadMonthlyReport() {
   const periodMonth = monthToPeriod($('#reportMonth').value);
   if (!periodMonth) return showToast('กรุณาเลือกเดือน', 'warning');
-  showLoading('กำลังจัดทำรายงาน...');
+  showLoading('กำลังโหลด Monthly Report...');
   try {
     state.report = await apiCall('getMonthlyReport', { periodMonth });
     renderMonthlyReport(state.report);
@@ -559,7 +591,7 @@ async function loadUsers() {
     return;
   }
   container.innerHTML = emptyHtml('กำลังโหลดผู้ใช้...');
-  showLoading('กำลังโหลดผู้ใช้...');
+  showLoading('กำลังโหลดข้อมูลผู้ใช้...');
   try {
     const data = await apiCall('listUsers', {
       search: $('#adminUserSearch').value.trim(),
@@ -610,11 +642,14 @@ async function openUserEditor(userId = '') {
   $('#adminPassword').value = '';
   $('#adminPassword').required = !user;
   $('#adminPasswordLabel').classList.toggle('hidden', Boolean(user));
-  $('#adminAccessEditor').classList.toggle('hidden', !user || !hasPermission('users.managePermission'));
+  const canManageAccess = hasPermission('users.managePermission');
+  $('#adminAccessEditor').classList.toggle('hidden', !canManageAccess);
+  $('#adminAdvancedPermissions').open = false;
   $('#resetPasswordButton').classList.toggle('hidden', !user || !hasPermission('users.resetPassword'));
   $('#deactivateUserButton').classList.toggle('hidden', !user || !hasPermission('users.deactivate') || user.UserID === state.user.UserID);
+  if (canManageAccess) renderUserAccessEditors([], []);
   $('#userDialog').showModal();
-  if (user && hasPermission('users.managePermission')) {
+  if (user && canManageAccess) {
     try {
       await loadUserAccessEditors(user.UserID);
     } catch (error) {
@@ -627,28 +662,36 @@ async function openUserEditor(userId = '') {
 }
 
 async function loadUserAccessEditors(userId) {
-  showLoading('กำลังโหลดสิทธิ์ผู้ใช้...');
+  showLoading('กำลังโหลดข้อมูลผู้ใช้...');
   try {
     const [permissionData, lineData] = await Promise.all([
       apiCall('listUserPermissions', { userId }),
       apiCall('listUserLineAccess', { userId })
     ]);
-    const permissionMap = {};
-    (permissionData.userPermissions || []).forEach(row => { permissionMap[row.PermissionKey] = row.Allowed || 'Inherit'; });
-    $('#adminPermissionList').innerHTML = PERMISSION_CATALOG.map(key => {
-      const value = permissionMap[key] || 'Inherit';
-      return `<label class="permission-item">${escapeHtml(key)}<select data-user-permission="${escapeAttr(key)}"><option ${value === 'Inherit' ? 'selected' : ''}>Inherit</option><option value="Yes" ${value === 'Yes' ? 'selected' : ''}>Allow</option><option value="No" ${value === 'No' ? 'selected' : ''}>Deny</option></select></label>`;
-    }).join('');
-    const lineMap = {};
-    (lineData.lineAccess || []).forEach(row => { lineMap[row.LineID] = row; });
-    const lines = [{ LineID: 'ALL', LineName: 'ALL' }, ...(state.masterData.lines || [])];
-    $('#adminLineAccessList').innerHTML = lines.map(line => {
-      const access = lineMap[line.LineID];
-      return `<div class="permission-item line-access-item"><label><input type="checkbox" data-line-access="${escapeAttr(line.LineID)}" ${access && String(access.ActiveStatus).toLowerCase() === 'active' ? 'checked' : ''}> ${escapeHtml(line.LineName || line.LineID)}</label><select data-line-level="${escapeAttr(line.LineID)}"><option>View</option><option ${access && access.AccessLevel === 'Update' ? 'selected' : ''}>Update</option><option ${access && access.AccessLevel === 'Manage' ? 'selected' : ''}>Manage</option></select></div>`;
-    }).join('');
+    renderUserAccessEditors(permissionData.userPermissions || [], lineData.lineAccess || []);
   } finally {
     hideLoading();
   }
+}
+
+function renderUserAccessEditors(permissionRows, lineAccessRows) {
+  const permissionMap = {};
+  permissionRows.forEach(row => { permissionMap[row.PermissionKey] = row.Allowed || 'Inherit'; });
+  $('#adminPermissionList').innerHTML = PERMISSION_CATALOG.map(key => {
+    const value = permissionMap[key] || 'Inherit';
+    return `<label class="permission-item">${escapeHtml(key)}<select data-user-permission="${escapeAttr(key)}"><option ${value === 'Inherit' ? 'selected' : ''}>Inherit</option><option value="Yes" ${value === 'Yes' ? 'selected' : ''}>Allow</option><option value="No" ${value === 'No' ? 'selected' : ''}>Deny</option></select></label>`;
+  }).join('');
+
+  const lineMap = {};
+  lineAccessRows.forEach(row => { lineMap[row.LineID] = row; });
+  const lines = [{ LineID: 'ALL', LineName: 'ALL' }, ...(state.masterData.lines || [])];
+  $('#adminLineAccessList').innerHTML = lines.map(line => {
+    const access = lineMap[line.LineID];
+    const currentLevel = String(access && access.AccessLevel || 'View');
+    const viewSelected = currentLevel === 'View' || !access;
+    const manageValue = ['Update', 'Audit', 'Manage', 'All'].includes(currentLevel) ? currentLevel : 'Manage';
+    return `<div class="permission-item line-access-item"><label><input type="checkbox" data-line-access="${escapeAttr(line.LineID)}" ${access && String(access.ActiveStatus).toLowerCase() === 'active' ? 'checked' : ''}> ${escapeHtml(line.LineName || line.LineID)}</label><select data-line-level="${escapeAttr(line.LineID)}"><option value="View" ${viewSelected ? 'selected' : ''}>View</option><option value="${escapeAttr(manageValue)}" ${!viewSelected ? 'selected' : ''}>Manage</option></select></div>`;
+  }).join('');
 }
 
 async function saveUser() {
@@ -663,11 +706,11 @@ async function saveUser() {
   if (!userId) payload.password = $('#adminPassword').value;
   $('#userFormError').textContent = '';
   $('#userFormError').classList.add('hidden');
-  showLoading('กำลังบันทึกผู้ใช้...');
+  showLoading('กำลังบันทึกข้อมูลผู้ใช้...');
   try {
     const result = await apiCall(userId ? 'updateUser' : 'createUser', userId ? { ...payload, userId } : payload);
     const savedUserId = userId || result.user.UserID;
-    if (userId && hasPermission('users.managePermission')) await saveUserAccess(savedUserId);
+    if (hasPermission('users.managePermission')) await saveUserAccess(savedUserId);
     $('#userDialog').close();
     showToast('บันทึกผู้ใช้สำเร็จ', 'success');
     await loadUsers();
@@ -682,35 +725,50 @@ async function saveUser() {
 }
 
 async function saveUserAccess(userId) {
+  showLoading('กำลังอัปเดตสิทธิ์ผู้ใช้...');
   const permissions = $$('[data-user-permission]').map(input => ({ permissionKey: input.dataset.userPermission, allowed: input.value, reason: 'Updated from Admin Panel' }));
   const lineAccess = $$('[data-line-access]').map(input => ({
     lineId: input.dataset.lineAccess,
     accessLevel: $(`[data-line-level="${cssEscape(input.dataset.lineAccess)}"]`).value,
     activeStatus: input.checked ? 'Active' : 'Inactive'
   }));
-  await apiCall('updateUserPermissions', { userId, permissions });
-  await apiCall('updateUserLineAccess', { userId, lineAccess });
+  try {
+    await apiCall('updateUserPermissions', { userId, permissions });
+    await apiCall('updateUserLineAccess', { userId, lineAccess });
+  } finally {
+    hideLoading();
+  }
 }
 
 async function deactivateSelectedUser() {
   const userId = $('#adminEditUserId').value;
   if (!userId || !window.confirm('ยืนยันปิดใช้งานผู้ใช้นี้?')) return;
+  showLoading('กำลังบันทึกข้อมูลผู้ใช้...');
   try {
     await apiCall('deactivateUser', { userId });
     $('#userDialog').close();
     showToast('ปิดใช้งานผู้ใช้แล้ว', 'success');
     await loadUsers();
-  } catch (error) { showToast(error.message, 'error'); }
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    hideLoading();
+  }
 }
 
 async function resetSelectedUserPassword() {
   const userId = $('#adminEditUserId').value;
   const password = window.prompt('รหัสผ่านใหม่อย่างน้อย 8 ตัวอักษร');
   if (!userId || !password) return;
+  showLoading('กำลังบันทึกข้อมูลผู้ใช้...');
   try {
     await apiCall('resetUserPassword', { userId, password });
     showToast('Reset password สำเร็จ', 'success');
-  } catch (error) { showToast(error.message, 'error'); }
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    hideLoading();
+  }
 }
 
 function renderMasterChecklist(rows) {
@@ -783,8 +841,47 @@ function showLogin() { $('#loginView').classList.remove('hidden'); $('#appView')
 function showApplication() { $('#loginView').classList.add('hidden'); $('#appView').classList.remove('hidden'); }
 function openSidebar() { $('#sidebar').classList.add('open'); $('#sidebarBackdrop').classList.remove('hidden'); }
 function closeSidebar() { $('#sidebar').classList.remove('open'); $('#sidebarBackdrop').classList.add('hidden'); }
-function showLoading(message = 'กำลังโหลด...') { $('#loadingText').textContent = message; $('#loadingOverlay').classList.remove('hidden'); }
-function hideLoading() { $('#loadingOverlay').classList.add('hidden'); }
+function showLoading(message = 'กำลังโหลด...') {
+  busyDepth++;
+  busyMessages.push(message);
+  $('#loadingText').textContent = message;
+  $('#loadingOverlay').classList.remove('hidden');
+  document.body.classList.add('is-busy');
+  document.body.setAttribute('aria-busy', 'true');
+  if (busyDepth === 1) {
+    $$('button, input, select, textarea').forEach(element => {
+      busyDisabledState.set(element, element.disabled);
+      element.disabled = true;
+    });
+  }
+}
+
+function hideLoading() {
+  if (busyDepth > 0) busyDepth--;
+  busyMessages.pop();
+  if (busyDepth > 0) {
+    $('#loadingText').textContent = busyMessages[busyMessages.length - 1] || 'กำลังโหลด...';
+    return;
+  }
+  busyDepth = 0;
+  busyMessages.length = 0;
+  $('#loadingOverlay').classList.add('hidden');
+  document.body.classList.remove('is-busy');
+  document.body.removeAttribute('aria-busy');
+  busyDisabledState.forEach((wasDisabled, element) => {
+    if (element.isConnected) element.disabled = wasDisabled;
+  });
+  busyDisabledState.clear();
+}
+
+async function withBusy(message, asyncFunction) {
+  showLoading(message);
+  try {
+    return await asyncFunction();
+  } finally {
+    hideLoading();
+  }
+}
 
 function showToast(message, type = 'info', duration = 4500) {
   const toast = document.createElement('div');
@@ -841,6 +938,27 @@ function applyPermissionVisibility() {
   $('#adminNavButton').classList.toggle('hidden', !canViewAdmin);
   $('#addUserButton').classList.toggle('hidden', !hasPermission('users.create'));
   $('#exportCsvButton').classList.toggle('hidden', !hasPermission('reports.export'));
+}
+
+function applyAuditLayerPermissions() {
+  const layerPermissions = [
+    ['Leader', 'audit.leader.create'],
+    ['Engineer', 'audit.engineer.create'],
+    ['Supervisor', 'audit.supervisor.create'],
+    ['Manager', 'audit.manager.create']
+  ];
+  const allowedLayers = layerPermissions
+    .filter(([, permission]) => hasPermission(permission))
+    .map(([layer]) => layer);
+  const select = $('#auditLayer');
+  const loadButton = $('#loadChecklistButton');
+  select.innerHTML = allowedLayers.length
+    ? allowedLayers.map(layer => `<option value="${layer}">${layer}</option>`).join('')
+    : '<option value="">ไม่มีสิทธิ์สร้าง Audit</option>';
+  select.disabled = allowedLayers.length <= 1;
+  loadButton.disabled = allowedLayers.length === 0;
+  if (allowedLayers.length === 1) select.value = allowedLayers[0];
+  if (!allowedLayers.length) showToast('คุณไม่มีสิทธิ์สร้างรายการตรวจ LPA', 'warning');
 }
 
 function setDefaultDates() {
