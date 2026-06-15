@@ -9,6 +9,7 @@ function getDashboard(payload, currentUser) {
     var audits = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
     var findings = getRowsAsObjects(SHEET_NAMES.FINDINGS).map(refreshOverdueForRead_);
     var allFindings = findings.slice();
+    var planSummary = summarizeAuditPlansForDashboard_(currentUser, now);
     if (payload.lineId) {
       if (!hasPermission_(currentUser, 'dashboard.view.all')) requireLineAccess_(currentUser, payload.lineId, 'View');
       audits = audits.filter(function (row) { return valuesEqual_(row.LineID, payload.lineId); });
@@ -69,6 +70,7 @@ function getDashboard(payload, currentUser) {
       PendingMyVerification: allFindings.filter(function (row) {
         return valuesEqual_(row.Status, 'Pending Verification') && canVerifyFinding_(currentUser, row);
       }).length,
+      AuditPlanSummary: planSummary,
       TopNGCategory: topCategory ? { Category: topCategory, Count: categoryNg[topCategory] } : {},
       MonthlyAuditResult: Object.keys(monthly).sort().slice(-12).map(function (key) { return monthly[key]; }),
       SummaryByLine: Object.keys(byLine).sort().map(function (key) { return byLine[key]; }),
@@ -77,4 +79,30 @@ function getDashboard(payload, currentUser) {
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
+}
+
+function summarizeAuditPlansForDashboard_(currentUser, now) {
+  if (!hasPermission_(currentUser, 'audit.plan.view')) {
+    return { DueToday: 0, Overdue: 0, ThisWeek: 0, ThisMonth: 0, Completed: 0, LateSubmitted: 0, Missed: 0, Total: 0 };
+  }
+  var today = formatDateBangkok_(now);
+  var week = isoWeekKey_(now);
+  var month = today.slice(0, 7);
+  var summary = { DueToday: 0, Overdue: 0, ThisWeek: 0, ThisMonth: 0, Completed: 0, LateSubmitted: 0, Missed: 0, Total: 0 };
+  var audits = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
+  getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN).map(function (row) {
+    return effectiveAuditPlan_(row, audits, now);
+  }).filter(function (row) {
+    return canViewAuditPlan_(currentUser, row, true);
+  }).forEach(function (row) {
+    summary.Total++;
+    if (valuesEqual_(row.DueDate, today) && ['Completed', 'Late Submitted'].indexOf(cleanString_(row.Status)) === -1) summary.DueToday++;
+    if (valuesEqual_(row.Status, 'Overdue')) summary.Overdue++;
+    if (valuesEqual_(row.PeriodKey, week)) summary.ThisWeek++;
+    if (cleanString_(row.DueDate).slice(0, 7) === month) summary.ThisMonth++;
+    if (valuesEqual_(row.Status, 'Completed')) summary.Completed++;
+    if (valuesEqual_(row.Status, 'Late Submitted')) summary.LateSubmitted++;
+    if (valuesEqual_(row.Status, 'Missed')) summary.Missed++;
+  });
+  return summary;
 }

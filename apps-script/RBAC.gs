@@ -54,7 +54,7 @@ function requirePermission_(user, permissionKey) {
 
 function canAccessLine_(user, lineId, requiredLevel) {
   if (isAdmin_(user) || isAllFilter_(lineId)) return true;
-  var levelRank = { view: 1, audit: 1, update: 2, manage: 3, all: 3 };
+  var levelRank = { view: 1, audit: 2, update: 2, manage: 3, all: 3 };
   var minimum = levelRank[cleanString_(requiredLevel).toLowerCase()] || 1;
   return getUserLineAccess_(user).some(function (row) {
     return (valuesEqual_(row.LineID, lineId) || valuesEqual_(row.LineID, 'ALL')) &&
@@ -90,6 +90,8 @@ function hasApiAccess_(user, action) {
     getChecklist: ['checklist.view', 'checklist.manage', 'audit.manager.create', 'audit.supervisor.create', 'audit.engineer.create', 'audit.leader.create'],
     saveAudit: ['audit.manager.create', 'audit.supervisor.create', 'audit.engineer.create', 'audit.leader.create'],
     getAuditList: ['audit.view.all', 'audit.view.line', 'audit.view.own'],
+    getAuditPlan: ['audit.plan.view'], getMyAuditPlanSummary: ['audit.plan.view'],
+    generateAuditPlan: ['audit.plan.generate'], refreshAuditPlanStatus: ['audit.plan.refresh'],
     getFindings: ['findings.view.all', 'findings.view.line', 'findings.view.assigned', 'findings.view.created', 'findings.verify'],
     updateFinding: ['findings.update.assigned', 'findings.update.line', 'findings.assign', 'findings.view.all'],
     submitFinding: ['findings.update.assigned', 'findings.update.line', 'findings.view.all'],
