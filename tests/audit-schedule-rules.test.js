@@ -45,7 +45,7 @@ assert(frontend.includes("apiCall('upsertAuditPlanRule'"));
 assert(frontend.includes('limit: 100'));
 assert(!frontend.includes("apiCall('generateAuditPlan'"));
 assert(frontend.includes("['My Due Today', ruleSummary.DueToday"));
-assert(frontend.includes('ทั้งหมด / All Stations'));
+assert(frontend.includes('<option value="ALL">ทั้งหมด</option>'));
 assert(frontend.includes('ระบบจะสร้างกฎสำหรับ Station ที่ Active ทั้งหมดใน Line นี้'));
 assert(schedule.includes("valuesEqual_(stationSelection, 'ALL')"));
 assert(schedule.includes('skippedDuplicateCount'));

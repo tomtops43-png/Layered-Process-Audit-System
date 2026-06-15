@@ -84,7 +84,7 @@ function bindEvents() {
   $('#loadAuditPlanButton').addEventListener('click', loadAuditPlan);
   $('#addAuditRuleButton').addEventListener('click', () => openAuditRuleEditor());
   $('#cancelAuditRuleButton').addEventListener('click', closeAuditRuleEditor);
-  $('#auditRuleLine').addEventListener('change', () => populateAuditRuleStationSelect($('#auditRuleLine').value, true));
+  $('#auditRuleLine').addEventListener('change', handleAuditRuleLineChange);
   $('#auditRuleForm').addEventListener('submit', event => { event.preventDefault(); saveAuditRule(); });
   $('#auditPlanTable').addEventListener('click', event => {
     const button = event.target.closest('[data-rule-id]');
@@ -757,7 +757,7 @@ async function saveAuditRule() {
   if (payload.stationId === 'ALL') {
     const stationCount = activeStationsForLine(payload.lineId).length;
     if (!stationCount) return showToast('ไม่พบ Station ที่ Active ใน Line ที่เลือก', 'warning');
-    const confirmed = window.confirm(`ระบบจะสร้างกฎสำหรับ Station ที่ Active ทั้งหมดใน Line นี้ จำนวน ${stationCount} Station ต้องการดำเนินการต่อหรือไม่?`);
+    const confirmed = window.confirm('ระบบจะสร้างกฎสำหรับ Station ที่ Active ทั้งหมดใน Line นี้ ต้องการดำเนินการต่อหรือไม่?');
     if (!confirmed) return;
   }
   showLoading('กำลังบันทึกกฎตารางตรวจ...');
@@ -1148,11 +1148,15 @@ function activeStationsForLine(lineId) {
   );
 }
 
+function handleAuditRuleLineChange() {
+  populateAuditRuleStationSelect($('#auditRuleLine').value, true);
+}
+
 function populateAuditRuleStationSelect(lineId, allowAll) {
   const select = $('#auditRuleStation');
   const current = select.value;
   const rows = activeStationsForLine(lineId);
-  const allOption = allowAll && lineId ? '<option value="ALL">ทั้งหมด / All Stations</option>' : '';
+  const allOption = allowAll && lineId ? '<option value="ALL">ทั้งหมด</option>' : '';
   select.innerHTML = `<option value="">เลือก Station</option>${allOption}` +
     rows.map(row => `<option value="${escapeAttr(row.StationID)}">${escapeHtml(row.StationName || row.StationID)}</option>`).join('');
   if ((current === 'ALL' && allowAll) || rows.some(row => String(row.StationID) === current)) select.value = current;
