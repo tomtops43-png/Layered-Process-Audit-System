@@ -1,6 +1,7 @@
 /** Finding search, update, and closure APIs. */
 function getFindings(payload, currentUser) {
   try {
+    payload = payload || {};
     var lineId = findingFilterValue_(payload.lineId);
     var stationId = findingFilterValue_(payload.stationId);
     var category = findingFilterValue_(payload.category);
@@ -192,17 +193,28 @@ function closeFinding(payload, currentUser) {
 function matchesMyFindingFilter_(finding, currentUser, filter) {
   if (['assigned', 'assigned-to-me', 'mine'].indexOf(filter) !== -1) return isAssignedToUser_(finding, currentUser);
   if (['created', 'created-by-me'].indexOf(filter) !== -1) {
-    return valuesEqual_(finding.AuditorUserID || finding.CreatedBy, currentUser.UserID);
+    return isCreatedByUser_(finding, currentUser);
   }
   if (['verification', 'pending-verification', 'verify'].indexOf(filter) !== -1) {
-    return valuesEqual_(finding.Status, 'Pending Verification') && canVerifyFinding_(currentUser, finding);
+    return valuesEqual_(finding.Status, 'Pending Verification') &&
+      valuesEqual_(finding.VerifierUserID, currentUser.UserID);
   }
   return true;
 }
 
 function isAssignedToUser_(finding, currentUser) {
-  return valuesEqual_(finding.AssignedToUserID || finding.PICUserID, currentUser.UserID) ||
-    valuesEqual_(finding.AssignedToName || finding.PICName, currentUser.FullName);
+  var assignedUserId = cleanString_(finding.AssignedToUserID);
+  if (assignedUserId) return valuesEqual_(assignedUserId, currentUser.UserID);
+
+  var legacyPicUserId = cleanString_(finding.PICUserID);
+  if (legacyPicUserId) return valuesEqual_(legacyPicUserId, currentUser.UserID);
+
+  return valuesEqual_(finding.AssignedToName || finding.PICName, currentUser.FullName);
+}
+
+function isCreatedByUser_(finding, currentUser) {
+  return valuesEqual_(finding.AuditorUserID, currentUser.UserID) ||
+    valuesEqual_(finding.CreatedBy, currentUser.UserID);
 }
 
 function canUpdateFinding_(currentUser, finding) {
@@ -232,10 +244,10 @@ function canCloseFinding_(currentUser, finding) {
 
 function canViewFindingRbac_(currentUser, finding) {
   if (isAdmin_(currentUser) || hasPermission_(currentUser, 'findings.view.all')) return true;
-  if (hasPermission_(currentUser, 'findings.view.line') && canAccessLine_(currentUser, finding.LineID, 'View')) return true;
+  if (hasPermission_(currentUser, 'findings.view.line') && cleanString_(finding.LineID) &&
+      canAccessLine_(currentUser, finding.LineID, 'View')) return true;
   if (hasPermission_(currentUser, 'findings.view.assigned') && isAssignedToUser_(finding, currentUser)) return true;
-  return hasPermission_(currentUser, 'findings.view.created') &&
-    valuesEqual_(finding.AuditorUserID || finding.CreatedBy, currentUser.UserID);
+  return hasPermission_(currentUser, 'findings.view.created') && isCreatedByUser_(finding, currentUser);
 }
 
 function appendActionLog_(findingId, oldStatus, newStatus, changes, remark, evidenceUrl, currentUser, timestamp) {
