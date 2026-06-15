@@ -84,7 +84,7 @@ function bindEvents() {
   $('#loadAuditPlanButton').addEventListener('click', loadAuditPlan);
   $('#addAuditRuleButton').addEventListener('click', () => openAuditRuleEditor());
   $('#cancelAuditRuleButton').addEventListener('click', closeAuditRuleEditor);
-  $('#auditRuleLine').addEventListener('change', () => populateStationSelect('#auditRuleStation', $('#auditRuleLine').value, false));
+  $('#auditRuleLine').addEventListener('change', () => populateAuditRuleStationSelect($('#auditRuleLine').value, true));
   $('#auditRuleForm').addEventListener('submit', event => { event.preventDefault(); saveAuditRule(); });
   $('#auditPlanTable').addEventListener('click', event => {
     const button = event.target.closest('[data-rule-id]');
@@ -725,7 +725,7 @@ function openAuditRuleEditor(rule = null) {
   $('#auditRuleRole').value = rule?.RequiredRole || 'Leader';
   $('#auditRuleUser').value = rule?.RequiredUserID || '';
   $('#auditRuleLine').value = rule?.LineID || '';
-  populateStationSelect('#auditRuleStation', $('#auditRuleLine').value, false);
+  populateAuditRuleStationSelect($('#auditRuleLine').value, !rule);
   $('#auditRuleStation').value = rule?.StationID || '';
   $('#auditRuleFrequency').value = rule?.Frequency || 'Daily';
   $('#auditRuleDayOfWeek').value = rule?.DayOfWeek || '';
@@ -754,13 +754,22 @@ async function saveAuditRule() {
     dueTime: $('#auditRuleDueTime').value,
     activeStatus: $('#auditRuleActiveStatus').value
   };
+  if (payload.stationId === 'ALL') {
+    const stationCount = activeStationsForLine(payload.lineId).length;
+    if (!stationCount) return showToast('ไม่พบ Station ที่ Active ใน Line ที่เลือก', 'warning');
+    const confirmed = window.confirm(`ระบบจะสร้างกฎสำหรับ Station ที่ Active ทั้งหมดใน Line นี้ จำนวน ${stationCount} Station ต้องการดำเนินการต่อหรือไม่?`);
+    if (!confirmed) return;
+  }
   showLoading('กำลังบันทึกกฎตารางตรวจ...');
   try {
-    await apiCall('upsertAuditPlanRule', payload);
+    const result = await apiCall('upsertAuditPlanRule', payload);
     closeAuditRuleEditor();
     await loadAuditPlan();
     state.dashboard = null;
-    showToast('บันทึกกฎตารางตรวจสำเร็จ', 'success');
+    const summary = result.updatedCount
+      ? `อัปเดตกฎ ${result.updatedCount} รายการ`
+      : `สร้างกฎใหม่ ${result.createdCount || 0} รายการ / ข้ามกฎซ้ำ ${result.skippedDuplicateCount || 0} รายการ`;
+    showToast(summary, 'success', 7000);
   } catch (error) {
     showToast(error.message, 'error');
   } finally {
@@ -1116,7 +1125,7 @@ function populateAllMasterSelects() {
   populateStationSelect('#checklistStation', '', false);
   populateStationSelect('#planStation', '', true);
   populateSelect('#auditRuleLine', state.masterData.lines || [], 'LineID', 'LineName', 'เลือก Line');
-  populateStationSelect('#auditRuleStation', '', false);
+  populateAuditRuleStationSelect('', true);
   populateSelect('#planUser', state.masterData.users || [], 'UserID', 'FullName', 'ทั้งหมด');
   populateSelect('#auditRuleUser', state.masterData.users || [], 'UserID', 'FullName', 'ตาม Role');
   populateSelect('#adminLineFilter', state.masterData.lines || [], 'LineID', 'LineName', 'ทั้งหมด');
@@ -1130,6 +1139,23 @@ function populateAllMasterSelects() {
 function populateStationSelect(selector, lineId, allowAll) {
   const rows = (state.masterData.stations || []).filter(row => !lineId || String(row.LineID) === String(lineId));
   populateSelect(selector, rows, 'StationID', 'StationName', allowAll ? 'ทั้งหมด' : 'เลือก Station');
+}
+
+function activeStationsForLine(lineId) {
+  return (state.masterData.stations || []).filter(row =>
+    String(row.LineID) === String(lineId) &&
+    (!row.ActiveStatus || String(row.ActiveStatus).toLowerCase() === 'active')
+  );
+}
+
+function populateAuditRuleStationSelect(lineId, allowAll) {
+  const select = $('#auditRuleStation');
+  const current = select.value;
+  const rows = activeStationsForLine(lineId);
+  const allOption = allowAll && lineId ? '<option value="ALL">ทั้งหมด / All Stations</option>' : '';
+  select.innerHTML = `<option value="">เลือก Station</option>${allOption}` +
+    rows.map(row => `<option value="${escapeAttr(row.StationID)}">${escapeHtml(row.StationName || row.StationID)}</option>`).join('');
+  if ((current === 'ALL' && allowAll) || rows.some(row => String(row.StationID) === current)) select.value = current;
 }
 
 function populateSelect(selector, rows, valueField, textField, firstLabel) {

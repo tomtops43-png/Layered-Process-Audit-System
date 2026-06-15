@@ -77,7 +77,7 @@ assert(frontend.includes('showDashboardSkeleton'));
 assert(!frontend.includes('await loadMasterData(false);'));
 assert(frontend.includes('await initializeAuthenticatedApp(false);'));
 assert(frontend.includes('คุณไม่มีสิทธิ์เริ่มตรวจ Audit Layer นี้'));
-assert(frontend.includes('บันทึกกฎตารางตรวจสำเร็จ'));
+assert(frontend.includes('สร้างกฎใหม่'));
 assert(frontendHtml.includes('กำหนดกฎ Daily / Weekly / Monthly'));
 assert(frontendHtml.includes('data-page="audit-plan" data-permission-any="audit.plan.view"'));
 assert(frontendHtml.includes('id="auditRuleForm"'));

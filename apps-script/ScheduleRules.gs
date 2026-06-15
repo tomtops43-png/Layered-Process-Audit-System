@@ -27,54 +27,102 @@ function getAuditPlanRules(payload, currentUser) {
 }
 
 function upsertAuditPlanRule(payload, currentUser) {
+  var ruleLock = null;
+  var ruleLockAcquired = false;
   try {
     requirePermission_(currentUser, 'audit.plan.manage');
     requireFields_(payload, ['requiredRole', 'lineId', 'stationId', 'frequency', 'activeStatus']);
     var role = cleanString_(payload.requiredRole);
     var frequency = cleanString_(payload.frequency);
+    var stationSelection = cleanString_(payload.stationId);
+    var bulkCreate = valuesEqual_(stationSelection, 'ALL');
     if (['Leader', 'Supervisor', 'Manager'].indexOf(role) === -1) throw new Error('RequiredRole must be Leader, Supervisor, or Manager.');
     if (['Daily', 'Weekly', 'Monthly'].indexOf(frequency) === -1) throw new Error('Frequency must be Daily, Weekly, or Monthly.');
+    if (bulkCreate && cleanString_(payload.ruleId)) throw new Error('All Stations can only be used when creating new rules.');
     if (!isAdmin_(currentUser)) requireLineAccess_(currentUser, payload.lineId, 'Manage');
     var line = findById_(SHEET_NAMES.LINES, 'LineID', payload.lineId) || {};
-    var station = findById_(SHEET_NAMES.STATIONS, 'StationID', payload.stationId) || {};
-    if (!station.StationID || !valuesEqual_(station.LineID, payload.lineId)) throw new Error('Station does not belong to the selected Line.');
     var assignedUser = cleanString_(payload.requiredUserId) ?
       findById_(SHEET_NAMES.USERS, 'UserID', payload.requiredUserId) : null;
     if (payload.requiredUserId && (!assignedUser || !isActive_(assignedUser.ActiveStatus))) throw new Error('Assigned user was not found or is inactive.');
     if (assignedUser && !valuesEqual_(assignedUser.Role, role)) throw new Error('Assigned user role must match RequiredRole.');
-    var duplicate = getAuditPlanRuleRows_().some(function (row) {
-      return !valuesEqual_(row.RuleID, payload.ruleId) &&
-        valuesEqual_(row.RequiredRole, role) &&
-        valuesEqual_(row.RequiredUserID, assignedUser ? assignedUser.UserID : '') &&
-        valuesEqual_(row.LineID, payload.lineId) &&
-        valuesEqual_(row.StationID, payload.stationId) &&
-        valuesEqual_(row.Frequency, frequency) &&
-        valuesEqual_(row.DayOfWeek, payload.dayOfWeek) &&
-        valuesEqual_(row.DayOfMonth, frequency === 'Monthly' ? (toNumber_(payload.dayOfMonth) || 1) : '');
+
+    var activeStations = getRowsAsObjects(SHEET_NAMES.STATIONS).filter(function (station) {
+      return isActive_(station.ActiveStatus) && valuesEqual_(station.LineID, payload.lineId) &&
+        (bulkCreate || valuesEqual_(station.StationID, stationSelection));
     });
-    if (duplicate) throw new Error('An equivalent audit schedule rule already exists.');
-    var now = formatDateTimeBangkok(new Date());
-    var existing = cleanString_(payload.ruleId) ? findById_(SHEET_NAMES.AUDIT_PLAN_RULES, 'RuleID', payload.ruleId) : null;
-    var ruleId = existing ? existing.RuleID : generateId('RULE', SHEET_NAMES.AUDIT_PLAN_RULES, 'RuleID', '');
-    var values = {
-      RuleID: ruleId, RequiredRole: role,
-      RequiredUserID: assignedUser ? assignedUser.UserID : '',
-      RequiredUserName: assignedUser ? assignedUser.FullName : '',
-      LineID: payload.lineId, LineName: line.LineName || station.LineName || '',
-      StationID: payload.stationId, StationName: station.StationName || '',
-      Frequency: frequency, DayOfWeek: cleanString_(payload.dayOfWeek),
-      DayOfMonth: frequency === 'Monthly' ? Math.min(Math.max(toNumber_(payload.dayOfMonth) || 1, 1), 31) : '',
-      DueTime: cleanString_(payload.dueTime) || '17:00',
-      ActiveStatus: isActive_(payload.activeStatus) ? 'Active' : 'Inactive',
-      CreatedAt: existing ? existing.CreatedAt : now, CreatedBy: existing ? existing.CreatedBy : currentUser.UserID,
-      UpdatedAt: now, UpdatedBy: currentUser.UserID
-    };
-    if (existing) updateObjectById(SHEET_NAMES.AUDIT_PLAN_RULES, 'RuleID', ruleId, values);
-    else appendObject(SHEET_NAMES.AUDIT_PLAN_RULES, values);
+    if (!activeStations.length) {
+      throw new Error(bulkCreate ? 'No active stations were found for the selected Line.' : 'Selected station is not active or does not belong to the selected Line.');
+    }
+
+    var normalizedDayOfWeek = cleanString_(payload.dayOfWeek);
+    var normalizedDayOfMonth = frequency === 'Monthly' ? Math.min(Math.max(toNumber_(payload.dayOfMonth) || 1, 1), 31) : '';
+    var normalizedDueTime = cleanString_(payload.dueTime) || '17:00';
+    var normalizedActiveStatus = isActive_(payload.activeStatus) ? 'Active' : 'Inactive';
+    var timestamp = formatDateTimeBangkok(new Date());
+    var createdCount = 0;
+    var updatedCount = 0;
+    var skippedDuplicateCount = 0;
+    var savedRules = [];
+
+    ruleLock = LockService.getScriptLock();
+    ruleLock.waitLock(30000);
+    ruleLockAcquired = true;
+    var existingRules = getAuditPlanRuleRows_();
+    var editedRule = cleanString_(payload.ruleId) ? existingRules.filter(function (row) {
+      return valuesEqual_(row.RuleID, payload.ruleId);
+    })[0] : null;
+    if (cleanString_(payload.ruleId) && !editedRule) throw new Error('Audit schedule rule not found: ' + payload.ruleId);
+
+    activeStations.forEach(function (station) {
+      var duplicate = existingRules.some(function (row) {
+        return !valuesEqual_(row.RuleID, payload.ruleId) &&
+          valuesEqual_(row.RequiredRole, role) &&
+          valuesEqual_(row.RequiredUserID, assignedUser ? assignedUser.UserID : '') &&
+          valuesEqual_(row.LineID, payload.lineId) &&
+          valuesEqual_(row.StationID, station.StationID) &&
+          valuesEqual_(row.Frequency, frequency) &&
+          valuesEqual_(row.DayOfWeek, normalizedDayOfWeek) &&
+          valuesEqual_(row.DayOfMonth, normalizedDayOfMonth) &&
+          valuesEqual_(row.DueTime, normalizedDueTime) &&
+          valuesEqual_(row.ActiveStatus, normalizedActiveStatus);
+      });
+      if (duplicate) {
+        skippedDuplicateCount++;
+        return;
+      }
+      var ruleId = editedRule ? editedRule.RuleID : generateIdWithoutLock_('RULE', SHEET_NAMES.AUDIT_PLAN_RULES, 'RuleID', '');
+      var values = {
+        RuleID: ruleId, RequiredRole: role,
+        RequiredUserID: assignedUser ? assignedUser.UserID : '',
+        RequiredUserName: assignedUser ? assignedUser.FullName : '',
+        LineID: payload.lineId, LineName: line.LineName || station.LineName || '',
+        StationID: station.StationID, StationName: station.StationName || '',
+        Frequency: frequency, DayOfWeek: normalizedDayOfWeek, DayOfMonth: normalizedDayOfMonth,
+        DueTime: normalizedDueTime, ActiveStatus: normalizedActiveStatus,
+        CreatedAt: editedRule ? editedRule.CreatedAt : timestamp,
+        CreatedBy: editedRule ? editedRule.CreatedBy : currentUser.UserID,
+        UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
+      };
+      if (editedRule) {
+        updateObjectById(SHEET_NAMES.AUDIT_PLAN_RULES, 'RuleID', ruleId, values);
+        updatedCount++;
+      } else {
+        appendObject(SHEET_NAMES.AUDIT_PLAN_RULES, values);
+        existingRules.push(values);
+        createdCount++;
+      }
+      savedRules.push(sanitizeForClient_(values));
+    });
     invalidateDashboardCachesForUser_(currentUser);
-    return jsonResponse(true, 'Audit schedule rule saved.', { rule: sanitizeForClient_(values) });
+    return jsonResponse(true, 'Audit schedule rules saved.', {
+      rules: savedRules, rule: savedRules[0] || {}, createdCount: createdCount,
+      updatedCount: updatedCount, skippedDuplicateCount: skippedDuplicateCount,
+      totalStations: activeStations.length
+    });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
+  } finally {
+    if (ruleLockAcquired) ruleLock.releaseLock();
   }
 }
 
