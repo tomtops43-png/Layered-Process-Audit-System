@@ -1,5 +1,15 @@
 /** One-time, non-destructive setup and manual test helpers. */
+var AUDIT_PLAN_RULE_HEADERS_ = [
+  'RuleID', 'RequiredRole', 'RequiredUserID', 'RequiredUserName',
+  'LineID', 'LineName', 'StationID', 'StationName',
+  'Frequency', 'DayOfWeek', 'DayOfMonth', 'DueTime', 'ActiveStatus',
+  'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'
+];
+
 function setupHeaders() {
+  // Keep this schema explicit in setup so older deployments can create the
+  // lightweight rules sheet even when it did not exist in the original file.
+  SHEET_HEADERS[SHEET_NAMES.AUDIT_PLAN_RULES] = AUDIT_PLAN_RULE_HEADERS_.slice();
   var spreadsheet = getSpreadsheet_();
   var results = [];
   Object.keys(SHEET_HEADERS).forEach(function (sheetName) {

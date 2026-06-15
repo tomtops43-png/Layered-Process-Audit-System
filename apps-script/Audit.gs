@@ -1,5 +1,7 @@
 /** Audit session and audit-record APIs. */
 function saveAudit(payload, currentUser) {
+  var saveLock = null;
+  var saveLockAcquired = false;
   try {
     requireFields_(payload, ['auditDate', 'lineId', 'stationId', 'auditLayer', 'records']);
     var auditLayerPermissions = {
@@ -12,6 +14,7 @@ function saveAudit(payload, currentUser) {
     if (!auditPermission || !hasPermission_(currentUser, auditPermission)) {
       throw new Error('คุณไม่มีสิทธิ์สร้าง Audit Layer นี้');
     }
+    requireFields_(payload, ['clientSubmissionId']);
     if (!isAdmin_(currentUser) && !hasPermission_(currentUser, 'audit.view.all') &&
         (hasPermission_(currentUser, 'audit.supervisor.create') ||
          hasPermission_(currentUser, 'audit.engineer.create') ||
@@ -25,8 +28,12 @@ function saveAudit(payload, currentUser) {
       return valuesEqual_(row.ListValue, shift);
     });
     if (!activeShift) throw new Error('Shift ที่เลือกไม่ได้เปิดใช้งาน กรุณาเลือก Shift ใหม่');
+    var checklistIds = {};
     payload.records.forEach(function (record, index) {
       try { requireFields_(record, ['checklistId', 'result']); } catch (error) { throw new Error('Record ' + (index + 1) + ': ' + error.message); }
+      var checklistKey = cleanString_(record.checklistId).toLowerCase();
+      if (checklistIds[checklistKey]) throw new Error('Duplicate checklist item in audit: ' + record.checklistId);
+      checklistIds[checklistKey] = true;
       var validatedResult = normalizeAuditResult_(record.result);
       if (!validatedResult) throw new Error('Record ' + (index + 1) + ': result must be OK, NG, or N/A.');
       if (validatedResult === 'NG') {
@@ -52,12 +59,51 @@ function saveAudit(payload, currentUser) {
     var lineName = cleanString_(payload.lineName) || cleanString_(line.LineName) || cleanString_(station.LineName);
     var stationName = cleanString_(payload.stationName) || cleanString_(station.StationName);
     var area = cleanString_(payload.area) || cleanString_(station.Area) || cleanString_(line.Area);
-    var auditId = generateId('LPA', SHEET_NAMES.AUDIT_SESSIONS, 'AuditID', periodMonth);
-    var matchingPlan = findMatchingPlanForAudit_(payload);
+    var clientSubmissionId = cleanString_(payload.clientSubmissionId);
+    var explicitPlanId = cleanString_(payload.planId);
+    var auditKey = buildAuditKey_(auditDate, payload.lineId, payload.stationId, payload.auditLayer, shift, currentUser.UserID);
+
+    saveLock = LockService.getScriptLock();
+    saveLock.waitLock(30000);
+    saveLockAcquired = true;
+
+    var existingSessions = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
+    var idempotentSession = existingSessions.filter(function (row) {
+      return valuesEqual_(row.ClientSubmissionID, clientSubmissionId);
+    })[0];
+    if (idempotentSession) {
+      var existingFindingIds = getRowsAsObjects(SHEET_NAMES.FINDINGS).filter(function (row) {
+        return valuesEqual_(row.AuditID, idempotentSession.AuditID);
+      }).map(function (row) { return row.FindingID; });
+      return jsonResponse(true, 'Audit already saved; returning the existing result.', {
+        AuditID: idempotentSession.AuditID, FindingIDs: existingFindingIds,
+        PlanID: idempotentSession.PlanID || '', IsLate: idempotentSession.IsLate || 'No',
+        PlanStatus: idempotentSession.PlanStatus || '', IsDuplicate: true
+      });
+    }
+
+    var matchingPlan = explicitPlanId ? findById_(SHEET_NAMES.AUDIT_PLAN, 'PlanID', explicitPlanId) : null;
+    if (explicitPlanId && !matchingPlan) throw new Error('ไม่พบแผนการตรวจที่ระบุ');
+    if (matchingPlan && (cleanString_(matchingPlan.CompletedAuditID) ||
+        ['completed', 'late submitted'].indexOf(cleanString_(matchingPlan.Status).toLowerCase()) !== -1)) {
+      throw new Error('แผนการตรวจนี้ถูกบันทึกเรียบร้อยแล้ว ไม่สามารถบันทึกซ้ำได้');
+    }
+    if (explicitPlanId && existingSessions.some(function (row) { return valuesEqual_(row.PlanID, explicitPlanId); })) {
+      throw new Error('แผนการตรวจนี้ถูกบันทึกเรียบร้อยแล้ว ไม่สามารถบันทึกซ้ำได้');
+    }
+    if (!explicitPlanId && existingSessions.some(function (row) {
+      var existingAuditKey = cleanString_(row.AuditKey) || buildAuditKey_(
+        formatDateBangkok_(row.AuditDate), row.LineID, row.StationID, row.AuditLayer, row.Shift, row.AuditorUserID
+      );
+      return valuesEqual_(existingAuditKey, auditKey);
+    })) {
+      throw new Error('มีการบันทึก LPA สำหรับ Line / Station / Layer / Shift นี้แล้วในช่วงเวลานี้');
+    }
     if (matchingPlan && (!valuesEqual_(matchingPlan.AuditLayer, payload.auditLayer) ||
         !valuesEqual_(matchingPlan.LineID, payload.lineId) || !valuesEqual_(matchingPlan.StationID, payload.stationId))) {
       throw new Error('Audit Plan does not match the selected audit scope.');
     }
+    var auditId = generateIdWithoutLock_('LPA', SHEET_NAMES.AUDIT_SESSIONS, 'AuditID', periodMonth);
     var planDueAt = matchingPlan ? cleanString_(matchingPlan.DueDate) + ' ' + (cleanString_(matchingPlan.DueTime) || '17:00') + ':00' : '';
     var isLate = isBackdated || (planDueAt && timestamp > planDueAt);
     var planStatus = matchingPlan ? (isLate ? 'Late Submitted' : 'Completed') : '';
@@ -75,14 +121,15 @@ function saveAudit(payload, currentUser) {
       TotalCheck: payload.records.length, TotalOK: totals.OK, TotalNG: totals.NG, TotalNA: totals.NA,
       ResultSummary: resultSummary, NGRate: ngRate, SubmitStatus: payload.submitStatus || 'Submitted',
       Remark: payload.remark || '', SubmittedAt: timestamp, IsLate: isLate ? 'Yes' : 'No',
-      LateReason: lateReason, PlanID: matchingPlan ? matchingPlan.PlanID : cleanString_(payload.planId),
-      PlanStatus: planStatus, CreatedAt: timestamp, CreatedBy: currentUser.UserID,
+      LateReason: lateReason, PlanID: matchingPlan ? matchingPlan.PlanID : '',
+      PlanStatus: planStatus, AuditKey: auditKey, ClientSubmissionID: clientSubmissionId,
+      SaveSource: matchingPlan ? 'Plan' : 'Manual', CreatedAt: timestamp, CreatedBy: currentUser.UserID,
       UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
     });
     var findingIds = [];
     payload.records.forEach(function (record) {
       var checklist = findById_(SHEET_NAMES.CHECKLIST, 'ChecklistID', record.checklistId) || {};
-      var recordId = generateId('AR', SHEET_NAMES.AUDIT_RECORDS, 'RecordID', periodMonth);
+      var recordId = generateIdWithoutLock_('AR', SHEET_NAMES.AUDIT_RECORDS, 'RecordID', periodMonth);
       var result = normalizeAuditResult_(record.result);
       var defaultDays = toNumber_(getSetting('DEFAULT_DUE_DAYS')) || 7;
       var dueDate = record.dueDate ? formatDateBangkok_(record.dueDate) : (result === 'NG' ? addDays_(parseDate_(auditDate) || now, defaultDays) : '');
@@ -112,7 +159,13 @@ function saveAudit(payload, currentUser) {
       appendObject(SHEET_NAMES.AUDIT_RECORDS, auditRecord);
 
       if (result === 'NG') {
-        var findingId = generateId('F', SHEET_NAMES.FINDINGS, 'FindingID', periodMonth);
+        var duplicateFinding = getRowsAsObjects(SHEET_NAMES.FINDINGS).some(function (row) {
+          if (!valuesEqual_(row.AuditID, auditId)) return false;
+          var findingRecord = findById_(SHEET_NAMES.AUDIT_RECORDS, 'RecordID', row.RecordID) || {};
+          return valuesEqual_(findingRecord.ChecklistID, record.checklistId);
+        });
+        if (duplicateFinding) throw new Error('Duplicate finding for audit checklist item: ' + record.checklistId);
+        var findingId = generateIdWithoutLock_('F', SHEET_NAMES.FINDINGS, 'FindingID', periodMonth);
         var severity = cleanString_(record.severity || record.priority || checklist.Severity) || 'Minor';
         var verificationRequired = cleanString_(record.verificationRequired) ||
           (severity.toLowerCase() === 'minor' && cleanString_(payload.auditLayer).toLowerCase() === 'leader' ? 'No' : 'Yes');
@@ -151,7 +204,15 @@ function saveAudit(payload, currentUser) {
     });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
+  } finally {
+    if (saveLockAcquired) saveLock.releaseLock();
   }
+}
+
+function buildAuditKey_(auditDate, lineId, stationId, auditLayer, shift, auditorId) {
+  return [auditDate, lineId, stationId, auditLayer, shift, auditorId].map(function (value) {
+    return cleanString_(value);
+  }).join('|');
 }
 
 function getAuditList(payload, currentUser) {
