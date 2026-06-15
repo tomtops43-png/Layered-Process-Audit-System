@@ -174,24 +174,33 @@
       <div class="modal-head"><div><p class="eyebrow">USER MANAGEMENT</p><h3 id="userDialogTitle">Add User</h3></div><button type="button" class="icon-button" id="closeUserDialog">×</button></div>
       <input id="adminEditUserId" type="hidden">
       <div id="userFormError" class="form-error hidden" role="alert"></div>
+      <section class="user-form-section">
+        <h4>ข้อมูลผู้ใช้</h4>
       <div class="form-grid">
         <label>Employee ID<input id="adminEmployeeId"></label>
         <label>Username *<input id="adminUsername" required></label>
         <label>Full Name *<input id="adminFullName" required></label>
         <label>Nickname<input id="adminNickname"></label>
-        <label>Role *<select id="adminUserRole" required><option>Admin</option><option>Manager</option><option>Supervisor</option><option>Engineer</option><option>Leader</option><option>User</option></select></label>
+        <label>Role *<select id="adminUserRole" required><option>Admin</option><option>Manager</option><option>Supervisor</option><option>Engineer</option><option>Leader</option><option>User</option></select><small class="field-help">Role จะกำหนดสิทธิ์หลักของผู้ใช้ เช่น Admin, Manager, Engineer, Leader, User</small></label>
         <label>Department<input id="adminDepartment"></label>
         <label>Default Line<select id="adminLineDefault"><option value="">ไม่ระบุ</option></select></label>
         <label>Email<input id="adminEmail" type="email"></label>
         <label>Phone<input id="adminPhone"></label>
-        <label>Status<select id="adminActiveStatus"><option>Active</option><option>Inactive</option></select></label>
+        <label>Active Status<select id="adminActiveStatus"><option>Active</option><option>Inactive</option></select></label>
         <label id="adminPasswordLabel">Initial Password *<input id="adminPassword" type="password" minlength="8"></label>
       </div>
+      </section>
       <div id="adminAccessEditor" class="admin-access hidden">
-        <h4>Line Access</h4>
-        <div id="adminLineAccessList" class="permission-grid"></div>
-        <h4>User Permission Overrides</h4>
-        <div id="adminPermissionList" class="permission-grid"></div>
+        <section class="user-form-section">
+          <h4>Line Access</h4>
+          <p class="section-help">Line Access ใช้กำหนดว่า User นี้สามารถดูหรือจัดการข้อมูลของ Line ใดได้บ้าง</p>
+          <div id="adminLineAccessList" class="permission-grid line-access-grid"></div>
+        </section>
+        <details id="adminAdvancedPermissions" class="advanced-permissions">
+          <summary>ตั้งค่าสิทธิ์ขั้นสูง</summary>
+          <p class="section-help">ใช้เฉพาะกรณีพิเศษที่ต้องการให้สิทธิ์รายบุคคลแตกต่างจาก Role ปกติ</p>
+          <div id="adminPermissionList" class="permission-grid"></div>
+        </details>
       </div>
       <div class="modal-actions"><button type="button" class="btn btn-outline" id="resetPasswordButton">Reset Password</button><button type="button" class="btn btn-outline" id="deactivateUserButton">Deactivate</button><button type="button" class="btn btn-outline" id="cancelUserEdit">ยกเลิก</button><button type="submit" class="btn btn-primary">บันทึกผู้ใช้</button></div>
     </form>

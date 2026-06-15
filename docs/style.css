@@ -133,7 +133,16 @@ label{display:flex;flex-direction:column;gap:7px;font-size:.88rem;font-weight:70
 .field-error{border-color:var(--red)!important;box-shadow:0 0 0 3px rgba(192,38,45,.14)!important}
 .admin-access{margin-top:22px;padding-top:18px;border-top:1px solid var(--border)}
 .admin-access h4{margin:18px 0 10px}
+.user-form-section{margin-top:18px}
+.user-form-section:first-of-type{margin-top:0}
+.user-form-section h4{margin:0 0 12px}
+.field-help,.section-help{color:var(--muted);font-size:.78rem;font-weight:500;line-height:1.45}
+.section-help{margin:0 0 12px}
+.advanced-permissions{margin-top:20px;padding:14px;border:1px solid var(--border);border-radius:10px;background:#f8fafb}
+.advanced-permissions summary{cursor:pointer;color:var(--blue-dark);font-weight:800}
+.advanced-permissions[open] summary{margin-bottom:10px}
 .permission-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.line-access-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 .permission-item{display:flex;align-items:center;gap:8px;min-height:42px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:#f8fafb;font-size:.82rem}
 .permission-item input{width:18px;min-height:18px}
 .line-access-item{justify-content:space-between}

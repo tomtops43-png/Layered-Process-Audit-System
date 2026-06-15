@@ -629,11 +629,14 @@ async function openUserEditor(userId = '') {
   $('#adminPassword').value = '';
   $('#adminPassword').required = !user;
   $('#adminPasswordLabel').classList.toggle('hidden', Boolean(user));
-  $('#adminAccessEditor').classList.toggle('hidden', !user || !hasPermission('users.managePermission'));
+  const canManageAccess = hasPermission('users.managePermission');
+  $('#adminAccessEditor').classList.toggle('hidden', !canManageAccess);
+  $('#adminAdvancedPermissions').open = false;
   $('#resetPasswordButton').classList.toggle('hidden', !user || !hasPermission('users.resetPassword'));
   $('#deactivateUserButton').classList.toggle('hidden', !user || !hasPermission('users.deactivate') || user.UserID === state.user.UserID);
+  if (canManageAccess) renderUserAccessEditors([], []);
   $('#userDialog').showModal();
-  if (user && hasPermission('users.managePermission')) {
+  if (user && canManageAccess) {
     try {
       await loadUserAccessEditors(user.UserID);
     } catch (error) {
@@ -652,22 +655,30 @@ async function loadUserAccessEditors(userId) {
       apiCall('listUserPermissions', { userId }),
       apiCall('listUserLineAccess', { userId })
     ]);
-    const permissionMap = {};
-    (permissionData.userPermissions || []).forEach(row => { permissionMap[row.PermissionKey] = row.Allowed || 'Inherit'; });
-    $('#adminPermissionList').innerHTML = PERMISSION_CATALOG.map(key => {
-      const value = permissionMap[key] || 'Inherit';
-      return `<label class="permission-item">${escapeHtml(key)}<select data-user-permission="${escapeAttr(key)}"><option ${value === 'Inherit' ? 'selected' : ''}>Inherit</option><option value="Yes" ${value === 'Yes' ? 'selected' : ''}>Allow</option><option value="No" ${value === 'No' ? 'selected' : ''}>Deny</option></select></label>`;
-    }).join('');
-    const lineMap = {};
-    (lineData.lineAccess || []).forEach(row => { lineMap[row.LineID] = row; });
-    const lines = [{ LineID: 'ALL', LineName: 'ALL' }, ...(state.masterData.lines || [])];
-    $('#adminLineAccessList').innerHTML = lines.map(line => {
-      const access = lineMap[line.LineID];
-      return `<div class="permission-item line-access-item"><label><input type="checkbox" data-line-access="${escapeAttr(line.LineID)}" ${access && String(access.ActiveStatus).toLowerCase() === 'active' ? 'checked' : ''}> ${escapeHtml(line.LineName || line.LineID)}</label><select data-line-level="${escapeAttr(line.LineID)}"><option>View</option><option ${access && access.AccessLevel === 'Update' ? 'selected' : ''}>Update</option><option ${access && access.AccessLevel === 'Manage' ? 'selected' : ''}>Manage</option></select></div>`;
-    }).join('');
+    renderUserAccessEditors(permissionData.userPermissions || [], lineData.lineAccess || []);
   } finally {
     hideLoading();
   }
+}
+
+function renderUserAccessEditors(permissionRows, lineAccessRows) {
+  const permissionMap = {};
+  permissionRows.forEach(row => { permissionMap[row.PermissionKey] = row.Allowed || 'Inherit'; });
+  $('#adminPermissionList').innerHTML = PERMISSION_CATALOG.map(key => {
+    const value = permissionMap[key] || 'Inherit';
+    return `<label class="permission-item">${escapeHtml(key)}<select data-user-permission="${escapeAttr(key)}"><option ${value === 'Inherit' ? 'selected' : ''}>Inherit</option><option value="Yes" ${value === 'Yes' ? 'selected' : ''}>Allow</option><option value="No" ${value === 'No' ? 'selected' : ''}>Deny</option></select></label>`;
+  }).join('');
+
+  const lineMap = {};
+  lineAccessRows.forEach(row => { lineMap[row.LineID] = row; });
+  const lines = [{ LineID: 'ALL', LineName: 'ALL' }, ...(state.masterData.lines || [])];
+  $('#adminLineAccessList').innerHTML = lines.map(line => {
+    const access = lineMap[line.LineID];
+    const currentLevel = String(access && access.AccessLevel || 'View');
+    const viewSelected = currentLevel === 'View' || !access;
+    const manageValue = ['Update', 'Audit', 'Manage', 'All'].includes(currentLevel) ? currentLevel : 'Manage';
+    return `<div class="permission-item line-access-item"><label><input type="checkbox" data-line-access="${escapeAttr(line.LineID)}" ${access && String(access.ActiveStatus).toLowerCase() === 'active' ? 'checked' : ''}> ${escapeHtml(line.LineName || line.LineID)}</label><select data-line-level="${escapeAttr(line.LineID)}"><option value="View" ${viewSelected ? 'selected' : ''}>View</option><option value="${escapeAttr(manageValue)}" ${!viewSelected ? 'selected' : ''}>Manage</option></select></div>`;
+  }).join('');
 }
 
 async function saveUser() {
@@ -686,7 +697,7 @@ async function saveUser() {
   try {
     const result = await apiCall(userId ? 'updateUser' : 'createUser', userId ? { ...payload, userId } : payload);
     const savedUserId = userId || result.user.UserID;
-    if (userId && hasPermission('users.managePermission')) await saveUserAccess(savedUserId);
+    if (hasPermission('users.managePermission')) await saveUserAccess(savedUserId);
     $('#userDialog').close();
     showToast('บันทึกผู้ใช้สำเร็จ', 'success');
     await loadUsers();
