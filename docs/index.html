@@ -158,12 +158,12 @@
         <label>Corrective Action<textarea id="editCorrectiveAction" rows="3"></textarea></label>
         <label>Assign To<select id="editAssignedTo"><option value="">ไม่ระบุผู้รับผิดชอบ</option></select></label>
         <label>Due Date<input id="editDueDate" type="date"></label>
-        <label>Status<select id="editStatus"><option>Open</option><option>Assigned</option><option>In Progress</option><option>Pending Verification</option><option>Rejected</option><option>Closed</option></select></label>
-        <label class="full-width">Close Remark<textarea id="editCloseRemark" rows="2"></textarea></label>
+        <label>Status<input id="editStatus" readonly></label>
+        <label class="full-width">Close Remark / Action Remark<textarea id="editCloseRemark" rows="2"></textarea></label>
         <label class="full-width">After Photo<input id="editAfterPhoto" type="file" accept="image/*" capture="environment"></label>
       </div>
       <div id="editPhotoPreview" class="photo-link"></div>
-      <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelFindingEdit">ยกเลิก</button><button type="button" class="btn btn-outline hidden" id="rejectFindingButton">Reject</button><button type="button" class="btn btn-secondary hidden" id="approveFindingButton">Approve & Close</button><button type="button" class="btn btn-primary" id="submitVerificationButton">Submit for Verification</button><button type="submit" class="btn btn-primary">บันทึกการแก้ไข</button></div>
+      <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelFindingEdit">ยกเลิก</button><button type="button" class="btn btn-outline hidden" id="rejectFindingButton">Reject Finding</button><button type="button" class="btn btn-secondary hidden" id="approveFindingButton">Close Finding</button><button type="button" class="btn btn-primary hidden" id="submitVerificationButton">Submit for Verification</button><button type="submit" class="btn btn-primary" id="saveFindingButton">บันทึกการแก้ไข</button></div>
     </form>
   </dialog>
 
