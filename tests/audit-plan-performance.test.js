@@ -12,13 +12,16 @@ assert.strictEqual(frontend, docs);
 assert(frontend.includes('await initializeAuthenticatedApp(false);'));
 assert(frontend.includes('async function ensureMasterDataLoaded'));
 assert(frontend.includes("if (['audit', 'audit-plan', 'findings', 'checklist', 'admin'].includes(page))"));
-assert(frontend.includes('page: 1, pageSize: 100'));
+assert(frontend.includes('limit: 100'));
 assert(frontend.includes("await navigateTo('audit');"));
 
 assert(dashboard.includes('safeCacheGetJson_(cacheKey)'));
-assert(dashboard.includes('safeCachePutJson_(cacheKey, summary, 60)'));
-assert(dashboard.includes('summarizeAuditPlanRows_'));
+assert(dashboard.includes('safeCachePutJson_(cacheKey, result, 60)'));
+assert(!dashboard.includes('AuditPlanSummary'));
+assert(!dashboard.includes('summarizeAuditPlanRows_'));
+assert(!dashboard.includes('SHEET_NAMES.AUDIT_PLAN'));
 assert(!dashboard.includes('refreshAuditPlanStatus('));
+assert(dashboard.includes('getRuleBasedAuditSummary_'));
 
 assert(plan.includes("normalizePlanMonth_(payload.periodMonth) || formatDateBangkok_(new Date()).slice(0, 7)"));
 assert(plan.includes('pageSize = Math.min'));
