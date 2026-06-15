@@ -8,6 +8,7 @@ const state = {
   auditAnswers: {},
   findings: [],
   dashboard: null,
+  auditPlans: [],
   report: null,
   editingFinding: null,
   adminUsers: [],
@@ -20,7 +21,8 @@ const PERMISSION_CATALOG = [
   'findings.view.all', 'findings.view.line', 'findings.view.assigned', 'findings.view.created', 'findings.assign',
   'findings.update.line', 'findings.update.assigned', 'findings.verify', 'findings.close.minor',
   'findings.close.major', 'findings.close.critical', 'dashboard.view', 'dashboard.view.all',
-  'reports.view', 'reports.export', 'checklist.view', 'checklist.manage'
+  'reports.view', 'reports.export', 'checklist.view', 'checklist.manage',
+  'audit.plan.view', 'audit.plan.manage', 'audit.plan.generate', 'audit.plan.refresh'
 ];
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -54,8 +56,21 @@ function bindEvents() {
   $('#refreshDashboard').addEventListener('click', loadDashboard);
   $('#auditLine').addEventListener('change', handleAuditLineChange);
   $('#auditStation').addEventListener('change', updateAuditArea);
+  $('#auditDate').addEventListener('change', updateLateReasonVisibility);
   $('#loadChecklistButton').addEventListener('click', loadChecklist);
   $('#auditForm').addEventListener('submit', event => { event.preventDefault(); saveAudit(); });
+  $('#planLine').addEventListener('change', () => populateStationSelect('#planStation', $('#planLine').value, true));
+  $('#loadAuditPlanButton').addEventListener('click', loadAuditPlan);
+  $('#generateAuditPlanButton').addEventListener('click', generateAuditPlan);
+  $('#refreshAuditPlanButton').addEventListener('click', refreshAuditPlanStatus);
+  $('#auditPlanTable').addEventListener('click', event => {
+    const button = event.target.closest('[data-plan-action]');
+    if (!button) return;
+    const plan = state.auditPlans.find(item => String(item.PlanID) === button.dataset.planId);
+    if (!plan) return;
+    if (button.dataset.planAction === 'start') startAuditFromPlan(plan);
+    if (button.dataset.planAction === 'view') viewAuditFromPlan(plan);
+  });
   $('#findingLine').addEventListener('change', () => populateStationSelect('#findingStation', $('#findingLine').value, true));
   $('#checklistLine').addEventListener('change', () => populateStationSelect('#checklistStation', $('#checklistLine').value, false));
   $('#applyFindingFilters').addEventListener('click', loadFindings);
@@ -206,6 +221,11 @@ async function loadDashboard(withLoading = true) {
 function renderDashboard(data) {
   const topCategory = data.TopNGCategory && data.TopNGCategory.Category ? `${data.TopNGCategory.Category} (${data.TopNGCategory.Count})` : '-';
   const cards = [
+    ['My LPA Due Today', data.AuditPlanSummary?.DueToday || 0, 'วันนี้คุณมี LPA ที่ต้องตรวจ', 'orange'],
+    ['My LPA Overdue', data.AuditPlanSummary?.Overdue || 0, 'รายการตรวจที่เกินกำหนด', 'dark-red'],
+    ['My LPA This Week', data.AuditPlanSummary?.ThisWeek || 0, 'แผนการตรวจสัปดาห์นี้', ''],
+    ['Late Submitted', data.AuditPlanSummary?.LateSubmitted || 0, 'ส่งผลการตรวจล่าช้า', 'red'],
+    ['Missed Audit', data.AuditPlanSummary?.Missed || 0, 'ไม่ได้ดำเนินการตามแผน', 'dark-red'],
     ['Total Audit', data.TotalAudit, 'รายการตรวจทั้งหมด', ''],
     ['Audit This Month', data.AuditThisMonth, 'รายการเดือนนี้', ''],
     ['Total Finding', data.TotalFinding, 'Finding ทั้งหมด', ''],
@@ -222,6 +242,19 @@ function renderDashboard(data) {
   const notificationCount = number(data.MyOpenFindings) + number(data.PendingMyVerification);
   $('#findingNavBadge').textContent = notificationCount;
   $('#findingNavBadge').classList.toggle('hidden', notificationCount < 1);
+  const auditNotificationCount = number(data.AuditPlanSummary?.DueToday) + number(data.AuditPlanSummary?.Overdue);
+  $('#auditNavBadge').textContent = auditNotificationCount;
+  $('#auditNavBadge').classList.toggle('hidden', auditNotificationCount < 1);
+  const dueToday = number(data.AuditPlanSummary?.DueToday);
+  const overdue = number(data.AuditPlanSummary?.Overdue);
+  const alert = $('#auditPlanAlert');
+  alert.classList.toggle('hidden', auditNotificationCount < 1);
+  const reminderMessages = [];
+  if (dueToday > 0) reminderMessages.push(`วันนี้คุณมี LPA ที่ต้องตรวจ ${dueToday} รายการ`);
+  if (overdue > 0) reminderMessages.push(`คุณมี LPA Overdue ${overdue} รายการ`);
+  alert.innerHTML = auditNotificationCount ? `<div><strong>แจ้งเตือนแผน LPA</strong>${reminderMessages.map(message => `<span>${escapeHtml(message)}</span>`).join('')}</div><button id="dashboardOpenAuditPlan" class="btn btn-outline" type="button">ดูแผนการตรวจ</button>` : '';
+  const openPlanButton = $('#dashboardOpenAuditPlan');
+  if (openPlanButton) openPlanButton.addEventListener('click', () => navigateTo('audit-plan'));
   renderMonthlyBars(data.MonthlyAuditResult || []);
   $('#lineSummary').innerHTML = tableHtml(['Line', 'Total Audit', 'Total NG', 'Open Finding'], (data.SummaryByLine || []).map(row => [row.LineName || row.LineID, row.TotalAudit, row.TotalNG, row.OpenFinding]));
   const nearDue = data.ActionsNearDueDate || [];
@@ -293,6 +326,10 @@ function updateAuditProgress() {
 async function saveAudit() {
   if (!state.checklist.length) return showToast('กรุณาโหลด Checklist ก่อนบันทึก', 'warning');
   if (Object.keys(state.auditAnswers).length !== state.checklist.length) return showToast('กรุณาระบุผลให้ครบทุกข้อ', 'warning');
+  const auditDateValue = $('#auditDate').value;
+  const isBackdated = auditDateValue && auditDateValue < localDateInput(new Date());
+  const lateReason = $('#auditLateReason').value.trim();
+  if (isBackdated && !lateReason) return showToast('คุณกำลังบันทึก Audit ย้อนหลัง กรุณาระบุเหตุผล', 'warning');
   const records = [];
   for (const item of state.checklist) {
     const card = $(`.checklist-card[data-checklist-id="${cssEscape(item.ChecklistID)}"]`);
@@ -335,11 +372,12 @@ async function saveAudit() {
       stationId: $('#auditStation').value, stationName: selectedText('#auditStation'),
       area: $('#auditArea').value, shift: $('#auditShift').value, auditLayer: $('#auditLayer').value,
       checklistLanguage: $('#checklistLanguage').value,
-      remark: $('#auditRemark').value.trim(), records
+      remark: $('#auditRemark').value.trim(), lateReason, planId: $('#auditPlanId').value, records
     };
     const data = await apiCall('saveAudit', payload);
     const findingText = (data.FindingIDs || []).length ? ` | Finding: ${data.FindingIDs.join(', ')}` : '';
     showToast(`บันทึกสำเร็จ AuditID: ${data.AuditID}${findingText}`, 'success', 7000);
+    state.auditPlans = [];
     resetAuditForm();
     loadDashboard(false);
   } catch (error) {
@@ -538,9 +576,123 @@ async function loadMonthlyReport() {
   }
 }
 
+async function loadAuditPlan() {
+  if (!hasPermission('audit.plan.view')) return;
+  showLoading('กำลังโหลดแผนการตรวจ...');
+  try {
+    const data = await apiCall('getAuditPlan', {
+      periodMonth: $('#planMonth').value, lineId: optionalFilterValue($('#planLine').value),
+      stationId: optionalFilterValue($('#planStation').value), requiredRole: optionalFilterValue($('#planRole').value),
+      status: optionalFilterValue($('#planStatus').value), myPlanOnly: $('#planMine').checked
+    });
+    state.auditPlans = data.plans || [];
+    renderAuditPlan();
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+async function generateAuditPlan() {
+  if (!hasPermission('audit.plan.generate')) return showToast('คุณไม่มีสิทธิ์สร้างแผนการตรวจ', 'error');
+  if (!$('#planMonth').value) return showToast('กรุณาเลือกเดือน', 'warning');
+  if (!window.confirm('ยืนยันสร้างแผนการตรวจสำหรับเดือนและ Line ที่เลือก?')) return;
+  const generatingAll = !$('#planLine').value && !$('#planStation').value;
+  if (generatingAll && !window.confirm('คุณกำลังสร้างแผนสำหรับทุก Line/Station อาจมีรายการจำนวนมาก ต้องการดำเนินการต่อหรือไม่?')) return;
+  showLoading('กำลังสร้างแผนการตรวจ...');
+  try {
+    const result = await apiCall('generateAuditPlan', {
+      periodMonth: $('#planMonth').value, lineId: $('#planLine').value || 'ALL',
+      stationId: $('#planStation').value || 'ALL', includeWeekends: $('#planIncludeWeekends').checked
+    });
+    showToast(`สร้าง ${result.created} รายการ, ข้ามรายการซ้ำ ${result.skippedDuplicates}`, 'success');
+    await loadAuditPlan();
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+async function refreshAuditPlanStatus() {
+  if (!hasPermission('audit.plan.refresh')) return showToast('คุณไม่มีสิทธิ์อัปเดตสถานะแผน', 'error');
+  showLoading('กำลังอัปเดตสถานะแผน...');
+  try {
+    const result = await apiCall('refreshAuditPlanStatus', { periodMonth: $('#planMonth').value });
+    showToast(`อัปเดตสถานะแผน ${result.updated} รายการ`, 'success');
+    await loadAuditPlan();
+    await loadDashboard(false);
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+function renderAuditPlan() {
+  renderAuditPlanSummary();
+  if (!state.auditPlans.length) {
+    $('#auditPlanTable').innerHTML = emptyHtml('ไม่พบแผนการตรวจตามตัวกรอง');
+    return;
+  }
+  $('#auditPlanTable').innerHTML = `<table class="data-table audit-plan-table"><thead><tr><th>Due Date</th><th>Role</th><th>Auditor</th><th>Line</th><th>Station</th><th>Frequency</th><th>Status</th><th>Completed AuditID</th><th>Submitted At</th><th>Late</th><th>Late Reason</th><th>Action</th></tr></thead><tbody>${state.auditPlans.map(plan => {
+    const completed = ['Completed', 'Late Submitted'].includes(plan.Status);
+    const action = completed
+      ? `<button class="btn btn-outline btn-compact" data-plan-action="view" data-plan-id="${escapeAttr(plan.PlanID)}">ดูผลตรวจ</button>`
+      : `<button class="btn btn-primary btn-compact" data-plan-action="start" data-plan-id="${escapeAttr(plan.PlanID)}">เริ่มตรวจ</button>`;
+    return `<tr class="${plan.Status === 'Overdue' || plan.Status === 'Missed' ? 'plan-row-overdue' : ''}"><td>${escapeHtml(formatDate(plan.DueDate))}<small class="table-subtext">${escapeHtml(plan.DueTime || '')}</small></td><td>${escapeHtml(plan.RequiredRole || '-')}</td><td>${escapeHtml(plan.RequiredUserName || 'ตาม Role')}</td><td>${escapeHtml(plan.LineName || plan.LineID)}</td><td>${escapeHtml(plan.StationName || plan.StationID)}</td><td>${escapeHtml(plan.Frequency || '-')}</td><td><span class="status-badge ${auditPlanStatusClass(plan.Status)}">${escapeHtml(plan.Status)}</span></td><td>${escapeHtml(plan.CompletedAuditID || '-')}</td><td>${escapeHtml(plan.SubmittedAt || '-')}</td><td>${escapeHtml(plan.IsLate || 'No')}</td><td class="late-reason-cell">${escapeHtml(plan.LateReason || '-')}</td><td>${action}</td></tr>`;
+  }).join('')}</tbody></table>`;
+}
+
+function renderAuditPlanSummary() {
+  const counts = { 'Due Today': 0, Overdue: 0, Completed: 0, 'Late Submitted': 0, Missed: 0 };
+  state.auditPlans.forEach(plan => {
+    if (Object.prototype.hasOwnProperty.call(counts, plan.Status)) counts[plan.Status]++;
+  });
+  $$('[data-plan-count]').forEach(element => {
+    element.textContent = counts[element.dataset.planCount] || 0;
+  });
+}
+
+async function startAuditFromPlan(plan) {
+  const layerOption = Array.from($('#auditLayer').options).find(option => option.value === plan.AuditLayer);
+  if (!layerOption) return showToast('คุณไม่มีสิทธิ์เริ่มตรวจ Audit Layer นี้', 'error');
+  showLoading('กำลังโหลดแผนเข้าสู่ฟอร์มตรวจ...');
+  try {
+    await Promise.resolve();
+    navigateTo('audit');
+    $('#auditPlanId').value = plan.PlanID || '';
+    $('#auditDate').value = dateInputValue(plan.DueDate);
+    $('#auditLine').value = plan.LineID || '';
+    handleAuditLineChange();
+    $('#auditStation').value = plan.StationID || '';
+    updateAuditArea();
+    $('#auditLayer').value = plan.AuditLayer;
+    updateLateReasonVisibility();
+    showToast('โหลดแผนการตรวจแล้ว กรุณากดโหลด Checklist', 'success');
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+function viewAuditFromPlan(plan) {
+  if (!plan.CompletedAuditID) return showToast('แผนนี้ยังไม่มีผลตรวจ', 'warning');
+  showToast(`AuditID: ${plan.CompletedAuditID}`, 'info', 6000);
+}
+
+function updateLateReasonVisibility() {
+  const date = $('#auditDate').value;
+  const backdated = date && date < localDateInput(new Date());
+  $('#lateReasonField').classList.toggle('hidden', !backdated);
+  $('#auditLateReason').required = Boolean(backdated);
+}
+
 function renderMonthlyReport(data) {
-  const metrics = [['Total Audit', data.TotalAudit], ['Total OK', data.TotalOK], ['Total NG', data.TotalNG], ['Total N/A', data.TotalNA], ['NG Rate', `${number(data.NGRate).toFixed(2)}%`], ['Open Finding', data.OpenFinding], ['Closed Finding', data.ClosedFinding], ['Overdue Action', data.OverdueAction]];
-  $('#reportContent').innerHTML = `<article class="panel"><div class="panel-title"><div><p class="eyebrow">MONTHLY LPA REPORT</p><h3>ประจำเดือน ${escapeHtml(formatPeriod(data.Period))}</h3></div></div><div class="report-metrics">${metrics.map(item => `<div class="metric-card"><span class="metric-label">${escapeHtml(item[0])}</span><strong class="metric-value">${escapeHtml(String(item[1] ?? 0))}</strong></div>`).join('')}</div></article><div class="content-grid two-columns"><article class="panel report-section"><h3>Summary by Category</h3>${tableHtml(['Category', 'Total', 'OK', 'NG', 'N/A'], (data.SummaryByCategory || []).map(row => [row.Category, row.Total, row.OK, row.NG, row.NA]))}</article><article class="panel report-section"><h3>Summary by Line</h3>${tableHtml(['Line', 'Audit', 'OK', 'NG', 'N/A'], (data.SummaryByLine || []).map(row => [row.LineName || row.LineID, row.TotalAudit, row.TotalOK, row.TotalNG, row.TotalNA]))}</article></div><article class="panel report-section"><h3>Top Finding</h3>${findingReportTable(data.TopFinding || [])}</article><article class="panel report-section"><h3>Action Plan</h3>${findingReportTable(data.ActionPlanList || [])}</article>`;
+  const metrics = [['Total Audit', data.TotalAudit], ['Planned Audit', data.PlannedAuditCount], ['Completed Plan', data.CompletedAuditCount], ['Completion Rate', `${number(data.CompletionRate).toFixed(2)}%`], ['Overdue Audit', data.OverdueAuditCount], ['Missed Audit', data.MissedAuditCount], ['Late Submitted', data.LateSubmittedCount], ['Total OK', data.TotalOK], ['Total NG', data.TotalNG], ['NG Rate', `${number(data.NGRate).toFixed(2)}%`], ['Open Finding', data.OpenFinding], ['Overdue Action', data.OverdueAction]];
+  $('#reportContent').innerHTML = `<article class="panel"><div class="panel-title"><div><p class="eyebrow">MONTHLY LPA REPORT</p><h3>ประจำเดือน ${escapeHtml(formatPeriod(data.Period))}</h3></div></div><div class="report-metrics">${metrics.map(item => `<div class="metric-card"><span class="metric-label">${escapeHtml(item[0])}</span><strong class="metric-value">${escapeHtml(String(item[1] ?? 0))}</strong></div>`).join('')}</div></article><div class="content-grid two-columns"><article class="panel report-section"><h3>Audit Plan by Role</h3>${tableHtml(['Role', 'Planned', 'Completed', 'Late', 'Missed'], (data.AuditPlanByRole || []).map(row => [row.Role, row.Planned, row.Completed, row.LateSubmitted, row.Missed]))}</article><article class="panel report-section"><h3>Audit Plan by Line</h3>${tableHtml(['Line', 'Planned', 'Completed', 'Late', 'Missed'], (data.AuditPlanByLine || []).map(row => [row.LineName || row.LineID, row.Planned, row.Completed, row.LateSubmitted, row.Missed]))}</article></div><div class="content-grid two-columns"><article class="panel report-section"><h3>Summary by Category</h3>${tableHtml(['Category', 'Total', 'OK', 'NG', 'N/A'], (data.SummaryByCategory || []).map(row => [row.Category, row.Total, row.OK, row.NG, row.NA]))}</article><article class="panel report-section"><h3>Summary by Line</h3>${tableHtml(['Line', 'Audit', 'OK', 'NG', 'N/A'], (data.SummaryByLine || []).map(row => [row.LineName || row.LineID, row.TotalAudit, row.TotalOK, row.TotalNG, row.TotalNA]))}</article></div><article class="panel report-section"><h3>Top Finding</h3>${findingReportTable(data.TopFinding || [])}</article><article class="panel report-section"><h3>Action Plan</h3>${findingReportTable(data.ActionPlanList || [])}</article>`;
 }
 
 async function exportReportCsv() {
@@ -777,10 +929,11 @@ function renderMasterChecklist(rows) {
 }
 
 function populateAllMasterSelects() {
-  ['#auditLine', '#findingLine', '#checklistLine'].forEach((selector, index) => populateSelect(selector, state.masterData.lines || [], 'LineID', 'LineName', index === 1 ? 'ทั้งหมด' : 'เลือก Line'));
+  ['#auditLine', '#findingLine', '#checklistLine', '#planLine'].forEach((selector, index) => populateSelect(selector, state.masterData.lines || [], 'LineID', 'LineName', [1, 3].includes(index) ? 'ทั้งหมด' : 'เลือก Line'));
   populateStationSelect('#auditStation', '', false);
   populateStationSelect('#findingStation', '', true);
   populateStationSelect('#checklistStation', '', false);
+  populateStationSelect('#planStation', '', true);
   populateSelect('#adminLineFilter', state.masterData.lines || [], 'LineID', 'LineName', 'ทั้งหมด');
   populateSelect('#adminLineDefault', state.masterData.lines || [], 'LineID', 'LineName', 'ไม่ระบุ');
 }
@@ -824,6 +977,9 @@ function resetAuditForm() {
   $('#auditChecklist').innerHTML = emptyHtml('เลือก Line, Station และ Audit Layer แล้วกด “โหลด Checklist”');
   $('#auditSaveBar').classList.add('hidden');
   $('#auditRemark').value = '';
+  $('#auditPlanId').value = '';
+  $('#auditLateReason').value = '';
+  updateLateReasonVisibility();
   setDefaultDates();
 }
 
@@ -834,6 +990,7 @@ function navigateTo(page) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (page === 'dashboard' && !state.dashboard) loadDashboard();
   if (page === 'findings' && !state.findings.length) loadFindings();
+  if (page === 'audit-plan' && !state.auditPlans.length) loadAuditPlan();
   if (page === 'admin' && hasPermission('users.view')) loadUsers();
 }
 
@@ -915,7 +1072,19 @@ function statusClass(status) {
   if (value === 'closed') return 'status-closed';
   if (value === 'ok') return 'status-ok';
   if (value === 'ng') return 'status-ng';
+  if (['overdue', 'missed', 'late-submitted'].includes(value)) return 'status-overdue';
+  if (value === 'due-today') return 'status-on-going';
   return 'status-na';
+}
+
+function auditPlanStatusClass(status) {
+  const value = String(status || '').toLowerCase();
+  if (value === 'due today') return 'status-plan-due';
+  if (value === 'completed') return 'status-plan-completed';
+  if (value === 'overdue') return 'status-plan-overdue';
+  if (value === 'missed') return 'status-plan-missed';
+  if (value === 'late submitted') return 'status-plan-late';
+  return 'status-plan-planned';
 }
 
 function hasPermission(permissionKey) {
@@ -938,6 +1107,9 @@ function applyPermissionVisibility() {
   $('#adminNavButton').classList.toggle('hidden', !canViewAdmin);
   $('#addUserButton').classList.toggle('hidden', !hasPermission('users.create'));
   $('#exportCsvButton').classList.toggle('hidden', !hasPermission('reports.export'));
+  $('#generateAuditPlanButton').classList.toggle('hidden', !hasPermission('audit.plan.generate'));
+  $('#includeWeekendsField').classList.toggle('hidden', !hasPermission('audit.plan.generate'));
+  $('#refreshAuditPlanButton').classList.toggle('hidden', !hasPermission('audit.plan.refresh'));
 }
 
 function applyAuditLayerPermissions() {
@@ -968,6 +1140,8 @@ function setDefaultDates() {
   const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   $('#findingMonth').value = '';
   $('#reportMonth').value = month;
+  $('#planMonth').value = month;
+  updateLateReasonVisibility();
 }
 
 function fileToBase64(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1] || ''); reader.onerror = () => reject(new Error('อ่านไฟล์ไม่สำเร็จ')); reader.readAsDataURL(file); }); }
