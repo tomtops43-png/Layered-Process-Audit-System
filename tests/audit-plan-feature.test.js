@@ -47,8 +47,8 @@ assert(plan.includes('getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN).filter(function (
 assert(audit.includes('คุณกำลังบันทึก Audit ย้อนหลัง กรุณาระบุเหตุผล'));
 assert(audit.includes("requireLineAccess_(currentUser, payload.lineId, 'Audit')"));
 assert(audit.includes('completeAuditPlan_'));
-assert(dashboard.includes('AuditPlanSummary'));
-assert(dashboard.includes('summarizeAuditPlanRows_'));
+assert(!dashboard.includes('AuditPlanSummary'));
+assert(!dashboard.includes('summarizeAuditPlanRows_'));
 assert(report.includes('PlannedAuditCount'));
 assert(report.includes("slice(0, 7).replace('-', '') === period"));
 assert(report.includes('effectiveAuditPlan_(row, allAuditSessions, reportNow, auditPlanIndex)'));
@@ -68,6 +68,8 @@ assert(frontend.includes('กำลังโหลดแผนการตรว
 assert(frontend.includes('กำลังสร้างแผนการตรวจ...'));
 assert(frontend.includes('กำลังอัปเดตสถานะแผน...'));
 assert(frontend.includes('กำลังโหลดแผนเข้าสู่ฟอร์มตรวจ...'));
+assert(frontend.includes("if (page === 'audit-plan' && !state.auditPlans.length) loadAuditPlan();"));
+assert(frontend.includes("if (page === 'audit' && !state.startingPlanAudit) enterManualAuditMode();"));
 assert(frontend.includes('startAuditFromPlan'));
 assert(frontend.includes('renderAuditPlanSummary'));
 assert(frontend.includes('ensureMasterDataLoaded'));

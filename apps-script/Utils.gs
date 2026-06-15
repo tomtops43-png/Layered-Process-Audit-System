@@ -96,26 +96,31 @@ function generateId(prefix, sheetName, idColumnName, periodMonth) {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
-    var ids = getRowsAsObjects(sheetName).map(function (row) { return cleanString_(row[idColumnName]); });
-    var period = cleanString_(periodMonth);
-    var stem = prefix + (period ? '-' + period : '');
-    var width = ['AR', 'LOG', 'ATT'].indexOf(prefix) !== -1 ? 6 : 4;
-    var maximum = 0;
-    ids.forEach(function (id) {
-      if (id.indexOf(stem + '-') === 0 || (!period && id.indexOf(prefix) === 0)) {
-        var match = id.match(/(\d+)$/);
-        if (match) maximum = Math.max(maximum, Number(match[1]));
-      }
-    });
-    var sequenceKey = 'LPA_SEQUENCE_' + sheetName + '_' + idColumnName + '_' + (period || 'ALL');
-    var properties = PropertiesService.getScriptProperties();
-    maximum = Math.max(maximum, toNumber_(properties.getProperty(sequenceKey)));
-    var next = maximum + 1;
-    properties.setProperty(sequenceKey, String(next));
-    return stem + (period ? '-' : '') + padNumber_(next, width);
+    return generateIdWithoutLock_(prefix, sheetName, idColumnName, periodMonth);
   } finally {
     lock.releaseLock();
   }
+}
+
+/** Generates an ID while the caller already owns the script lock. */
+function generateIdWithoutLock_(prefix, sheetName, idColumnName, periodMonth) {
+  var ids = getRowsAsObjects(sheetName).map(function (row) { return cleanString_(row[idColumnName]); });
+  var period = cleanString_(periodMonth);
+  var stem = prefix + (period ? '-' + period : '');
+  var width = ['AR', 'LOG', 'ATT'].indexOf(prefix) !== -1 ? 6 : 4;
+  var maximum = 0;
+  ids.forEach(function (id) {
+    if (id.indexOf(stem + '-') === 0 || (!period && id.indexOf(prefix) === 0)) {
+      var match = id.match(/(\d+)$/);
+      if (match) maximum = Math.max(maximum, Number(match[1]));
+    }
+  });
+  var sequenceKey = 'LPA_SEQUENCE_' + sheetName + '_' + idColumnName + '_' + (period || 'ALL');
+  var properties = PropertiesService.getScriptProperties();
+  maximum = Math.max(maximum, toNumber_(properties.getProperty(sequenceKey)));
+  var next = maximum + 1;
+  properties.setProperty(sequenceKey, String(next));
+  return stem + (period ? '-' : '') + padNumber_(next, width);
 }
 
 function getSetting(key) {
