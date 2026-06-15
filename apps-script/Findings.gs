@@ -171,7 +171,6 @@ function verifyFinding(payload, currentUser) {
       updates.RejectedAt = timestamp;
       updates.RejectedBy = currentUser.UserID;
       updates.RejectReason = rejectReason;
-      updates.CloseRemark = rejectReason;
     } else {
       var closeRemark = cleanString_(payload.closeRemark || payload.CloseRemark);
       if (!closeRemark) throw new Error('CloseRemark is required to close a finding.');

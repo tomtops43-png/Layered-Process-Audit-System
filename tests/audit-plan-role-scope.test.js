@@ -27,8 +27,8 @@ assert.strictEqual(frontend, docs);
 assert(frontend.includes('function applyAuditPlanRoleScope()'));
 assert(frontend.includes("supervisor: ['', 'Leader', 'Supervisor']"));
 assert(frontend.includes("leader: ['Leader']"));
-assert(frontend.includes("requiredRole: $('#planRole').value || 'ALL'"));
-assert(frontend.includes('myPlan.checked = true'));
-assert(frontend.includes('myPlan.disabled = true'));
+assert(frontend.includes("requiredRole: optionalFilterValue($('#planRole').value)"));
+assert(frontend.includes("roleSelect.value = 'Leader'"));
+assert(frontend.includes("apiCall('getAuditPlanRules'"));
 
 console.log('Audit Plan role scope tests passed.');
