@@ -123,7 +123,7 @@ function saveAudit(payload, currentUser) {
       Remark: payload.remark || '', SubmittedAt: timestamp, IsLate: isLate ? 'Yes' : 'No',
       LateReason: lateReason, PlanID: matchingPlan ? matchingPlan.PlanID : '',
       PlanStatus: planStatus, AuditKey: auditKey, ClientSubmissionID: clientSubmissionId,
-      SaveSource: matchingPlan ? 'AuditPlan' : 'Manual', CreatedAt: timestamp, CreatedBy: currentUser.UserID,
+      SaveSource: matchingPlan ? 'Plan' : 'Manual', CreatedAt: timestamp, CreatedBy: currentUser.UserID,
       UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
     });
     var findingIds = [];
@@ -211,7 +211,7 @@ function saveAudit(payload, currentUser) {
 
 function buildAuditKey_(auditDate, lineId, stationId, auditLayer, shift, auditorId) {
   return [auditDate, lineId, stationId, auditLayer, shift, auditorId].map(function (value) {
-    return cleanString_(value).toLowerCase();
+    return cleanString_(value);
   }).join('|');
 }
 

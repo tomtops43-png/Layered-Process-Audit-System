@@ -15,9 +15,6 @@ function getDashboard(payload, currentUser) {
     var audits = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
     var findings = getRowsAsObjects(SHEET_NAMES.FINDINGS).map(refreshOverdueForRead_);
     var allFindings = findings.slice();
-    var planSummary = summarizeAuditPlansForDashboard_(
-      currentUser, now, audits, lineAccess, canViewAll, permissionEnabled_(permissions, 'audit.plan.view')
-    );
     if (payload.lineId) {
       if (!canViewAll && !canAccessLineFromRows_(currentUser, payload.lineId, 'View', lineAccess)) {
         throw new Error('Line access denied: ' + cleanString_(payload.lineId));
@@ -88,7 +85,6 @@ function getDashboard(payload, currentUser) {
           canViewFindingForDashboard_(currentUser, row, permissions, lineAccess) &&
           permissionEnabled_(permissions, 'findings.verify');
       }).length,
-      AuditPlanSummary: planSummary,
       TopNGCategory: topCategory ? { Category: topCategory, Count: categoryNg[topCategory] } : {},
       MonthlyAuditResult: Object.keys(monthly).sort().slice(-12).map(function (key) { return monthly[key]; }),
       SummaryByLine: Object.keys(byLine).sort().map(function (key) { return byLine[key]; }),
@@ -99,23 +95,6 @@ function getDashboard(payload, currentUser) {
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
-}
-
-function summarizeAuditPlansForDashboard_(currentUser, now, auditRows, lineAccess, canViewAll, canViewPlans) {
-  if (!canViewPlans) {
-    return { DueToday: 0, Overdue: 0, ThisWeek: 0, ThisMonth: 0, Completed: 0, LateSubmitted: 0, Missed: 0, Total: 0 };
-  }
-  var today = formatDateBangkok_(now);
-  var month = today.slice(0, 7);
-  var cacheKey = auditPlanSummaryCacheKey_(currentUser, month.replace('-', ''), lineAccess || []);
-  var cached = safeCacheGetJson_(cacheKey);
-  if (cached) return cached;
-  var audits = (auditRows || []).filter(function (row) {
-    return normalizeFindingPeriod_(row.PeriodMonth || row.AuditDate) === month.replace('-', '');
-  });
-  var summary = summarizeAuditPlanRows_(currentUser, month, now, audits, lineAccess || [], canViewAll, true);
-  safeCachePutJson_(cacheKey, summary, 60);
-  return summary;
 }
 
 function dashboardCacheKey_(user, period, lineAccess, lineId) {

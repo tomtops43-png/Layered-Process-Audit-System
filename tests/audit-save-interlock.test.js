@@ -28,6 +28,7 @@ assert(audit.includes('มีการบันทึก LPA สำหรับ 
 assert(audit.includes('Duplicate checklist item in audit'));
 assert(audit.includes('Duplicate finding for audit checklist item'));
 assert(audit.includes('completeAuditPlan_(matchingPlan'));
+assert(audit.includes("SaveSource: matchingPlan ? 'Plan' : 'Manual'"));
 assert(utils.includes('function generateIdWithoutLock_('));
 
 assert(frontend.includes('auditSaveInProgress'));
@@ -35,6 +36,15 @@ assert(frontend.includes('auditClientSubmissionId'));
 assert(frontend.includes('createClientSubmissionId()'));
 assert(frontend.includes('กำลังบันทึกข้อมูล กรุณารอสักครู่'));
 assert(frontend.includes('clientSubmissionId: state.auditClientSubmissionId'));
+assert(frontend.includes('function handleAuditScopeChange()'));
+assert(frontend.includes('function resetAuditInterlockState()'));
+assert(frontend.includes("state.auditMode = 'Manual'"));
+assert(frontend.includes("state.auditMode = 'Plan'"));
+assert(frontend.includes('setPlanScopeLocked(true)'));
+assert(frontend.includes('state.auditDuplicateBlocked = false'));
+assert(frontend.includes('state.auditClientSubmissionId = createClientSubmissionId()'));
+assert(frontend.includes("$$('.audit-duplicate-toast').forEach(toast => toast.remove())"));
+assert(frontend.includes('function updateAuditSaveButtonState()'));
 assert(frontendHtml.includes('id="saveAuditButton"'));
 assert.strictEqual(frontend, docs);
 assert.strictEqual(frontendHtml, docsHtml);
