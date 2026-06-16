@@ -80,7 +80,7 @@ function bindEvents() {
   $('#mobileMoreButton').addEventListener('click', openSidebar);
   $('#closeMenuButton').addEventListener('click', closeSidebar);
   $('#sidebarBackdrop').addEventListener('click', closeSidebar);
-  $$('#mainNav [data-page], .bottom-nav [data-page]').forEach(button => button.addEventListener('click', () => navigateTo(button.dataset.page)));
+  $$('#mainNav [data-page]').forEach(button => button.addEventListener('click', () => navigateTo(button.dataset.page)));
   $('#refreshDashboard').addEventListener('click', loadDashboard);
   $('#auditLine').addEventListener('change', () => {
     handleAuditLineChange();
@@ -366,7 +366,7 @@ function handleFindingNotificationSummary(data, immediate) {
 }
 
 function updateFindingBadges(count) {
-  ['#findingNavBadge', '#mobileFindingNavBadge'].forEach(selector => {
+  ['#findingNavBadge'].forEach(selector => {
     const badge = $(selector);
     if (!badge) return;
     badge.textContent = count;
@@ -1460,7 +1460,7 @@ function enterManualAuditMode() {
 
 async function navigateTo(page) {
   $$('.page').forEach(section => section.classList.toggle('active-page', section.id === `page-${page}`));
-  $$('#mainNav [data-page], .bottom-nav [data-page]').forEach(button => button.classList.toggle('active', button.dataset.page === page));
+  $$('#mainNav [data-page]').forEach(button => button.classList.toggle('active', button.dataset.page === page));
   closeSidebar();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (page === 'audit' && !state.startingPlanAudit) enterManualAuditMode();
