@@ -37,10 +37,17 @@ function saveAudit(payload, currentUser) {
       var validatedResult = normalizeAuditResult_(record.result);
       if (!validatedResult) throw new Error('Record ' + (index + 1) + ': result must be OK, NG, or N/A.');
       if (validatedResult === 'NG') {
-        var selectedUserId = cleanString_(record.assignedToUserId || record.picUserId);
-        var selectedUser = selectedUserId ? findById_(SHEET_NAMES.USERS, 'UserID', selectedUserId) : null;
-        if (selectedUserId && (!selectedUser || !isActive_(selectedUser.ActiveStatus))) {
-          throw new Error('Record ' + (index + 1) + ': assigned user was not found or is inactive.');
+        var assignmentMode = normalizeFindingAssignmentMode_(record.assignmentMode, record);
+        if (assignmentMode === 'ROLE') {
+          var selectedRole = cleanString_(record.assignedRole || record.assignedRoleName || record.responsiblePerson || record.picName);
+          if (!selectedRole) throw new Error('Record ' + (index + 1) + ': AssignedRole is required for role-based Finding assignment.');
+          validateAssignableFindingRole_(selectedRole);
+        } else {
+          var selectedUserId = cleanString_(record.assignedUserId || record.assignedToUserId || record.picUserId);
+          var selectedUser = selectedUserId ? findById_(SHEET_NAMES.USERS, 'UserID', selectedUserId) : null;
+          if (!selectedUserId || !selectedUser || !isActive_(selectedUser.ActiveStatus)) {
+            throw new Error('Record ' + (index + 1) + ': assigned user was not found or is inactive.');
+          }
         }
       }
     });
@@ -134,14 +141,25 @@ function saveAudit(payload, currentUser) {
       var defaultDays = toNumber_(getSetting('DEFAULT_DUE_DAYS')) || 7;
       var dueDate = record.dueDate ? formatDateBangkok_(record.dueDate) : (result === 'NG' ? addDays_(parseDate_(auditDate) || now, defaultDays) : '');
       var findingDetail = cleanString_(record.findingDetail);
-      var assignedUserId = result === 'NG' ? cleanString_(record.assignedToUserId || record.picUserId) : '';
-      var assignedUser = assignedUserId ? findById_(SHEET_NAMES.USERS, 'UserID', assignedUserId) : null;
-      if (assignedUserId && (!assignedUser || !isActive_(assignedUser.ActiveStatus))) {
-        throw new Error('Assigned user was not found or is inactive: ' + assignedUserId);
+      var assignmentMode = result === 'NG' ? normalizeFindingAssignmentMode_(record.assignmentMode, record) : '';
+      var assignedUserId = '';
+      var assignedName = '';
+      var assignedRole = '';
+      var assignedRoleName = '';
+      if (result === 'NG' && assignmentMode === 'ROLE') {
+        assignedRole = validateAssignableFindingRole_(record.assignedRole || record.assignedRoleName || record.responsiblePerson || record.picName);
+        assignedRoleName = assignedRole;
+      } else if (result === 'NG' && assignmentMode === 'USER') {
+        assignedUserId = cleanString_(record.assignedUserId || record.assignedToUserId || record.picUserId);
+        var assignedUser = assignedUserId ? findById_(SHEET_NAMES.USERS, 'UserID', assignedUserId) : null;
+        if (!assignedUserId || !assignedUser || !isActive_(assignedUser.ActiveStatus)) {
+          throw new Error('Assigned user was not found or is inactive: ' + assignedUserId);
+        }
+        assignedName = cleanString_(assignedUser.FullName);
+        assignedRole = cleanString_(assignedUser.Role);
       }
-      var assignedName = assignedUser ? cleanString_(assignedUser.FullName) : '';
-      var assignedRole = assignedUser ? cleanString_(assignedUser.Role) : '';
-      var initialFindingStatus = assignedUserId ? 'Assigned' : 'Open';
+      var responsibleDisplay = assignmentMode === 'ROLE' ? assignedRoleName : assignedName;
+      var initialFindingStatus = result === 'NG' ? 'Assigned' : 'Completed';
       var auditRecord = {
         RecordID: recordId, AuditID: auditId, AuditDate: auditDate, PeriodMonth: periodMonth,
         LineID: payload.lineId, LineName: lineName, StationID: payload.stationId, StationName: stationName,
@@ -150,8 +168,8 @@ function saveAudit(payload, currentUser) {
         StandardCriteriaSnapshot: record.standardCriteria || checklist.StandardCriteria || '',
         ChecklistRevision: record.checklistRevision || checklist.Revision || '', Result: result,
         FindingDetail: findingDetail, CorrectiveAction: record.correctiveAction || '',
-        ResponsiblePerson: result === 'NG' ? assignedName : cleanString_(record.responsiblePerson || record.picName),
-        DueDate: dueDate, Status: result === 'NG' ? initialFindingStatus : 'Completed',
+        ResponsiblePerson: result === 'NG' ? responsibleDisplay : cleanString_(record.responsiblePerson || record.picName),
+        DueDate: dueDate, Status: initialFindingStatus,
         BeforePhotoURL: record.beforePhotoUrl || '', AfterPhotoURL: record.afterPhotoUrl || '',
         Remark: record.remark || '', FindingID: '', CreatedAt: timestamp, CreatedBy: currentUser.UserID,
         UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
@@ -178,17 +196,23 @@ function saveAudit(payload, currentUser) {
           StandardCriteria: auditRecord.StandardCriteriaSnapshot,
           CorrectiveAction: auditRecord.CorrectiveAction, RootCause: record.rootCause || '',
           ActionRemark: cleanString_(record.actionRemark),
-          PICUserID: assignedUserId, PICName: assignedName,
+          AssignmentMode: assignmentMode, AssignedRole: assignmentMode === 'ROLE' ? assignedRole : '',
+          AssignedRoleName: assignmentMode === 'ROLE' ? assignedRoleName : '',
+          AssignedUserID: assignmentMode === 'USER' ? assignedUserId : '',
+          AssignedUserName: assignmentMode === 'USER' ? assignedName : '',
+          ResponsibleUserID: assignmentMode === 'USER' ? assignedUserId : '',
+          ResponsiblePerson: responsibleDisplay, Responsible: responsibleDisplay,
+          PICUserID: assignmentMode === 'USER' ? assignedUserId : '', PICName: responsibleDisplay,
           AuditorUserID: currentUser.UserID, AuditorName: currentUser.FullName, AuditorRole: currentUser.Role,
-          AssignedToUserID: assignedUserId, AssignedToName: assignedName,
+          AssignedToUserID: assignmentMode === 'USER' ? assignedUserId : '', AssignedToName: responsibleDisplay,
           AssignedToRole: assignedRole,
           VerifierUserID: '', VerifierName: '', VerifierRole: '', Severity: severity,
           VerificationRequired: verificationRequired, VerificationStatus: 'Not Submitted',
-          SubmittedAt: '', SubmittedBy: '',
+          SubmittedAt: '', SubmittedBy: '', SubmittedByName: '', ActionBy: '', ActionByName: '',
           DueDate: dueDate, Status: initialFindingStatus, Priority: record.priority || severity,
           BeforePhotoURL: auditRecord.BeforePhotoURL, AfterPhotoURL: auditRecord.AfterPhotoURL,
-          ClosedDate: '', ClosedAt: '', ClosedBy: '', CloseRemark: '',
-          RejectedAt: '', RejectedBy: '', RejectReason: '', OverdueFlag: 'No', DaysOverdue: 0,
+          ClosedDate: '', ClosedAt: '', ClosedBy: '', ClosedByName: '', CloseRemark: '',
+          RejectedAt: '', RejectedBy: '', RejectedByName: '', RejectReason: '', OverdueFlag: 'No', DaysOverdue: 0,
           CreatedAt: timestamp, CreatedBy: currentUser.UserID, UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
         });
         updateObjectById(SHEET_NAMES.AUDIT_RECORDS, 'RecordID', recordId, { FindingID: findingId });

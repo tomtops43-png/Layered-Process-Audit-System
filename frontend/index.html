@@ -37,7 +37,7 @@
       <nav id="mainNav" class="main-nav">
         <button data-page="dashboard" class="nav-item active"><span>▦</span>Dashboard</button>
         <button data-page="audit" class="nav-item"><span>✓</span>ตรวจ LPA <b id="auditNavBadge" class="nav-badge hidden">0</b></button>
-        <button data-page="audit-plan" class="nav-item" data-permission-any="audit.plan.view"><span>▣</span>LPA Schedule Rules</button>
+        <button data-page="audit-plan" data-permission-any="audit.plan.view" class="nav-item"><span>▣</span>LPA Schedule Rules</button>
         <button data-page="findings" class="nav-item"><span>!</span>Finding Tracking <b id="findingNavBadge" class="nav-badge hidden">0</b></button>
         <button data-page="report" class="nav-item" data-permission-any="reports.view,reports.export"><span>▤</span>Monthly Report</button>
         <button data-page="checklist" class="nav-item" data-permission-any="checklist.view,checklist.manage"><span>☷</span>Checklist Master</button>
@@ -79,7 +79,7 @@
             <button id="loadChecklistButton" class="btn btn-secondary btn-large" type="button">โหลด Checklist</button>
           </article>
           <div id="auditChecklist" class="checklist-stack"><div class="empty-state">เลือก Line, Station และ Audit Layer แล้วกด “โหลด Checklist”</div></div>
-          <div id="auditSaveBar" class="save-bar hidden"><div><strong id="auditProgress">ยังไม่ได้ตอบ</strong><small>กรุณาตอบ Checklist ให้ครบทุกข้อ</small></div><button id="saveAuditButton" class="btn btn-primary btn-large" type="submit">บันทึก Audit</button></div>
+          <div id="auditSaveBar" class="save-bar hidden" aria-live="polite"><div><strong id="auditProgress">ยังไม่ได้ตอบ</strong><small>กรุณาตอบ Checklist ให้ครบทุกข้อ</small></div><button id="saveAuditButton" class="btn btn-primary btn-large" type="submit">บันทึก Audit</button></div>
         </form>
       </section>
 
@@ -101,7 +101,8 @@
           <form id="auditRuleForm" class="form-grid">
             <input id="auditRuleId" type="hidden">
             <label>Required Role<select id="auditRuleRole" required><option>Leader</option><option>Supervisor</option><option>Manager</option></select></label>
-            <label>Assigned User<select id="auditRuleUser"><option value="">ตาม Role</option></select></label>
+            <label>Assignment Mode<select id="auditRuleAssignmentMode"><option value="ROLE">ตามตำแหน่ง / Role-based</option><option value="USER">ระบุรายบุคคล / Specific user</option></select></label>
+            <label id="auditRuleUserField">Assigned User<select id="auditRuleUser"><option value="">เลือกผู้ตรวจ</option></select></label>
             <label>Line<select id="auditRuleLine" required><option value="">เลือก Line</option></select></label>
             <label>Station<select id="auditRuleStation" required><option value="">เลือก Station</option><option value="ALL">ทั้งหมด</option></select></label>
             <label>Frequency<select id="auditRuleFrequency" required><option>Daily</option><option>Weekly</option><option>Monthly</option></select></label>
@@ -185,14 +186,6 @@
       </section>
     </main>
 
-    <nav class="bottom-nav" aria-label="เมนูมือถือ">
-      <button data-page="dashboard" class="active"><span>▦</span>Dashboard</button>
-      <button data-page="audit"><span>✓</span>Audit</button>
-      <button data-page="audit-plan" data-permission-any="audit.plan.view"><span>▣</span>แผนตรวจ</button>
-      <button data-page="findings"><span>!</span>Finding</button>
-      <button data-page="report"><span>▤</span>Report</button>
-      <button data-page="checklist"><span>☷</span>Checklist</button>
-    </nav>
   </div>
 
   <div id="loadingOverlay" class="loading-overlay hidden" role="status" aria-live="polite"><div class="loader"></div><strong id="loadingText">กำลังโหลด...</strong></div>
@@ -216,7 +209,7 @@
           <p id="rejectionReasonDisplay">-</p>
           <div><span>Rejected By: <strong id="rejectedByDisplay">-</strong></span><span>Rejected At: <strong id="rejectedAtDisplay">-</strong></span></div>
         </section>
-        <label id="editAfterPhotoField" class="full-width">After Photo<input id="editAfterPhoto" type="file" accept="image/*" capture="environment"></label>
+        <label id="editAfterPhotoField" class="full-width">After Photo<input id="editAfterPhoto" type="file" accept="image/*"></label>
       </div>
       <div id="editPhotoPreview" class="photo-link"></div>
       <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelFindingEdit">ยกเลิก</button><button type="button" class="btn btn-outline hidden" id="rejectFindingButton">Reject Finding</button><button type="button" class="btn btn-secondary hidden" id="approveFindingButton">Close Finding</button><button type="button" class="btn btn-primary hidden" id="submitVerificationButton">ส่งให้ตรวจยืนยัน</button></div>

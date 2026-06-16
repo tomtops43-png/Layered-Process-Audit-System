@@ -33,6 +33,7 @@ function doPost(e) {
       refreshAuditPlanStatus: function (user) { return refreshAuditPlanStatus(payload, user); },
       getMyAuditPlanSummary: function (user) { return getMyAuditPlanSummary(payload, user); },
       getFindings: function (user) { return getFindings(payload, user); },
+      getMyFindingNotificationSummary: function (user) { return getMyFindingNotificationSummary(payload, user); },
       updateFinding: function (user) { return updateFinding(payload, user); },
       submitFinding: function (user) { return submitFinding(payload, user); },
       verifyFinding: function (user) { return verifyFinding(payload, user); },
