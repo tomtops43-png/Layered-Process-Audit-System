@@ -44,6 +44,7 @@ window.addEventListener('DOMContentLoaded', initApp);
 
 function initApp() {
   document.title = CONFIG.APP_NAME;
+  bindVisualViewport();
   bindEvents();
   setDefaultDates();
   if (state.token && state.user) {
@@ -51,6 +52,20 @@ function initApp() {
     initializeAuthenticatedApp();
   } else {
     showLogin();
+  }
+}
+
+function bindVisualViewport() {
+  const updateViewportHeight = () => {
+    const height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    document.documentElement.style.setProperty('--visual-viewport-height', `${Math.round(height)}px`);
+  };
+  updateViewportHeight();
+  window.addEventListener('resize', updateViewportHeight, { passive: true });
+  window.addEventListener('orientationchange', updateViewportHeight, { passive: true });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', updateViewportHeight, { passive: true });
+    window.visualViewport.addEventListener('scroll', updateViewportHeight, { passive: true });
   }
 }
 
