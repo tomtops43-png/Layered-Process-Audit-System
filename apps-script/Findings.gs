@@ -26,7 +26,7 @@ function getFindings(payload, currentUser) {
     });
     rows = rows.filter(function (row) { return canViewFindingRbac_(currentUser, row); });
     rows.sort(function (a, b) { return cleanString_(a.DueDate).localeCompare(cleanString_(b.DueDate)); });
-    return jsonResponse(true, 'Findings loaded.', { findings: rows.map(sanitizeForClient_), count: rows.length });
+    return jsonResponse(true, 'Findings loaded.', { findings: rows.map(sanitizeFindingForClient_), count: rows.length });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
@@ -99,11 +99,13 @@ function updateFinding(payload, currentUser) {
     var timestamp = formatDateTimeBangkok(new Date());
     updates.OverdueFlag = overdue.OverdueFlag;
     updates.DaysOverdue = overdue.DaysOverdue;
+    updates.ActionBy = currentUser.UserID;
+    updates.ActionByName = currentUser.FullName;
     updates.UpdatedAt = timestamp;
     updates.UpdatedBy = currentUser.UserID;
     var updated = updateObjectById(SHEET_NAMES.FINDINGS, 'FindingID', payload.findingId, updates);
     appendActionLog_(payload.findingId, oldStatus, newStatus, updates, payload.remark || '', payload.evidenceUrl || '', currentUser, timestamp);
-    return jsonResponse(true, 'Finding updated successfully.', { finding: sanitizeForClient_(updated) });
+    return jsonResponse(true, 'Finding updated successfully.', { finding: sanitizeFindingForClient_(updated) });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
@@ -131,7 +133,8 @@ function submitFinding(payload, currentUser) {
     var updates = {
       CorrectiveAction: correctiveAction, RootCause: rootCause, AfterPhotoURL: afterPhoto,
       Status: 'Pending Verification', VerificationStatus: 'Pending',
-      SubmittedAt: timestamp, SubmittedBy: currentUser.UserID,
+      SubmittedAt: timestamp, SubmittedBy: currentUser.UserID, SubmittedByName: currentUser.FullName,
+      ActionBy: currentUser.UserID, ActionByName: currentUser.FullName,
       RejectedAt: '', RejectedBy: '', RejectReason: '',
       UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
     };
@@ -139,7 +142,7 @@ function submitFinding(payload, currentUser) {
     updates.ActionRemark = actionRemark;
     var updated = updateObjectById(SHEET_NAMES.FINDINGS, 'FindingID', payload.findingId, updates);
     appendActionLog_(payload.findingId, oldStatus, updates.Status, updates, payload.remark || 'Submitted for verification', payload.evidenceUrl || afterPhoto, currentUser, timestamp);
-    return jsonResponse(true, 'Finding submitted for verification.', { finding: sanitizeForClient_(updated) });
+    return jsonResponse(true, 'Finding submitted for verification.', { finding: sanitizeFindingForClient_(updated) });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
@@ -161,6 +164,7 @@ function verifyFinding(payload, currentUser) {
     var timestamp = formatDateTimeBangkok(new Date());
     var updates = {
       VerifierUserID: currentUser.UserID, VerifierName: currentUser.FullName, VerifierRole: currentUser.Role,
+      ActionBy: currentUser.UserID, ActionByName: currentUser.FullName,
       UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
     };
     if (decision === 'reject' || decision === 'rejected') {
@@ -170,6 +174,7 @@ function verifyFinding(payload, currentUser) {
       updates.VerificationStatus = 'Rejected';
       updates.RejectedAt = timestamp;
       updates.RejectedBy = currentUser.UserID;
+      updates.RejectedByName = currentUser.FullName;
       updates.RejectReason = rejectReason;
     } else {
       var closeRemark = cleanString_(payload.closeRemark || payload.CloseRemark);
@@ -179,13 +184,14 @@ function verifyFinding(payload, currentUser) {
       updates.ClosedDate = timestamp;
       updates.ClosedAt = timestamp;
       updates.ClosedBy = currentUser.UserID;
+      updates.ClosedByName = currentUser.FullName;
       updates.CloseRemark = closeRemark;
       updates.OverdueFlag = 'No';
       updates.DaysOverdue = 0;
     }
     var updated = updateObjectById(SHEET_NAMES.FINDINGS, 'FindingID', payload.findingId, updates);
     appendActionLog_(payload.findingId, oldStatus, updates.Status, updates, payload.remark || updates.RejectReason || updates.CloseRemark || '', payload.evidenceUrl || '', currentUser, timestamp);
-    return jsonResponse(true, updates.Status === 'Closed' ? 'Finding approved and closed.' : 'Finding rejected.', { finding: sanitizeForClient_(updated) });
+    return jsonResponse(true, updates.Status === 'Closed' ? 'Finding approved and closed.' : 'Finding rejected.', { finding: sanitizeFindingForClient_(updated) });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
@@ -208,14 +214,15 @@ function closeFinding(payload, currentUser) {
     var timestamp = formatDateTimeBangkok(new Date());
     var updates = {
       Status: 'Closed', AfterPhotoURL: afterPhoto || '', CloseRemark: closeRemark || '',
-      ClosedDate: timestamp, ClosedAt: timestamp, ClosedBy: currentUser.UserID,
+      ClosedDate: timestamp, ClosedAt: timestamp, ClosedBy: currentUser.UserID, ClosedByName: currentUser.FullName,
       VerifierUserID: currentUser.UserID, VerifierName: currentUser.FullName, VerifierRole: currentUser.Role,
       VerificationStatus: 'Approved', OverdueFlag: 'No', DaysOverdue: 0,
+      ActionBy: currentUser.UserID, ActionByName: currentUser.FullName,
       UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
     };
     var updated = updateObjectById(SHEET_NAMES.FINDINGS, 'FindingID', payload.findingId, updates);
     appendActionLog_(payload.findingId, finding.Status, 'Closed', updates, payload.remark || closeRemark || '', payload.evidenceUrl || '', currentUser, timestamp);
-    return jsonResponse(true, 'Finding closed successfully.', { finding: sanitizeForClient_(updated) });
+    return jsonResponse(true, 'Finding closed successfully.', { finding: sanitizeFindingForClient_(updated) });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
@@ -233,13 +240,16 @@ function matchesMyFindingFilter_(finding, currentUser, filter) {
 }
 
 function isAssignedToUser_(finding, currentUser) {
-  var assignedUserId = cleanString_(finding.AssignedToUserID);
+  var mode = normalizeFindingAssignmentMode_(finding.AssignmentMode, finding);
+  if (mode === 'ROLE') {
+    var assignedRole = cleanString_(finding.AssignedRole || finding.AssignedRoleName || finding.AssignedToRole || finding.AssignedToName || finding.ResponsiblePerson || finding.PICName);
+    return assignedRole && (valuesEqual_(assignedRole, currentUser.Role) || valuesEqual_(assignedRole, currentUser.FullName)) && canAccessLine_(currentUser, finding.LineID, 'View');
+  }
+
+  var assignedUserId = cleanString_(finding.AssignedUserID || finding.AssignedToUserID || finding.ResponsibleUserID || finding.PICUserID);
   if (assignedUserId) return valuesEqual_(assignedUserId, currentUser.UserID);
 
-  var legacyPicUserId = cleanString_(finding.PICUserID);
-  if (legacyPicUserId) return valuesEqual_(legacyPicUserId, currentUser.UserID);
-
-  return valuesEqual_(finding.AssignedToName || finding.PICName, currentUser.FullName);
+  return valuesEqual_(finding.AssignedUserName || finding.AssignedToName || finding.PICName, currentUser.FullName);
 }
 
 function isCreatedByUser_(finding, currentUser) {
@@ -286,6 +296,7 @@ function canCloseFinding_(currentUser, finding) {
 }
 
 function canDirectlyCloseMinorFinding_(currentUser, finding) {
+  if (normalizeFindingAssignmentMode_(finding.AssignmentMode, finding) === 'ROLE') return false;
   var severity = cleanString_(finding.Severity || finding.Priority).toLowerCase();
   if (severity !== 'minor' || !hasPermission_(currentUser, 'findings.close.minor') ||
       !isAssignedToUser_(finding, currentUser)) return false;
@@ -298,10 +309,59 @@ function canDirectlyCloseMinorFinding_(currentUser, finding) {
 function canViewFindingRbac_(currentUser, finding) {
   if (isAdmin_(currentUser) || hasPermission_(currentUser, 'findings.view.all')) return true;
   if (canHandlePendingVerification_(currentUser, finding)) return true;
+  if (cleanString_(finding.LineID) && !canAccessLine_(currentUser, finding.LineID, 'View')) return false;
   if (hasPermission_(currentUser, 'findings.view.line') && cleanString_(finding.LineID) &&
       canAccessLine_(currentUser, finding.LineID, 'View')) return true;
-  if (hasPermission_(currentUser, 'findings.view.assigned') && isAssignedToUser_(finding, currentUser)) return true;
+  if (hasPermission_(currentUser, 'findings.view.assigned') && isAssignedToUser_(finding, currentUser) && (!cleanString_(finding.LineID) || canAccessLine_(currentUser, finding.LineID, 'View'))) return true;
   return hasPermission_(currentUser, 'findings.view.created') && isCreatedByUser_(finding, currentUser);
+}
+
+function normalizeFindingAssignmentMode_(mode, source) {
+  var normalized = cleanString_(mode).toUpperCase();
+  if (normalized === 'ROLE' || normalized === 'USER') return normalized;
+  source = source || {};
+  if (cleanString_(source.AssignedUserID || source.AssignedToUserID || source.ResponsibleUserID || source.PICUserID || source.assignedUserId || source.assignedToUserId || source.picUserId)) return 'USER';
+  return 'ROLE';
+}
+
+function getAssignableFindingRoles_() {
+  var fallback = ['Leader', 'Supervisor', 'Engineer', 'Manager', 'Admin'];
+  var seen = {};
+  getRowsAsObjects(SHEET_NAMES.USERS).forEach(function (user) {
+    var role = cleanString_(user.Role);
+    if (role && isActive_(user.ActiveStatus)) seen[role.toLowerCase()] = role;
+  });
+  fallback.forEach(function (role) { if (!seen[role.toLowerCase()]) seen[role.toLowerCase()] = role; });
+  var order = { leader: 1, supervisor: 2, engineer: 3, manager: 4, admin: 5 };
+  return Object.keys(seen).map(function (key) { return seen[key]; }).sort(function (a, b) {
+    return (order[a.toLowerCase()] || 99) - (order[b.toLowerCase()] || 99) || a.localeCompare(b);
+  });
+}
+
+function validateAssignableFindingRole_(role) {
+  var selected = cleanString_(role);
+  var match = getAssignableFindingRoles_().filter(function (entry) { return valuesEqual_(entry, selected); })[0];
+  if (!match) throw new Error('AssignedRole is not valid or has no active users: ' + selected);
+  return match;
+}
+
+function sanitizeFindingForClient_(row) {
+  var copy = sanitizeForClient_(row);
+  copy.AssignmentMode = normalizeFindingAssignmentMode_(copy.AssignmentMode, copy);
+  if (copy.AssignmentMode === 'ROLE') {
+    copy.AssignedRole = cleanString_(copy.AssignedRole || copy.AssignedRoleName || copy.AssignedToRole || copy.AssignedToName || copy.ResponsiblePerson || copy.PICName);
+    copy.AssignedRoleName = copy.AssignedRole;
+    copy.AssignedUserID = '';
+    copy.AssignedUserName = '';
+    copy.AssignedToUserID = cleanString_(copy.AssignedToUserID); // keep legacy if present for display compatibility
+  } else {
+    copy.AssignedUserID = cleanString_(copy.AssignedUserID || copy.AssignedToUserID || copy.ResponsibleUserID || copy.PICUserID);
+    copy.AssignedUserName = cleanString_(copy.AssignedUserName || copy.AssignedToName || copy.PICName);
+  }
+  copy.AssignmentDisplay = copy.AssignmentMode === 'ROLE'
+    ? (copy.AssignedRoleName || copy.ResponsiblePerson || '-')
+    : (copy.AssignedUserName || copy.ResponsiblePerson || '-');
+  return copy;
 }
 
 function appendActionLog_(findingId, oldStatus, newStatus, changes, remark, evidenceUrl, currentUser, timestamp) {
