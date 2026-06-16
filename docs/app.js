@@ -85,6 +85,8 @@ function bindEvents() {
   $('#addAuditRuleButton').addEventListener('click', () => openAuditRuleEditor());
   $('#cancelAuditRuleButton').addEventListener('click', closeAuditRuleEditor);
   $('#auditRuleLine').addEventListener('change', handleAuditRuleLineChange);
+  $('#auditRuleAssignmentMode').addEventListener('change', updateAuditRuleAssignmentMode);
+  $('#auditRuleFrequency').addEventListener('change', updateAuditRuleFrequencyFields);
   $('#auditRuleForm').addEventListener('submit', event => { event.preventDefault(); saveAuditRule(); });
   $('#auditPlanTable').addEventListener('click', event => {
     const button = event.target.closest('[data-rule-id]');
@@ -714,7 +716,7 @@ function renderAuditRules() {
     $('#auditPlanTable').innerHTML = emptyHtml('ไม่พบกฎตารางตรวจตามตัวกรอง');
     return;
   }
-  $('#auditPlanTable').innerHTML = `<table class="data-table audit-plan-table"><thead><tr><th>Role</th><th>User</th><th>Line</th><th>Station</th><th>Frequency</th><th>Day</th><th>Due Time</th><th>Status</th><th>Action</th></tr></thead><tbody>${state.auditRules.map(rule => `<tr><td>${escapeHtml(rule.RequiredRole || '-')}</td><td>${escapeHtml(rule.RequiredUserName || 'ตาม Role')}</td><td>${escapeHtml(rule.LineName || rule.LineID)}</td><td>${escapeHtml(rule.StationName || rule.StationID)}</td><td>${escapeHtml(rule.Frequency || '-')}</td><td>${escapeHtml(rule.Frequency === 'Monthly' ? rule.DayOfMonth : (rule.DayOfWeek || 'Working days'))}</td><td>${escapeHtml(rule.DueTime || '17:00')}</td><td><span class="status-badge ${String(rule.ActiveStatus).toLowerCase() === 'active' ? 'status-ok' : 'status-na'}">${escapeHtml(rule.ActiveStatus || '-')}</span></td><td><button class="btn btn-outline btn-compact" data-rule-id="${escapeAttr(rule.RuleID)}">แก้ไข</button></td></tr>`).join('')}</tbody></table>`;
+  $('#auditPlanTable').innerHTML = `<table class="data-table audit-plan-table"><thead><tr><th>Role</th><th>Assignment</th><th>User</th><th>Line</th><th>Station</th><th>Frequency</th><th>Day</th><th>Due Time</th><th>Status</th><th>Action</th></tr></thead><tbody>${state.auditRules.map(rule => `<tr><td>${escapeHtml(rule.RequiredRole || '-')}</td><td>${escapeHtml(formatAssignmentMode(rule))}</td><td>${escapeHtml(formatRuleUser(rule))}</td><td>${escapeHtml(rule.LineName || rule.LineID)}</td><td>${escapeHtml(rule.StationName || rule.StationID)}</td><td>${escapeHtml(rule.Frequency || '-')}</td><td>${escapeHtml(rule.Frequency === 'Monthly' ? rule.DayOfMonth : (rule.DayOfWeek || 'Working days'))}</td><td>${escapeHtml(formatDueTime(rule.DueTime || '17:00'))}</td><td><span class="status-badge ${String(rule.ActiveStatus).toLowerCase() === 'active' ? 'status-ok' : 'status-na'}">${escapeHtml(rule.ActiveStatus || '-')}</span></td><td><button class="btn btn-outline btn-compact" data-rule-id="${escapeAttr(rule.RuleID)}">แก้ไข</button></td></tr>`).join('')}</tbody></table>`;
 }
 
 function openAuditRuleEditor(rule = null) {
@@ -723,6 +725,7 @@ function openAuditRuleEditor(rule = null) {
   $('#auditRuleEditorTitle').textContent = rule ? 'แก้ไขกฎตารางตรวจ' : 'เพิ่มกฎตารางตรวจ';
   $('#auditRuleId').value = rule?.RuleID || '';
   $('#auditRuleRole').value = rule?.RequiredRole || 'Leader';
+  $('#auditRuleAssignmentMode').value = rule?.AssignmentMode || (rule?.RequiredUserID ? 'USER' : 'ROLE');
   $('#auditRuleUser').value = rule?.RequiredUserID || '';
   $('#auditRuleLine').value = rule?.LineID || '';
   populateAuditRuleStationSelect($('#auditRuleLine').value, !rule);
@@ -730,8 +733,10 @@ function openAuditRuleEditor(rule = null) {
   $('#auditRuleFrequency').value = rule?.Frequency || 'Daily';
   $('#auditRuleDayOfWeek').value = rule?.DayOfWeek || '';
   $('#auditRuleDayOfMonth').value = rule?.DayOfMonth || 1;
-  $('#auditRuleDueTime').value = String(rule?.DueTime || '17:00').slice(0, 5);
+  $('#auditRuleDueTime').value = formatDueTime(rule?.DueTime || '17:00');
   $('#auditRuleActiveStatus').value = rule?.ActiveStatus || 'Active';
+  updateAuditRuleAssignmentMode();
+  updateAuditRuleFrequencyFields();
   $('#auditRuleEditor').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -741,19 +746,61 @@ function closeAuditRuleEditor() {
   $('#auditRuleId').value = '';
 }
 
+function updateAuditRuleAssignmentMode() {
+  const isUserMode = $('#auditRuleAssignmentMode').value === 'USER';
+  $('#auditRuleUserField').classList.toggle('hidden', !isUserMode);
+  $('#auditRuleUser').disabled = !isUserMode;
+  $('#auditRuleUser').required = isUserMode;
+  if (!isUserMode) $('#auditRuleUser').value = '';
+}
+
+function updateAuditRuleFrequencyFields() {
+  const frequency = $('#auditRuleFrequency').value;
+  const weekly = frequency === 'Weekly';
+  const monthly = frequency === 'Monthly';
+  $('#auditRuleDayOfWeek').disabled = !weekly;
+  $('#auditRuleDayOfWeek').required = weekly;
+  $('#auditRuleDayOfWeek').closest('label').classList.toggle('hidden', frequency === 'Daily' || monthly);
+  $('#auditRuleDayOfMonth').disabled = !monthly;
+  $('#auditRuleDayOfMonth').required = monthly;
+  $('#auditRuleDayOfMonth').closest('label').classList.toggle('hidden', frequency === 'Daily' || weekly);
+  if (!weekly) $('#auditRuleDayOfWeek').value = '';
+  if (!monthly) $('#auditRuleDayOfMonth').value = '';
+}
+
+function formatAssignmentMode(rule) {
+  return String(rule.AssignmentMode || (rule.RequiredUserID ? 'USER' : 'ROLE')).toUpperCase() === 'USER' ? 'Specific user' : 'Role-based';
+}
+
+function formatRuleUser(rule) {
+  return String(rule.AssignmentMode || (rule.RequiredUserID ? 'USER' : 'ROLE')).toUpperCase() === 'USER' ? (rule.RequiredUserName || rule.RequiredUserID || '-') : `ตามตำแหน่ง ${rule.RequiredRole || ''}`.trim();
+}
+
+function formatDueTime(value) {
+  const match = String(value || '').match(/(\d{1,2}):(\d{2})/);
+  return match ? `${String(match[1]).padStart(2, '0')}:${match[2]}` : '17:00';
+}
+
 async function saveAuditRule() {
   const payload = {
     ruleId: $('#auditRuleId').value,
     requiredRole: $('#auditRuleRole').value,
-    requiredUserId: $('#auditRuleUser').value,
+    assignmentMode: $('#auditRuleAssignmentMode').value,
+    requiredUserId: $('#auditRuleAssignmentMode').value === 'USER' ? $('#auditRuleUser').value : '',
     lineId: $('#auditRuleLine').value,
     stationId: $('#auditRuleStation').value,
     frequency: $('#auditRuleFrequency').value,
     dayOfWeek: $('#auditRuleDayOfWeek').value.trim(),
     dayOfMonth: $('#auditRuleDayOfMonth').value,
-    dueTime: $('#auditRuleDueTime').value,
+    dueTime: formatDueTime($('#auditRuleDueTime').value),
     activeStatus: $('#auditRuleActiveStatus').value
   };
+  if (payload.assignmentMode === 'USER' && !payload.requiredUserId) return showToast('กรุณาเลือก Assigned User สำหรับ Specific user mode', 'warning');
+  if (payload.frequency === 'Weekly' && !payload.dayOfWeek) return showToast('กรุณาระบุ Day of Week สำหรับ Weekly', 'warning');
+  if (payload.frequency === 'Monthly' && !payload.dayOfMonth) return showToast('กรุณาระบุ Day of Month สำหรับ Monthly', 'warning');
+  if (payload.frequency === 'Daily') { payload.dayOfWeek = ''; payload.dayOfMonth = ''; }
+  if (payload.frequency === 'Weekly') payload.dayOfMonth = '';
+  if (payload.frequency === 'Monthly') payload.dayOfWeek = '';
   if (payload.stationId === 'ALL') {
     const stationCount = activeStationsForLine(payload.lineId).length;
     if (!stationCount) return showToast('ไม่พบ Station ที่ Active ใน Line ที่เลือก', 'warning');
