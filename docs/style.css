@@ -211,9 +211,10 @@ label{display:flex;flex-direction:column;gap:7px;font-size:.88rem;font-weight:70
 .sidebar-head{color:var(--text)}
 .main-content{margin-left:0;padding:calc(var(--topbar) + 18px) 12px calc(var(--mobile-bottom-nav-height) + var(--safe-bottom) + 24px)}
 .bottom-nav{position:fixed;z-index:32;bottom:0;left:0;right:0;height:var(--mobile-bottom-nav-height);display:grid;grid-template-columns:repeat(5,minmax(0,1fr));padding-bottom:env(safe-area-inset-bottom);background:#fff;border-top:1px solid var(--border);box-shadow:0 -5px 20px rgba(0,0,0,.08)}
-.bottom-nav button{min-width:0;border:0;background:#fff;color:var(--muted);font-size:.68rem;font-weight:700;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bottom-nav button{position:relative;min-width:0;border:0;background:#fff;color:var(--muted);font-size:.68rem;font-weight:700;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bottom-nav span{display:block;font-size:1.1rem;margin-bottom:3px}
 .bottom-nav b{display:block;font:inherit;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bottom-nav .nav-badge{position:absolute;top:5px;right:50%;transform:translateX(22px);margin:0;min-width:18px;padding:1px 5px;font-size:.65rem}
 .bottom-nav button.active{color:var(--navy);background:var(--cyan)}
 .page-heading h2{font-size:1.35rem}
 .panel{padding:15px}

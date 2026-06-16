@@ -21,7 +21,10 @@ const state = {
   auditClientSubmissionId: '',
   auditDuplicateBlocked: false,
   auditMode: 'Manual',
-  startingPlanAudit: false
+  startingPlanAudit: false,
+  notificationTimer: null,
+  notificationInFlight: false,
+  lastNotificationKey: ''
 };
 
 const PERMISSION_CATALOG = [
@@ -146,6 +149,7 @@ function bindEvents() {
   $('#cancelUserEdit').addEventListener('click', () => $('#userDialog').close());
   $('#deactivateUserButton').addEventListener('click', deactivateSelectedUser);
   $('#resetPasswordButton').addEventListener('click', resetSelectedUserPassword);
+  document.addEventListener('visibilitychange', handleNotificationVisibilityChange);
 }
 
 async function apiCall(action, payload = {}) {
@@ -193,6 +197,7 @@ async function login() {
     showToast(`ยินดีต้อนรับ ${state.user.FullName || state.user.Username}`, 'success');
     hideLoading();
     await initializeAuthenticatedApp(false);
+    startFindingNotificationPolling(true);
   } catch (error) {
     showToast(error.message, 'error');
   } finally {
@@ -212,6 +217,8 @@ function logout(notify = true) {
   state.auditAnswers = {};
   localStorage.removeItem('lpa_token');
   localStorage.removeItem('lpa_user');
+  stopFindingNotificationPolling();
+  updateFindingBadges(0);
   showLogin();
   if (notify) showToast('ออกจากระบบแล้ว', 'success');
 }
@@ -280,6 +287,93 @@ async function loadDashboard() {
   }
 }
 
+function notificationStorageKey() {
+  return state.user?.UserID ? `lpa_last_seen_finding_notification_${state.user.UserID}` : '';
+}
+
+function getLastSeenFindingNotificationAt() {
+  const key = notificationStorageKey();
+  return key ? localStorage.getItem(key) || '' : '';
+}
+
+function setLastSeenFindingNotificationAt(value) {
+  const key = notificationStorageKey();
+  if (key && value) localStorage.setItem(key, value);
+}
+
+function startFindingNotificationPolling(immediate = false) {
+  if (!state.token || !state.user) return;
+  stopFindingNotificationPolling();
+  if (immediate) pollFindingNotifications(true);
+  scheduleNextFindingNotificationPoll();
+}
+
+function stopFindingNotificationPolling() {
+  if (state.notificationTimer) clearTimeout(state.notificationTimer);
+  state.notificationTimer = null;
+  state.notificationInFlight = false;
+}
+
+function scheduleNextFindingNotificationPoll() {
+  if (!state.token || !state.user) return;
+  if (state.notificationTimer) clearTimeout(state.notificationTimer);
+  const delay = document.visibilityState === 'hidden' ? 90000 : 30000;
+  state.notificationTimer = setTimeout(() => pollFindingNotifications(false), delay);
+}
+
+function handleNotificationVisibilityChange() {
+  if (!state.token || !state.user) return;
+  if (document.visibilityState === 'visible') pollFindingNotifications(true);
+  else scheduleNextFindingNotificationPoll();
+}
+
+async function pollFindingNotifications(immediate = false) {
+  if (!state.token || !state.user || state.notificationInFlight) return;
+  state.notificationInFlight = true;
+  try {
+    const data = await apiCall('getMyFindingNotificationSummary', { lastSeenAt: getLastSeenFindingNotificationAt(), limit: 5 });
+    handleFindingNotificationSummary(data, immediate);
+  } catch (error) {
+    console.warn('Finding notification polling failed:', error.message || error);
+  } finally {
+    state.notificationInFlight = false;
+    scheduleNextFindingNotificationPoll();
+  }
+}
+
+function handleFindingNotificationSummary(data, immediate) {
+  const count = number(data.actionableCount ?? (number(data.assignedOpenCount) + number(data.pendingVerificationCount)));
+  updateFindingBadges(count);
+  const latest = data.latestFindings || [];
+  const newest = latest[0];
+  const newestAt = newest ? (newest.UpdatedAt || newest.CreatedAt || data.serverTime) : data.serverTime;
+  const newCount = number(data.newFindingCount);
+  if (newCount > 0 && newest && state.lastNotificationKey !== `${newest.FindingID}|${newestAt}`) {
+    const message = data.pendingVerificationCount > 0
+      ? `มี Finding รอ Verification ${data.pendingVerificationCount} รายการ`
+      : `มี Finding ใหม่ ${newCount} รายการที่มอบหมายให้ ${newest.AssignmentDisplay || newest.AssignedRole || state.user.Role}`;
+    const toast = showToast(message, 'info', 7000);
+    toast.classList.add('clickable-toast');
+    toast.addEventListener('click', () => navigateTo('findings'));
+    state.lastNotificationKey = `${newest.FindingID}|${newestAt}`;
+    if (document.querySelector('#page-findings.active-page')) {
+      const dialog = $('#findingDialog');
+      if (dialog && dialog.open) showToast('มีรายการใหม่ กดรีเฟรชรายการ', 'info', 6000);
+      else loadFindings();
+    }
+  }
+  if (newestAt) setLastSeenFindingNotificationAt(newestAt);
+}
+
+function updateFindingBadges(count) {
+  ['#findingNavBadge', '#mobileFindingNavBadge'].forEach(selector => {
+    const badge = $(selector);
+    if (!badge) return;
+    badge.textContent = count;
+    badge.classList.toggle('hidden', count < 1);
+  });
+}
+
 function showDashboardSkeleton() {
   $('#dashboardCards').innerHTML = Array.from({ length: 8 }, () => '<article class="metric-card skeleton-card"><span></span><strong></strong><small></small></article>').join('');
   $('#monthlyAuditChart').className = 'bar-chart dashboard-section-loading';
@@ -310,8 +404,7 @@ function renderDashboard(data) {
   ];
   $('#dashboardCards').innerHTML = cards.map(card => `<article class="metric-card ${card[3]}"><span class="metric-label">${escapeHtml(card[0])}</span><strong class="metric-value">${escapeHtml(String(card[1] ?? 0))}</strong><small class="metric-note">${escapeHtml(card[2])}</small></article>`).join('');
   const notificationCount = number(data.MyOpenFindings) + number(data.PendingMyVerification);
-  $('#findingNavBadge').textContent = notificationCount;
-  $('#findingNavBadge').classList.toggle('hidden', notificationCount < 1);
+  updateFindingBadges(notificationCount);
   $('#auditNavBadge').textContent = '0';
   $('#auditNavBadge').classList.add('hidden');
   $('#auditPlanAlert').classList.add('hidden');

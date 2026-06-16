@@ -32,6 +32,53 @@ function getFindings(payload, currentUser) {
   }
 }
 
+function getMyFindingNotificationSummary(payload, currentUser) {
+  try {
+    payload = payload || {};
+    var lastSeenAt = cleanString_(payload.lastSeenAt);
+    var now = formatDateTimeBangkok(new Date());
+    var visible = getRowsAsObjects(SHEET_NAMES.FINDINGS).map(refreshOverdueForRead_).filter(function (row) {
+      return canViewFindingRbac_(currentUser, row);
+    }).map(sanitizeFindingForClient_);
+    var assignedOpen = visible.filter(function (row) {
+      return isAssignedToUser_(row, currentUser) && ['closed', 'pending verification'].indexOf(cleanString_(row.Status).toLowerCase()) === -1;
+    });
+    var pendingVerification = visible.filter(function (row) { return canHandlePendingVerification_(currentUser, row); });
+    var overdue = visible.filter(function (row) {
+      return valuesEqual_(row.OverdueFlag, 'Yes') && ['closed'].indexOf(cleanString_(row.Status).toLowerCase()) === -1;
+    });
+    var actionable = visible.filter(function (row) {
+      return assignedOpen.some(function (item) { return valuesEqual_(item.FindingID, row.FindingID); }) ||
+        pendingVerification.some(function (item) { return valuesEqual_(item.FindingID, row.FindingID); });
+    });
+    var latest = actionable.slice().sort(function (a, b) {
+      return cleanString_(b.UpdatedAt || b.CreatedAt || b.FoundDate).localeCompare(cleanString_(a.UpdatedAt || a.CreatedAt || a.FoundDate));
+    });
+    var newCount = lastSeenAt ? latest.filter(function (row) {
+      return cleanString_(row.UpdatedAt || row.CreatedAt || row.FoundDate) > lastSeenAt;
+    }).length : 0;
+    return jsonResponse(true, 'Finding notification summary loaded.', {
+      serverTime: now,
+      assignedOpenCount: assignedOpen.length,
+      pendingVerificationCount: pendingVerification.length,
+      overdueCount: overdue.length,
+      newFindingCount: newCount,
+      actionableCount: actionable.length,
+      latestFindings: latest.slice(0, Math.min(Math.max(toNumber_(payload.limit) || 5, 1), 10)).map(function (row) {
+        return {
+          FindingID: row.FindingID, LineName: row.LineName || row.LineID, StationName: row.StationName || row.StationID,
+          AuditLayer: row.AuditorRole || row.AuditLayer || '', Status: row.Status || '', AssignedRole: row.AssignedRole || row.AssignedRoleName || '',
+          AssignedUserName: row.AssignedUserName || row.AssignedToName || '', Detail: cleanString_(row.ProblemDetail).slice(0, 140),
+          DueDate: row.DueDate || '', CreatedAt: row.CreatedAt || row.FoundDate || '', UpdatedAt: row.UpdatedAt || row.CreatedAt || row.FoundDate || '',
+          AssignmentMode: row.AssignmentMode || '', AssignmentDisplay: row.AssignmentDisplay || ''
+        };
+      })
+    });
+  } catch (error) {
+    return jsonResponse(false, safeErrorMessage_(error), {});
+  }
+}
+
 function findingFilterValue_(value) {
   var normalized = cleanString_(value);
   return ['', 'all', 'ทั้งหมด', 'null', 'undefined'].indexOf(normalized.toLowerCase()) !== -1 ? '' : normalized;
