@@ -103,6 +103,7 @@ function bindEvents() {
   $('#exportCsvButton').addEventListener('click', exportReportCsv);
   $('#loadMasterChecklistButton').addEventListener('click', loadMasterChecklist);
   $('#findingForm').addEventListener('submit', event => event.preventDefault());
+  $('#editAfterPhoto').addEventListener('change', event => renderPhotoPreview(event.target, '#editPhotoPreview', state.editingFinding?.AfterPhotoURL));
   $('#closeFindingDialog').addEventListener('click', () => $('#findingDialog').close());
   $('#cancelFindingEdit').addEventListener('click', () => $('#findingDialog').close());
   $('#submitVerificationButton').addEventListener('click', submitFindingForVerification);
@@ -344,12 +345,15 @@ function renderAuditChecklist() {
   }
   const userOptions = activeUserOptions();
   const assignmentFields = `<label>Assign To<select data-field="assignedToUserId"><option value="">ไม่ระบุผู้รับผิดชอบ</option>${userOptions}</select></label><label>Responsible Person<input data-field="responsiblePerson" readonly></label><input data-field="findingStatus" type="hidden" value="Open">`;
-  container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>Standard Criteria</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>Example OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>Example NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="N/A">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid"><label>Finding Detail *<textarea data-field="findingDetail" rows="2"></textarea></label><label>Corrective Action *<textarea data-field="correctiveAction" rows="2"></textarea></label>${assignmentFields}<label>Due Date *<input data-field="dueDate" type="date"></label><label>Before Photo *<input data-field="beforePhoto" type="file" accept="image/*" capture="environment"></label><label>Remark<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
+  container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>Standard Criteria</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>Example OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>Example NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="N/A">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid"><label>Finding Detail *<textarea data-field="findingDetail" rows="2"></textarea></label><label>Corrective Action *<textarea data-field="correctiveAction" rows="2"></textarea></label>${assignmentFields}<label>Due Date *<input data-field="dueDate" type="date"></label><label>Before Photo *<input data-field="beforePhoto" type="file" accept="image/*" capture="environment"><span class="photo-preview" data-field="beforePhotoPreview"></span></label><label>Remark<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
   $$('.checklist-card', container).forEach(card => {
     $$('.result-button', card).forEach(button => button.addEventListener('click', () => selectAuditResult(card, button.dataset.result)));
     $$('input, select, textarea', card).forEach(field => {
       field.addEventListener('input', updateAuditSaveButtonState);
-      field.addEventListener('change', updateAuditSaveButtonState);
+      field.addEventListener('change', event => {
+        if (field.dataset.field === 'beforePhoto') renderPhotoPreview(field, `[data-field=\"beforePhotoPreview\"]`, '', card);
+        updateAuditSaveButtonState();
+      });
     });
     const assigneeSelect = $('select[data-field="assignedToUserId"]', card);
     if (assigneeSelect) assigneeSelect.addEventListener('change', event => {
@@ -500,6 +504,24 @@ function isAuditDuplicateMessage(message) {
     String(message || '').includes('มีการบันทึก LPA สำหรับ Line / Station / Layer / Shift นี้แล้ว');
 }
 
+function renderPhotoPreview(input, targetSelector, existingUrl = '', scope = document) {
+  const target = typeof targetSelector === 'string' ? $(targetSelector, scope) : targetSelector;
+  if (!target) return;
+  const file = input && input.files ? input.files[0] : null;
+  if (!file) {
+    target.innerHTML = existingUrl ? `<a href="${escapeAttr(existingUrl)}" target="_blank" rel="noopener">ดูรูปปัจจุบัน</a>` : '';
+    return;
+  }
+  if (!String(file.type || '').startsWith('image/')) {
+    target.innerHTML = '<span class="required-note">กรุณาเลือกไฟล์รูปภาพเท่านั้น</span>';
+    return;
+  }
+  const url = URL.createObjectURL(file);
+  target.innerHTML = `<img src="${escapeAttr(url)}" alt="Photo preview"><span>${escapeHtml(file.name)} · ${Math.ceil(file.size / 1024)} KB</span>`;
+  const img = $('img', target);
+  if (img) img.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
+}
+
 async function uploadFile(file, relatedType, relatedId, fileType, manageLoading = true) {
   if (!file) throw new Error('ไม่พบไฟล์สำหรับอัปโหลด');
   const uploadMessage = fileType === 'BeforePhoto' ? 'กำลังอัปโหลด Before Photo...' :
@@ -558,7 +580,7 @@ function openFindingEditor(findingId) {
   $('#editCloseRemark').classList.remove('field-error');
   $('#editRejectReason').classList.remove('field-error');
   $('#editAfterPhoto').value = '';
-  $('#editPhotoPreview').innerHTML = row.AfterPhotoURL ? `<a href="${escapeAttr(row.AfterPhotoURL)}" target="_blank" rel="noopener">ดู After Photo ปัจจุบัน</a>` : '';
+  renderPhotoPreview($('#editAfterPhoto'), '#editPhotoPreview', row.AfterPhotoURL || '');
   const status = String(row.Status || '').toLowerCase();
   const pending = status === 'pending verification';
   const canVerify = pending && hasPermission('findings.verify');
