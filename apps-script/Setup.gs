@@ -1,6 +1,6 @@
 /** One-time, non-destructive setup and manual test helpers. */
 var AUDIT_PLAN_RULE_HEADERS_ = [
-  'RuleID', 'RequiredRole', 'RequiredUserID', 'RequiredUserName',
+  'RuleID', 'AssignmentMode', 'RequiredRole', 'RequiredUserID', 'RequiredUserName',
   'LineID', 'LineName', 'StationID', 'StationName',
   'Frequency', 'DayOfWeek', 'DayOfMonth', 'DueTime', 'ActiveStatus',
   'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'
