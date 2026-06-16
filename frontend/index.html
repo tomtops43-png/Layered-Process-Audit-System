@@ -37,7 +37,7 @@
       <nav id="mainNav" class="main-nav">
         <button data-page="dashboard" class="nav-item active"><span>▦</span>Dashboard</button>
         <button data-page="audit" class="nav-item"><span>✓</span>ตรวจ LPA <b id="auditNavBadge" class="nav-badge hidden">0</b></button>
-        <button data-page="audit-plan" class="nav-item" data-permission-any="audit.plan.view"><span>▣</span>LPA Schedule Rules</button>
+        <button data-page="audit-plan" data-permission-any="audit.plan.view" class="nav-item"><span>▣</span>LPA Schedule Rules</button>
         <button data-page="findings" class="nav-item"><span>!</span>Finding Tracking <b id="findingNavBadge" class="nav-badge hidden">0</b></button>
         <button data-page="report" class="nav-item" data-permission-any="reports.view,reports.export"><span>▤</span>Monthly Report</button>
         <button data-page="checklist" class="nav-item" data-permission-any="checklist.view,checklist.manage"><span>☷</span>Checklist Master</button>
@@ -187,12 +187,11 @@
     </main>
 
     <nav class="bottom-nav" aria-label="เมนูมือถือ">
-      <button data-page="dashboard" class="active"><span>▦</span>Dashboard</button>
-      <button data-page="audit"><span>✓</span>Audit</button>
-      <button data-page="audit-plan" data-permission-any="audit.plan.view"><span>▣</span>แผนตรวจ</button>
-      <button data-page="findings"><span>!</span>Finding</button>
-      <button data-page="report"><span>▤</span>Report</button>
-      <button data-page="checklist"><span>☷</span>Checklist</button>
+      <button data-page="dashboard" class="active"><span>▦</span><b>Home</b></button>
+      <button data-page="audit"><span>✓</span><b>Audit</b></button>
+      <button data-page="findings"><span>!</span><b>Finding</b></button>
+      <button data-page="report" data-permission-any="reports.view,reports.export"><span>▤</span><b>Report</b></button>
+      <button id="mobileMoreButton" type="button"><span>☰</span><b>More</b></button>
     </nav>
   </div>
 

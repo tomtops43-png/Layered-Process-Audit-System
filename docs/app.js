@@ -59,6 +59,7 @@ function bindEvents() {
   $('#logoutButton').addEventListener('click', logout);
   $('#sidebarLogoutButton').addEventListener('click', logout);
   $('#menuButton').addEventListener('click', openSidebar);
+  $('#mobileMoreButton').addEventListener('click', openSidebar);
   $('#closeMenuButton').addEventListener('click', closeSidebar);
   $('#sidebarBackdrop').addEventListener('click', closeSidebar);
   $$('#mainNav [data-page], .bottom-nav [data-page]').forEach(button => button.addEventListener('click', () => navigateTo(button.dataset.page)));
