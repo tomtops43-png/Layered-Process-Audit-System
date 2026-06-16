@@ -6,7 +6,7 @@ const vm = require('vm');
 
 const source = fs.readFileSync('apps-script/Setup.gs', 'utf8');
 const expectedHeaders = [
-  'RuleID', 'RequiredRole', 'RequiredUserID', 'RequiredUserName',
+  'RuleID', 'AssignmentMode', 'RequiredRole', 'RequiredUserID', 'RequiredUserName',
   'LineID', 'LineName', 'StationID', 'StationName',
   'Frequency', 'DayOfWeek', 'DayOfMonth', 'DueTime', 'ActiveStatus',
   'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'
