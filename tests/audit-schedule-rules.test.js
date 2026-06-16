@@ -17,7 +17,7 @@ const docs = fs.readFileSync('docs/app.js', 'utf8');
 
 assert(config.includes("AUDIT_PLAN_RULES: 'AuditPlanRules'"));
 [
-  'RuleID', 'RequiredRole', 'RequiredUserID', 'RequiredUserName', 'LineID', 'LineName',
+  'RuleID', 'AssignmentMode', 'RequiredRole', 'RequiredUserID', 'RequiredUserName', 'LineID', 'LineName',
   'StationID', 'StationName', 'Frequency', 'DayOfWeek', 'DayOfMonth', 'DueTime',
   'ActiveStatus', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'
 ].forEach(header => assert(config.includes(`'${header}'`), `missing AuditPlanRules header ${header}`));
