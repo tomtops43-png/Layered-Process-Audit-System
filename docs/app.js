@@ -359,8 +359,8 @@ function renderAuditChecklist() {
     container.innerHTML = emptyHtml('ไม่พบ Checklist');
     return;
   }
-  const userOptions = activeUserOptions();
-  const assignmentFields = `<label>Assign To<select data-field="assignedToUserId"><option value="">ไม่ระบุผู้รับผิดชอบ</option>${userOptions}</select></label><label>Responsible Person<input data-field="responsiblePerson" readonly></label><input data-field="findingStatus" type="hidden" value="Open">`;
+  const roleOptions = assignableRoleOptions();
+  const assignmentFields = `<label>มอบหมายให้ตำแหน่ง<select data-field="assignedRole" required><option value="">เลือกตำแหน่งรับผิดชอบ</option>${roleOptions}</select></label><label>Responsible Role<input data-field="responsiblePerson" readonly></label><input data-field="assignmentMode" type="hidden" value="ROLE"><input data-field="findingStatus" type="hidden" value="Assigned">`;
   container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>Standard Criteria</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>Example OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>Example NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="N/A">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid"><label>Finding Detail *<textarea data-field="findingDetail" rows="2"></textarea></label><label>Corrective Action *<textarea data-field="correctiveAction" rows="2"></textarea></label>${assignmentFields}<label>Due Date *<input data-field="dueDate" type="date"></label><label>Before Photo *<input data-field="beforePhoto" type="file" accept="image/*"><span class="photo-preview" data-field="beforePhotoPreview"></span></label><label>Remark<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
   $$('.checklist-card', container).forEach(card => {
     $$('.result-button', card).forEach(button => button.addEventListener('click', () => selectAuditResult(card, button.dataset.result)));
@@ -371,11 +371,11 @@ function renderAuditChecklist() {
         updateAuditSaveButtonState();
       });
     });
-    const assigneeSelect = $('select[data-field="assignedToUserId"]', card);
-    if (assigneeSelect) assigneeSelect.addEventListener('change', event => {
-        const user = (state.masterData.users || []).find(item => String(item.UserID) === event.target.value);
-        $('[data-field="responsiblePerson"]', card).value = user ? user.FullName : '';
-        $('[data-field="findingStatus"]', card).value = user ? 'Assigned' : 'Open';
+    const roleSelect = $('select[data-field="assignedRole"]', card);
+    if (roleSelect) roleSelect.addEventListener('change', event => {
+        $('[data-field="responsiblePerson"]', card).value = event.target.value || '';
+        $('[data-field="findingStatus"]', card).value = event.target.value ? 'Assigned' : 'Open';
+        updateAuditSaveButtonState();
       });
   });
   updateAuditProgress();
@@ -402,7 +402,7 @@ function auditNgDetailsComplete() {
     if (!answer || answer.result !== 'NG') return true;
     const card = $(`.checklist-card[data-checklist-id="${cssEscape(item.ChecklistID)}"]`);
     return Boolean(card && fieldValue(card, 'findingDetail') && fieldValue(card, 'correctiveAction') &&
-      fieldValue(card, 'dueDate') && fieldFile(card, 'beforePhoto'));
+      fieldValue(card, 'assignedRole') && fieldValue(card, 'dueDate') && fieldFile(card, 'beforePhoto'));
   });
 }
 
@@ -442,19 +442,22 @@ async function saveAudit() {
     if (answer.result === 'NG') {
       record.findingDetail = fieldValue(card, 'findingDetail');
       record.correctiveAction = fieldValue(card, 'correctiveAction');
-      record.responsiblePerson = fieldValue(card, 'responsiblePerson');
-      record.picName = record.responsiblePerson;
-      record.picUserId = fieldValue(card, 'assignedToUserId');
-      record.assignedToUserId = record.picUserId;
-      record.assignedToName = record.responsiblePerson;
-      const assignedUser = (state.masterData.users || []).find(user => String(user.UserID) === record.assignedToUserId);
-      record.assignedToRole = assignedUser ? assignedUser.Role : '';
+      record.assignmentMode = fieldValue(card, 'assignmentMode') || 'ROLE';
+      record.assignedRole = fieldValue(card, 'assignedRole');
+      record.assignedRoleName = record.assignedRole;
+      record.assignedUserId = '';
+      record.assignedToUserId = '';
+      record.picUserId = '';
+      record.assignedToName = '';
+      record.responsiblePerson = record.assignedRole;
+      record.picName = record.assignedRole;
+      record.assignedToRole = record.assignedRole;
       record.severity = item.Severity || 'Minor';
       record.dueDate = fieldValue(card, 'dueDate');
-      record.status = assignedUser ? 'Assigned' : 'Open';
+      record.status = record.assignedRole ? 'Assigned' : 'Open';
       record.findingStatus = record.status;
       const photo = fieldFile(card, 'beforePhoto');
-      if (!record.findingDetail || !record.correctiveAction || !record.dueDate || !photo) {
+      if (!record.findingDetail || !record.correctiveAction || !record.assignedRole || !record.dueDate || !photo) {
         setAuditSavingState(false);
         return showToast(`กรุณากรอก Finding และ Before Photo ของ ${item.ChecklistID} ให้ครบ`, 'warning');
       }
@@ -576,7 +579,7 @@ async function loadFindings() {
 function renderFindings() {
   const container = $('#findingsList');
   if (!state.findings.length) return container.innerHTML = emptyHtml('ไม่พบ Finding ตามเงื่อนไข');
-  container.innerHTML = state.findings.map(row => `<article class="finding-card ${String(row.OverdueFlag).toLowerCase() === 'yes' ? 'overdue' : ''}"><div class="finding-summary"><div><span class="finding-id">${escapeHtml(row.FindingID)}</span><span class="data-label">${formatDate(row.FoundDate)} · ${escapeHtml(row.Category || '-')} · ${escapeHtml(row.Severity || row.Priority || '-')}</span></div><div><span class="data-label">Line</span>${escapeHtml(row.LineName || row.LineID || '-')}</div><div><span class="data-label">Station</span>${escapeHtml(row.StationName || row.StationID || '-')}</div><div><span class="data-label">Assigned To</span>${escapeHtml(row.AssignedToName || row.PICName || '-')}</div><div><span class="data-label">Due Date</span>${formatDate(row.DueDate)}</div><div><span class="status-badge ${String(row.OverdueFlag).toLowerCase() === 'yes' ? 'status-overdue' : statusClass(row.Status)}">${String(row.OverdueFlag).toLowerCase() === 'yes' ? `Overdue ${number(row.DaysOverdue)}d` : escapeHtml(row.Status || '-')}</span></div></div><div class="finding-detail"><div><span class="data-label">Problem Detail</span>${escapeHtml(row.ProblemDetail || '-')}</div><div><span class="data-label">Corrective Action</span>${escapeHtml(row.CorrectiveAction || '-')}</div><div class="photo-link"><span class="data-label">Photo</span>${photoLinks(row)}</div></div><div class="finding-actions"><button class="btn btn-outline" data-edit-finding="${escapeAttr(row.FindingID)}">เปิด Finding</button></div></article>`).join('');
+  container.innerHTML = state.findings.map(row => `<article class="finding-card ${String(row.OverdueFlag).toLowerCase() === 'yes' ? 'overdue' : ''}"><div class="finding-summary"><div><span class="finding-id">${escapeHtml(row.FindingID)}</span><span class="data-label">${formatDate(row.FoundDate)} · ${escapeHtml(row.Category || '-')} · ${escapeHtml(row.Severity || row.Priority || '-')}</span></div><div><span class="data-label">Line</span>${escapeHtml(row.LineName || row.LineID || '-')}</div><div><span class="data-label">Station</span>${escapeHtml(row.StationName || row.StationID || '-')}</div><div><span class="data-label">รับผิดชอบโดย</span>${escapeHtml(formatFindingAssignment(row))}<span class="table-subtext">${escapeHtml(formatFindingAssignmentMode(row))}</span></div><div><span class="data-label">Due Date</span>${formatDate(row.DueDate)}</div><div><span class="status-badge ${String(row.OverdueFlag).toLowerCase() === 'yes' ? 'status-overdue' : statusClass(row.Status)}">${String(row.OverdueFlag).toLowerCase() === 'yes' ? `Overdue ${number(row.DaysOverdue)}d` : escapeHtml(row.Status || '-')}</span></div></div><div class="finding-detail"><div><span class="data-label">Problem Detail</span>${escapeHtml(row.ProblemDetail || '-')}</div><div><span class="data-label">Corrective Action</span>${escapeHtml(row.CorrectiveAction || '-')}</div><div class="photo-link"><span class="data-label">Photo</span>${photoLinks(row)}</div></div><div class="finding-actions"><button class="btn btn-outline" data-edit-finding="${escapeAttr(row.FindingID)}">เปิด Finding</button></div></article>`).join('');
   $$('[data-edit-finding]', container).forEach(button => button.addEventListener('click', () => openFindingEditor(button.dataset.editFinding)));
 }
 
@@ -600,10 +603,7 @@ function openFindingEditor(findingId) {
   const status = String(row.Status || '').toLowerCase();
   const pending = status === 'pending verification';
   const canVerify = pending && hasPermission('findings.verify');
-  const assignedUserId = String(row.AssignedToUserID || row.PICUserID || '');
-  const assignedToMe = assignedUserId
-    ? assignedUserId === String(state.user.UserID || '')
-    : String(row.AssignedToName || row.PICName || '') === String(state.user.FullName || '');
+  const assignedToMe = isFindingAssignedToCurrentUser(row);
   const isLeaderOrUser = ['Leader', 'User'].includes(state.user.Role);
   const isAssignedFollowUpUser = isLeaderOrUser && assignedToMe;
   const canUpdate = status !== 'closed' && (hasPermission('findings.view.all') || hasPermission('findings.update.line') ||
@@ -1252,6 +1252,43 @@ function populateSelect(selector, rows, valueField, textField, firstLabel) {
   const current = select.value;
   select.innerHTML = `<option value="">${escapeHtml(firstLabel)}</option>` + rows.map(row => `<option value="${escapeAttr(row[valueField])}">${escapeHtml(row[textField] || row[valueField])}</option>`).join('');
   if (rows.some(row => String(row[valueField]) === current)) select.value = current;
+}
+
+function assignableRoles() {
+  const order = ['Leader', 'Supervisor', 'Engineer', 'Manager', 'Admin'];
+  const roles = new Set(order);
+  (state.masterData.users || []).forEach(user => {
+    if ((!user.ActiveStatus || String(user.ActiveStatus).toLowerCase() === 'active') && user.Role) roles.add(user.Role);
+  });
+  return Array.from(roles).sort((a, b) => {
+    const ia = order.indexOf(a);
+    const ib = order.indexOf(b);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b);
+  });
+}
+
+function assignableRoleOptions() {
+  return assignableRoles().map(role => `<option value="${escapeAttr(role)}">${escapeHtml(role)}</option>`).join('');
+}
+
+function findingAssignmentMode(row) {
+  return String(row.AssignmentMode || (row.AssignedUserID || row.AssignedToUserID || row.PICUserID ? 'USER' : 'ROLE')).toUpperCase();
+}
+
+function formatFindingAssignment(row) {
+  return findingAssignmentMode(row) === 'ROLE'
+    ? (row.AssignedRoleName || row.AssignedRole || row.AssignedToRole || row.ResponsiblePerson || row.PICName || '-')
+    : (row.AssignedUserName || row.AssignedToName || row.PICName || row.AssignedUserID || row.AssignedToUserID || '-');
+}
+
+function formatFindingAssignmentMode(row) {
+  return findingAssignmentMode(row) === 'ROLE' ? 'รูปแบบ: ตามตำแหน่ง' : 'รูปแบบ: ระบุรายบุคคล';
+}
+
+function isFindingAssignedToCurrentUser(row) {
+  if (findingAssignmentMode(row) === 'ROLE') return String(row.AssignedRole || row.AssignedRoleName || row.AssignedToRole || '').toLowerCase() === String(state.user?.Role || '').toLowerCase();
+  const assignedUserId = String(row.AssignedUserID || row.AssignedToUserID || row.ResponsibleUserID || row.PICUserID || '');
+  return assignedUserId ? assignedUserId === String(state.user?.UserID || '') : String(row.AssignedUserName || row.AssignedToName || row.PICName || '') === String(state.user?.FullName || '');
 }
 
 function activeUserOptions() {
