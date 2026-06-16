@@ -101,7 +101,8 @@
           <form id="auditRuleForm" class="form-grid">
             <input id="auditRuleId" type="hidden">
             <label>Required Role<select id="auditRuleRole" required><option>Leader</option><option>Supervisor</option><option>Manager</option></select></label>
-            <label>Assigned User<select id="auditRuleUser"><option value="">ตาม Role</option></select></label>
+            <label>Assignment Mode<select id="auditRuleAssignmentMode"><option value="ROLE">ตามตำแหน่ง / Role-based</option><option value="USER">ระบุรายบุคคล / Specific user</option></select></label>
+            <label id="auditRuleUserField">Assigned User<select id="auditRuleUser"><option value="">เลือกผู้ตรวจ</option></select></label>
             <label>Line<select id="auditRuleLine" required><option value="">เลือก Line</option></select></label>
             <label>Station<select id="auditRuleStation" required><option value="">เลือก Station</option><option value="ALL">ทั้งหมด</option></select></label>
             <label>Frequency<select id="auditRuleFrequency" required><option>Daily</option><option>Weekly</option><option>Monthly</option></select></label>
