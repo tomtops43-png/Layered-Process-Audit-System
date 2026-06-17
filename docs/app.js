@@ -849,7 +849,9 @@ function renderAuditRules() {
     $('#auditPlanTable').innerHTML = emptyHtml('ไม่พบกฎตารางตรวจตามตัวกรอง');
     return;
   }
-  $('#auditPlanTable').innerHTML = `<table class="data-table audit-plan-table"><thead><tr><th>Role</th><th>Assignment</th><th>User</th><th>Line</th><th>Station</th><th>Frequency</th><th>Day</th><th>Due Time</th><th>Status</th><th>Action</th></tr></thead><tbody>${state.auditRules.map(rule => `<tr><td>${escapeHtml(rule.RequiredRole || '-')}</td><td>${escapeHtml(formatAssignmentMode(rule))}</td><td>${escapeHtml(formatRuleUser(rule))}</td><td>${escapeHtml(rule.LineName || rule.LineID)}</td><td>${escapeHtml(rule.StationName || rule.StationID)}</td><td>${escapeHtml(rule.Frequency || '-')}</td><td>${escapeHtml(rule.Frequency === 'Monthly' ? rule.DayOfMonth : (rule.DayOfWeek || 'Working days'))}</td><td>${escapeHtml(formatDueTime(rule.DueTime || '17:00'))}</td><td><span class="status-badge ${String(rule.ActiveStatus).toLowerCase() === 'active' ? 'status-ok' : 'status-na'}">${escapeHtml(rule.ActiveStatus || '-')}</span></td><td><button class="btn btn-outline btn-compact" data-rule-id="${escapeAttr(rule.RuleID)}">แก้ไข</button></td></tr>`).join('')}</tbody></table>`;
+  const canManage = hasPermission('audit.plan.manage');
+  $('#auditPlanTable').innerHTML = `<table class="data-table audit-plan-table"><thead><tr><th>Role</th><th>Assignment</th><th>User</th><th>Line</th><th>Station</th><th>Frequency</th><th>Day</th><th>Due Time</th><th>Status</th><th>Action</th></tr></thead><tbody>${state.auditRules.map(rule => `<tr><td>${escapeHtml(rule.RequiredRole || '-')}</td><td>${escapeHtml(formatAssignmentMode(rule))}</td><td>${escapeHtml(formatRuleUser(rule))}</td><td>${escapeHtml(rule.LineName || rule.LineID)}</td><td>${escapeHtml(rule.StationName || rule.StationID)}</td><td>${escapeHtml(rule.Frequency || '-')}</td><td>${escapeHtml(rule.Frequency === 'Monthly' ? rule.DayOfMonth : (rule.DayOfWeek || 'Working days'))}</td><td>${escapeHtml(formatDueTime(rule.DueTime || '17:00'))}</td><td><span class="status-badge ${String(rule.ActiveStatus).toLowerCase() === 'active' ? 'status-ok' : 'status-na'}">${escapeHtml(rule.ActiveStatus || '-')}</span></td><td class="action-cell">${canManage ? `<button class="btn btn-outline btn-compact" data-rule-id="${escapeAttr(rule.RuleID)}">แก้ไข</button><button class="btn btn-danger btn-compact" data-delete-rule-id="${escapeAttr(rule.RuleID)}" data-rule-label="${escapeAttr((rule.RequiredRole||'') + ' / ' + (rule.LineName||rule.LineID) + ' / ' + (rule.StationName||rule.StationID))}">ลบ</button>` : '-'}</td></tr>`).join('')}</tbody></table>`;
+  $$('#auditPlanTable [data-delete-rule-id]').forEach(btn => btn.addEventListener('click', () => deleteAuditRule(btn.dataset.deleteRuleId, btn.dataset.ruleLabel)));
 }
 
 function openAuditRuleEditor(rule = null) {
@@ -950,6 +952,21 @@ async function saveAuditRule() {
       ? `อัปเดตกฎ ${result.updatedCount} รายการ`
       : `สร้างกฎใหม่ ${result.createdCount || 0} รายการ / ข้ามกฎซ้ำ ${result.skippedDuplicateCount || 0} รายการ`;
     showToast(summary, 'success', 7000);
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+async function deleteAuditRule(ruleId, ruleLabel) {
+  if (!window.confirm(`ยืนยันลบกฎตารางตรวจ?\n${ruleLabel}`)) return;
+  showLoading('กำลังลบกฎตารางตรวจ...');
+  try {
+    await apiCall('deleteAuditRule', { ruleId });
+    state.auditRules = state.auditRules.filter(r => r.RuleID !== ruleId);
+    renderAuditRules();
+    showToast('ลบกฎตารางตรวจแล้ว', 'success');
   } catch (error) {
     showToast(error.message, 'error');
   } finally {

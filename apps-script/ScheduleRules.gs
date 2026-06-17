@@ -131,6 +131,35 @@ function upsertAuditPlanRule(payload, currentUser) {
   }
 }
 
+function deleteAuditRule(payload, currentUser) {
+  try {
+    requirePermission_(currentUser, 'audit.plan.manage');
+    var ruleId = cleanString_(payload.ruleId);
+    if (!ruleId) throw new Error('ruleId is required.');
+    if (!isAdmin_(currentUser)) {
+      var rule = findById_(SHEET_NAMES.AUDIT_PLAN_RULES, 'RuleID', ruleId);
+      if (!rule) throw new Error('Audit schedule rule not found: ' + ruleId);
+      requireLineAccess_(currentUser, rule.LineID, 'Manage');
+    }
+    var sheet = getSheet(SHEET_NAMES.AUDIT_PLAN_RULES);
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+    var idCol = headers.indexOf('RuleID');
+    if (idCol < 0) throw new Error('RuleID column not found.');
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) throw new Error('Audit schedule rule not found: ' + ruleId);
+    var ids = sheet.getRange(2, idCol + 1, lastRow - 1, 1).getDisplayValues();
+    var rowNumber = -1;
+    for (var i = 0; i < ids.length; i++) {
+      if (cleanString_(ids[i][0]) === ruleId) { rowNumber = i + 2; break; }
+    }
+    if (rowNumber < 0) throw new Error('Audit schedule rule not found: ' + ruleId);
+    sheet.deleteRow(rowNumber);
+    return jsonResponse(true, 'Audit schedule rule deleted.', { ruleId: ruleId });
+  } catch (error) {
+    return jsonResponse(false, safeErrorMessage_(error), {});
+  }
+}
+
 function auditRuleDuplicateMatches_(row, candidate) {
   var mode = cleanString_(row.AssignmentMode).toUpperCase() || (cleanString_(row.RequiredUserID) ? 'USER' : 'ROLE');
   if (!valuesEqual_(mode, candidate.AssignmentMode)) return false;

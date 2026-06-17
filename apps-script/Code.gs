@@ -29,6 +29,7 @@ function doPost(e) {
       getAuditPlan: function (user) { return getAuditPlan(payload, user); },
       getAuditPlanRules: function (user) { return getAuditPlanRules(payload, user); },
       upsertAuditPlanRule: function (user) { return upsertAuditPlanRule(payload, user); },
+      deleteAuditRule: function (user) { return deleteAuditRule(payload, user); },
       generateAuditPlan: function (user) { return generateAuditPlan(payload, user); },
       refreshAuditPlanStatus: function (user) { return refreshAuditPlanStatus(payload, user); },
       getMyAuditPlanSummary: function (user) { return getMyAuditPlanSummary(payload, user); },
