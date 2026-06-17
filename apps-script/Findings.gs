@@ -238,6 +238,7 @@ function verifyFinding(payload, currentUser) {
     }
     var updated = updateObjectById(SHEET_NAMES.FINDINGS, 'FindingID', payload.findingId, updates);
     appendActionLog_(payload.findingId, oldStatus, updates.Status, updates, payload.remark || updates.RejectReason || updates.CloseRemark || '', payload.evidenceUrl || '', currentUser, timestamp);
+    invalidateDashboardCachesForUser_(currentUser);
     return jsonResponse(true, updates.Status === 'Closed' ? 'Finding approved and closed.' : 'Finding rejected.', { finding: sanitizeFindingForClient_(updated) });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
@@ -269,6 +270,7 @@ function closeFinding(payload, currentUser) {
     };
     var updated = updateObjectById(SHEET_NAMES.FINDINGS, 'FindingID', payload.findingId, updates);
     appendActionLog_(payload.findingId, finding.Status, 'Closed', updates, payload.remark || closeRemark || '', payload.evidenceUrl || '', currentUser, timestamp);
+    invalidateDashboardCachesForUser_(currentUser);
     return jsonResponse(true, 'Finding closed successfully.', { finding: sanitizeFindingForClient_(updated) });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});

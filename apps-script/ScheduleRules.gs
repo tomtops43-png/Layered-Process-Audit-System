@@ -132,15 +132,18 @@ function upsertAuditPlanRule(payload, currentUser) {
 }
 
 function deleteAuditRule(payload, currentUser) {
+  var lock = null;
+  var lockAcquired = false;
   try {
     requirePermission_(currentUser, 'audit.plan.manage');
     var ruleId = cleanString_(payload.ruleId);
     if (!ruleId) throw new Error('ruleId is required.');
-    if (!isAdmin_(currentUser)) {
-      var rule = findById_(SHEET_NAMES.AUDIT_PLAN_RULES, 'RuleID', ruleId);
-      if (!rule) throw new Error('Audit schedule rule not found: ' + ruleId);
-      requireLineAccess_(currentUser, rule.LineID, 'Manage');
-    }
+    var rule = findById_(SHEET_NAMES.AUDIT_PLAN_RULES, 'RuleID', ruleId);
+    if (!rule) throw new Error('Audit schedule rule not found: ' + ruleId);
+    if (!isAdmin_(currentUser)) requireLineAccess_(currentUser, rule.LineID, 'Manage');
+    lock = LockService.getScriptLock();
+    lock.waitLock(15000);
+    lockAcquired = true;
     var sheet = getSheet(SHEET_NAMES.AUDIT_PLAN_RULES);
     var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
     var idCol = headers.indexOf('RuleID');
@@ -154,9 +157,12 @@ function deleteAuditRule(payload, currentUser) {
     }
     if (rowNumber < 0) throw new Error('Audit schedule rule not found: ' + ruleId);
     sheet.deleteRow(rowNumber);
+    invalidateDashboardCachesForUser_(currentUser);
     return jsonResponse(true, 'Audit schedule rule deleted.', { ruleId: ruleId });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
+  } finally {
+    if (lockAcquired) lock.releaseLock();
   }
 }
 
