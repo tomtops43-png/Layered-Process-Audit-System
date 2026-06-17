@@ -76,10 +76,11 @@ function bindEvents() {
   $('#loginForm').addEventListener('submit', event => { event.preventDefault(); login(); });
   $('#logoutButton').addEventListener('click', logout);
   $('#sidebarLogoutButton').addEventListener('click', logout);
-  $('#menuButton').addEventListener('click', openSidebar);
-  $('#mobileMoreButton').addEventListener('click', openSidebar);
-  $('#closeMenuButton').addEventListener('click', closeSidebar);
-  $('#sidebarBackdrop').addEventListener('click', closeSidebar);
+  $('#menuButton').addEventListener('click', openMobileDrawer);
+  $('#closeMenuButton').addEventListener('click', closeMobileDrawer);
+  $('#sidebarBackdrop').addEventListener('click', closeMobileDrawer);
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') closeMobileDrawer(); });
+  window.addEventListener('resize', () => { if (window.innerWidth >= 768) closeMobileDrawer(); }, { passive: true });
   $$('#mainNav [data-page]').forEach(button => button.addEventListener('click', () => navigateTo(button.dataset.page)));
   $('#refreshDashboard').addEventListener('click', loadDashboard);
   $('#auditLine').addEventListener('change', () => {
@@ -208,6 +209,7 @@ async function login() {
 }
 
 function logout(notify = true) {
+  closeMobileDrawer();
   state.token = '';
   state.user = null;
   state.masterData = { lines: [], stations: [], users: [], lists: [], settings: {} };
@@ -1461,7 +1463,7 @@ function enterManualAuditMode() {
 async function navigateTo(page) {
   $$('.page').forEach(section => section.classList.toggle('active-page', section.id === `page-${page}`));
   $$('#mainNav [data-page]').forEach(button => button.classList.toggle('active', button.dataset.page === page));
-  closeSidebar();
+  closeMobileDrawer();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (page === 'audit' && !state.startingPlanAudit) enterManualAuditMode();
   if (page === 'dashboard' && !state.dashboard) loadDashboard();
@@ -1480,8 +1482,30 @@ async function navigateTo(page) {
 
 function showLogin() { $('#loginView').classList.remove('hidden'); $('#appView').classList.add('hidden'); $('#username').focus(); }
 function showApplication() { $('#loginView').classList.add('hidden'); $('#appView').classList.remove('hidden'); }
-function openSidebar() { $('#sidebar').classList.add('open'); $('#sidebarBackdrop').classList.remove('hidden'); }
-function closeSidebar() { $('#sidebar').classList.remove('open'); $('#sidebarBackdrop').classList.add('hidden'); }
+function openMobileDrawer() {
+  const sidebar = $('#sidebar');
+  const backdrop = $('#sidebarBackdrop');
+  const menuBtn = $('#menuButton');
+  sidebar.classList.add('open');
+  backdrop.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  document.documentElement.style.overflow = 'hidden';
+  if (menuBtn) menuBtn.setAttribute('aria-expanded', 'true');
+}
+function closeMobileDrawer() {
+  const sidebar = $('#sidebar');
+  const backdrop = $('#sidebarBackdrop');
+  const menuBtn = $('#menuButton');
+  sidebar.classList.remove('open');
+  backdrop.classList.add('hidden');
+  document.body.style.overflow = '';
+  document.documentElement.style.overflow = '';
+  document.body.style.pointerEvents = '';
+  if (menuBtn) menuBtn.setAttribute('aria-expanded', 'false');
+}
+function toggleMobileDrawer() {
+  if ($('#sidebar').classList.contains('open')) closeMobileDrawer(); else openMobileDrawer();
+}
 function showLoading(message = 'กำลังโหลด...') {
   busyDepth++;
   busyMessages.push(message);
