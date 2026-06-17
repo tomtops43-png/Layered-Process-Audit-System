@@ -154,11 +154,15 @@ function bindEvents() {
 }
 
 async function apiCall(action, payload = {}) {
+  const TIMEOUT_MS = action === 'uploadFile' ? 90000 : 45000;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     const response = await fetch(CONFIG.API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action, token: state.token || '', payload })
+      body: JSON.stringify({ action, token: state.token || '', payload }),
+      signal: controller.signal
     });
     if (!response.ok) throw new Error(`เซิร์ฟเวอร์ตอบกลับ HTTP ${response.status}`);
     const result = await response.json();
@@ -172,8 +176,11 @@ async function apiCall(action, payload = {}) {
     }
     return result.data || {};
   } catch (error) {
+    if (error.name === 'AbortError') throw new Error(`ระบบใช้เวลานานเกินไป (${TIMEOUT_MS / 1000}s) กรุณาลองใหม่อีกครั้ง`);
     if (error instanceof TypeError) throw new Error('ไม่สามารถเชื่อมต่อระบบได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่');
     throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
