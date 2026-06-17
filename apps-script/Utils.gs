@@ -45,6 +45,43 @@ function appendObject(sheetName, object) {
   return object;
 }
 
+/** Append multiple rows in a single Sheets API call — much faster than N × appendObject. */
+function appendBatch_(sheetName, objects) {
+  if (!objects || !objects.length) return;
+  var sheet = getSheet(sheetName);
+  var headers = getHeaders_(sheet);
+  if (!headers.length) throw new Error('Sheet has no header row: ' + sheetName);
+  var rows = objects.map(function (obj) {
+    return headers.map(function (header) { return obj[header] === undefined ? '' : obj[header]; });
+  });
+  var lastRow = sheet.getLastRow();
+  sheet.getRange(lastRow + 1, 1, rows.length, headers.length).setValues(rows);
+}
+
+/** Generate N sequential IDs while the caller already owns the script lock. */
+function generateMultipleIdsWithoutLock_(prefix, sheetName, idColumnName, periodMonth, count) {
+  var ids = getRowsAsObjects(sheetName).map(function (row) { return cleanString_(row[idColumnName]); });
+  var period = cleanString_(periodMonth);
+  var stem = prefix + (period ? '-' + period : '');
+  var width = ['AR', 'LOG', 'ATT'].indexOf(prefix) !== -1 ? 6 : 4;
+  var maximum = 0;
+  ids.forEach(function (id) {
+    if (id.indexOf(stem + '-') === 0 || (!period && id.indexOf(prefix) === 0)) {
+      var match = id.match(/(\d+)$/);
+      if (match) maximum = Math.max(maximum, Number(match[1]));
+    }
+  });
+  var sequenceKey = 'LPA_SEQUENCE_' + sheetName + '_' + idColumnName + '_' + (period || 'ALL');
+  var properties = PropertiesService.getScriptProperties();
+  maximum = Math.max(maximum, toNumber_(properties.getProperty(sequenceKey)));
+  var result = [];
+  for (var i = 0; i < count; i++) {
+    result.push(stem + (period ? '-' : '') + padNumber_(maximum + 1 + i, width));
+  }
+  properties.setProperty(sequenceKey, String(maximum + count));
+  return result;
+}
+
 function updateObjectById(sheetName, idColumnName, idValue, updateObject) {
   validateObjectFields_(sheetName, updateObject);
   var sheet = getSheet(sheetName);

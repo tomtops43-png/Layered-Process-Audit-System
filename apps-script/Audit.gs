@@ -133,12 +133,26 @@ function saveAudit(payload, currentUser) {
       SaveSource: matchingPlan ? 'Plan' : 'Manual', CreatedAt: timestamp, CreatedBy: currentUser.UserID,
       UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
     });
+
+    // Pre-load reference data once to avoid repeated sheet reads inside the loop
+    var checklistMap = {};
+    getRowsAsObjects(SHEET_NAMES.CHECKLIST).forEach(function (row) { checklistMap[cleanString_(row.ChecklistID)] = row; });
+    var usersMap = {};
+    getRowsAsObjects(SHEET_NAMES.USERS).forEach(function (row) { usersMap[cleanString_(row.UserID)] = row; });
+    var defaultDays = toNumber_(getSetting('DEFAULT_DUE_DAYS')) || 7;
+    var ngCount = payload.records.filter(function (r) { return normalizeAuditResult_(r.result) === 'NG'; }).length;
+    // Pre-generate all IDs in two batch calls (one sheet read each)
+    var recordIds = generateMultipleIdsWithoutLock_('AR', SHEET_NAMES.AUDIT_RECORDS, 'RecordID', periodMonth, payload.records.length);
+    var findingIds_pre = ngCount > 0 ? generateMultipleIdsWithoutLock_('F', SHEET_NAMES.FINDINGS, 'FindingID', periodMonth, ngCount) : [];
+    var findingIdIndex = 0;
+    var auditRecordsBatch = [];
+    var findingsBatch = [];
     var findingIds = [];
-    payload.records.forEach(function (record) {
-      var checklist = findById_(SHEET_NAMES.CHECKLIST, 'ChecklistID', record.checklistId) || {};
-      var recordId = generateIdWithoutLock_('AR', SHEET_NAMES.AUDIT_RECORDS, 'RecordID', periodMonth);
+
+    payload.records.forEach(function (record, index) {
+      var checklist = checklistMap[cleanString_(record.checklistId)] || {};
+      var recordId = recordIds[index];
       var result = normalizeAuditResult_(record.result);
-      var defaultDays = toNumber_(getSetting('DEFAULT_DUE_DAYS')) || 7;
       var dueDate = record.dueDate ? formatDateBangkok_(record.dueDate) : (result === 'NG' ? addDays_(parseDate_(auditDate) || now, defaultDays) : '');
       var findingDetail = cleanString_(record.findingDetail);
       var assignmentMode = result === 'NG' ? normalizeFindingAssignmentMode_(record.assignmentMode, record) : '';
@@ -151,7 +165,7 @@ function saveAudit(payload, currentUser) {
         assignedRoleName = assignedRole;
       } else if (result === 'NG' && assignmentMode === 'USER') {
         assignedUserId = cleanString_(record.assignedUserId || record.assignedToUserId || record.picUserId);
-        var assignedUser = assignedUserId ? findById_(SHEET_NAMES.USERS, 'UserID', assignedUserId) : null;
+        var assignedUser = usersMap[assignedUserId] || null;
         if (!assignedUserId || !assignedUser || !isActive_(assignedUser.ActiveStatus)) {
           throw new Error('Assigned user was not found or is inactive: ' + assignedUserId);
         }
@@ -160,6 +174,7 @@ function saveAudit(payload, currentUser) {
       }
       var responsibleDisplay = assignmentMode === 'ROLE' ? assignedRoleName : assignedName;
       var initialFindingStatus = result === 'NG' ? 'Assigned' : 'Completed';
+      var findingId = result === 'NG' ? findingIds_pre[findingIdIndex++] : '';
       var auditRecord = {
         RecordID: recordId, AuditID: auditId, AuditDate: auditDate, PeriodMonth: periodMonth,
         LineID: payload.lineId, LineName: lineName, StationID: payload.stationId, StationName: stationName,
@@ -171,23 +186,16 @@ function saveAudit(payload, currentUser) {
         ResponsiblePerson: result === 'NG' ? responsibleDisplay : cleanString_(record.responsiblePerson || record.picName),
         DueDate: dueDate, Status: initialFindingStatus,
         BeforePhotoURL: record.beforePhotoUrl || '', AfterPhotoURL: record.afterPhotoUrl || '',
-        Remark: record.remark || '', FindingID: '', CreatedAt: timestamp, CreatedBy: currentUser.UserID,
+        Remark: record.remark || '', FindingID: findingId, CreatedAt: timestamp, CreatedBy: currentUser.UserID,
         UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
       };
-      appendObject(SHEET_NAMES.AUDIT_RECORDS, auditRecord);
+      auditRecordsBatch.push(auditRecord);
 
       if (result === 'NG') {
-        var duplicateFinding = getRowsAsObjects(SHEET_NAMES.FINDINGS).some(function (row) {
-          if (!valuesEqual_(row.AuditID, auditId)) return false;
-          var findingRecord = findById_(SHEET_NAMES.AUDIT_RECORDS, 'RecordID', row.RecordID) || {};
-          return valuesEqual_(findingRecord.ChecklistID, record.checklistId);
-        });
-        if (duplicateFinding) throw new Error('Duplicate finding for audit checklist item: ' + record.checklistId);
-        var findingId = generateIdWithoutLock_('F', SHEET_NAMES.FINDINGS, 'FindingID', periodMonth);
         var severity = cleanString_(record.severity || record.priority || checklist.Severity) || 'Minor';
         var verificationRequired = cleanString_(record.verificationRequired) ||
           (severity.toLowerCase() === 'minor' && cleanString_(payload.auditLayer).toLowerCase() === 'leader' ? 'No' : 'Yes');
-        appendObject(SHEET_NAMES.FINDINGS, {
+        findingsBatch.push({
           FindingID: findingId, AuditID: auditId, RecordID: recordId, FoundDate: auditDate,
           PeriodMonth: periodMonth, LineID: payload.lineId, LineName: lineName,
           StationID: payload.stationId, StationName: stationName, Area: area,
@@ -215,10 +223,13 @@ function saveAudit(payload, currentUser) {
           RejectedAt: '', RejectedBy: '', RejectedByName: '', RejectReason: '', OverdueFlag: 'No', DaysOverdue: 0,
           CreatedAt: timestamp, CreatedBy: currentUser.UserID, UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
         });
-        updateObjectById(SHEET_NAMES.AUDIT_RECORDS, 'RecordID', recordId, { FindingID: findingId });
         findingIds.push(findingId);
       }
     });
+
+    // Batch write all records and findings in one Sheets API call each
+    appendBatch_(SHEET_NAMES.AUDIT_RECORDS, auditRecordsBatch);
+    if (findingsBatch.length) appendBatch_(SHEET_NAMES.FINDINGS, findingsBatch);
     completeAuditPlan_(matchingPlan, auditId, timestamp, isLate, lateReason, currentUser);
     invalidateDashboardCachesForUser_(currentUser);
 
