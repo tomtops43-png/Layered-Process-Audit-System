@@ -173,7 +173,7 @@ function makeWorkerTimeout(ms) {
 }
 
 async function apiCall(action, payload = {}) {
-  const TIMEOUT_MS = action === 'uploadFile' ? 90000 : 45000;
+  const TIMEOUT_MS = (action === 'uploadFile' || action === 'saveAudit') ? 90000 : 45000;
   const { promise: timeoutPromise, cancel: cancelTimeout } = makeWorkerTimeout(TIMEOUT_MS);
   const timeoutMsg = `ระบบใช้เวลานานเกินไป (${TIMEOUT_MS / 1000}s) กรุณาลองใหม่อีกครั้ง`;
   const fetchPromise = fetch(CONFIG.API_URL, {
