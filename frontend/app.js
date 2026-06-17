@@ -674,14 +674,36 @@ function renderPhotoPreview(input, targetSelector, existingUrl = '', scope = doc
   if (img) img.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
 }
 
+async function compressImage(file, maxPx = 1280, quality = 0.82) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxPx || height > maxPx) {
+        if (width >= height) { height = Math.round(height * maxPx / width); width = maxPx; }
+        else { width = Math.round(width * maxPx / height); height = maxPx; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      canvas.toBlob(blob => resolve(blob || file), 'image/jpeg', quality);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
 async function uploadFile(file, relatedType, relatedId, fileType, manageLoading = true) {
   if (!file) throw new Error('ไม่พบไฟล์สำหรับอัปโหลด');
   const uploadMessage = fileType === 'BeforePhoto' ? 'กำลังอัปโหลด Before Photo...' :
     (fileType === 'AfterPhoto' ? 'กำลังอัปโหลด After Photo...' : 'กำลังอัปโหลดไฟล์...');
   if (manageLoading) showLoading(uploadMessage);
   try {
-    const base64Data = await fileToBase64(file);
-    return await apiCall('uploadFile', { relatedType, relatedId, fileType, fileName: file.name, mimeType: file.type || 'application/octet-stream', base64Data });
+    const compressed = String(file.type || '').startsWith('image/') ? await compressImage(file) : file;
+    const base64Data = await fileToBase64(compressed);
+    return await apiCall('uploadFile', { relatedType, relatedId, fileType, fileName: file.name.replace(/\.[^.]+$/, '.jpg'), mimeType: 'image/jpeg', base64Data });
   } finally {
     if (manageLoading) hideLoading();
   }
