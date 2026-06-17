@@ -674,7 +674,7 @@ function renderPhotoPreview(input, targetSelector, existingUrl = '', scope = doc
   if (img) img.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
 }
 
-async function compressImage(file, maxPx = 1280, quality = 0.82) {
+async function compressImage(file, maxPx = 800, quality = 0.6) {
   return new Promise((resolve) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
