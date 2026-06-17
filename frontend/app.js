@@ -1385,7 +1385,7 @@ async function resetSelectedUserPassword() {
 
 function renderMasterChecklist(rows) {
   const headers = ['ChecklistID', 'Category', 'CheckItem', 'StandardCriteria', 'ExampleOK', 'ExampleNG', 'LineName', 'StationName', 'AuditLayer', 'Frequency', 'Severity', 'ActiveStatus'];
-  $('#masterChecklistTable').innerHTML = rows.length ? tableHtml(headers, rows.map(row => headers.map(header => row[header] ?? ''))) : emptyHtml('ไม่พบ Checklist');
+  $('#masterChecklistTable').innerHTML = rows.length ? tableHtml(headers, rows.map(row => headers.map(header => row[header] ?? '')), 'checklist-master-table') : emptyHtml('ไม่พบ Checklist');
 }
 
 function populateAllMasterSelects() {
@@ -1657,9 +1657,9 @@ function findingReportTable(rows) {
   return rows.length ? tableHtml(['FindingID', 'Problem', 'Line', 'PIC', 'Due Date', 'Status'], rows.map(row => [row.FindingID, row.ProblemDetail, row.LineName || row.LineID, row.PICName, formatDate(row.DueDate), row.Status])) : emptyHtml('ไม่มีข้อมูล');
 }
 
-function tableHtml(headers, rows) {
+function tableHtml(headers, rows, extraClass = '') {
   if (!rows.length) return emptyHtml('ไม่มีข้อมูล');
-  return `<table class="data-table"><thead><tr>${headers.map(header => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${escapeHtml(String(cell ?? '-'))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  return `<table class="data-table${extraClass ? ' ' + extraClass : ''}"><thead><tr>${headers.map(header => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${escapeHtml(String(cell ?? '-'))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
 
 function photoLinks(row) {

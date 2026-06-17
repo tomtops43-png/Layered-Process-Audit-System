@@ -310,8 +310,10 @@ textarea{line-height:1.45}
   .photo-link a{display:inline-flex;align-items:center;min-height:36px;margin:2px 8px 2px 0}
   .table-wrap{overflow-x:auto;border-radius:12px;-webkit-overflow-scrolling:touch}
   .data-table{font-size:.86rem;min-width:720px}
-  .data-table th,.data-table td{padding:10px;white-space:normal}
+  .data-table th{padding:10px;white-space:nowrap}
+  .data-table td{padding:10px;white-space:normal}
   .audit-plan-table{min-width:760px}
+  .checklist-master-table{min-width:1100px}
   .modal{width:calc(100vw - 16px);max-width:calc(100vw - 16px);max-height:calc(var(--visual-viewport-height) - 16px);border-radius:14px;overflow:auto;overscroll-behavior:contain}
   .modal-wide{width:calc(100vw - 16px)}
   .modal form{padding:14px;padding-bottom:calc(18px + env(safe-area-inset-bottom))}
