@@ -83,6 +83,9 @@ function getChecklist(payload, currentUser) {
     var layer = cleanString_(payload.auditLayer);
     var category = cleanString_(payload.category);
     var language = cleanString_(payload.language).toUpperCase() === 'EN' ? 'EN' : 'TH';
+    var cacheKey = 'LPA_CL_' + lineId + '_' + stationId + '_' + layer + '_' + language + (category ? '_' + category : '');
+    var cached = safeCacheGetJson_(cacheKey);
+    if (cached) return jsonResponse(true, 'Checklist loaded from cache.', cached);
     var rows = getRowsAsObjects(SHEET_NAMES.CHECKLIST).filter(function (row) {
       var lineMatches = valuesEqual_(row.LineID, lineId) || valuesEqual_(row.LineID, 'ALL');
       var stationMatches = valuesEqual_(row.StationID, stationId) || valuesEqual_(row.StationID, 'ALL');
@@ -110,7 +113,9 @@ function getChecklist(payload, currentUser) {
       }
       return checklist;
     });
-    return jsonResponse(true, 'Checklist loaded.', { checklist: rows, count: rows.length });
+    var result = { checklist: rows, count: rows.length };
+    safeCachePutJson_(cacheKey, result, 600);
+    return jsonResponse(true, 'Checklist loaded.', result);
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }

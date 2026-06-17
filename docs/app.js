@@ -502,6 +502,10 @@ function renderAuditChecklist() {
   });
   updateAuditProgress();
   updateAuditSaveButtonState();
+  // Start auto-save timer when checklist is rendered
+  if (!window._auditDraftTimer) {
+    window._auditDraftTimer = setInterval(saveAuditDraft, 30000);
+  }
 }
 
 function selectAuditResult(card, result) {
@@ -511,6 +515,7 @@ function selectAuditResult(card, result) {
   $('.ng-fields', card).classList.toggle('hidden', result !== 'NG');
   updateAuditProgress();
   updateAuditSaveButtonState();
+  saveAuditDraft();
 }
 
 function updateAuditProgress() {
@@ -620,6 +625,7 @@ async function saveAudit() {
     const findingText = (data.FindingIDs || []).length ? ` | Finding: ${data.FindingIDs.join(', ')}` : '';
     showToast(`บันทึกสำเร็จ AuditID: ${data.AuditID}${findingText}`, 'success', 7000);
     state.auditPlans = [];
+    clearAuditDraft();
     resetAuditForm();
     loadDashboard(false);
   } catch (error) {
@@ -1457,6 +1463,7 @@ function updateAuditArea() {
 }
 
 function resetAuditForm() {
+  if (window._auditDraftTimer) { clearInterval(window._auditDraftTimer); window._auditDraftTimer = null; }
   state.checklist = [];
   state.auditAnswers = {};
   state.auditMode = 'Manual';
@@ -1514,7 +1521,11 @@ async function navigateTo(page) {
   $$('#mainNav [data-page]').forEach(button => button.classList.toggle('active', button.dataset.page === page));
   closeMobileDrawer();
   window.scrollTo({ top: 0, behavior: 'smooth' });
-  if (page === 'audit' && !state.startingPlanAudit) enterManualAuditMode();
+  if (page === 'audit' && !state.startingPlanAudit) {
+    enterManualAuditMode();
+    const draft = getAuditDraft();
+    if (draft) restoreAuditDraft(draft);
+  }
   if (page === 'dashboard') loadDashboard(false);
   if (['audit', 'audit-plan', 'findings', 'checklist', 'admin'].includes(page)) {
     try {
@@ -1724,6 +1735,90 @@ function setDefaultDates() {
 
 function fileToBase64(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1] || ''); reader.onerror = () => reject(new Error('อ่านไฟล์ไม่สำเร็จ')); reader.readAsDataURL(file); }); }
 function fieldValue(root, field) { const element = $(`[data-field="${field}"]`, root); return element ? element.value.trim() : ''; }
+
+// --- Audit Draft (localStorage) ---
+const AUDIT_DRAFT_KEY = 'lpa_audit_draft';
+const AUDIT_DRAFT_MAX_AGE = 24 * 60 * 60 * 1000;
+
+function saveAuditDraft() {
+  if (!state.checklist.length || state.auditSaveInProgress) return;
+  const ngData = {};
+  $$('.checklist-card').forEach(card => {
+    const id = card.dataset.checklistId;
+    if (state.auditAnswers[id]?.result === 'NG') {
+      ngData[id] = {
+        findingDetail: fieldValue(card, 'findingDetail'),
+        correctiveAction: fieldValue(card, 'correctiveAction'),
+        assignedRole: fieldValue(card, 'assignedRole'),
+        dueDate: fieldValue(card, 'dueDate'),
+        remark: fieldValue(card, 'remark')
+      };
+    }
+  });
+  try {
+    localStorage.setItem(AUDIT_DRAFT_KEY, JSON.stringify({
+      lineId: $('#auditLine').value,
+      stationId: $('#auditStation').value,
+      auditLayer: $('#auditLayer').value,
+      language: $('#checklistLanguage').value,
+      remark: $('#auditRemark')?.value || '',
+      answers: state.auditAnswers,
+      ngData,
+      savedAt: Date.now()
+    }));
+  } catch (_) {}
+}
+
+function clearAuditDraft() {
+  try { localStorage.removeItem(AUDIT_DRAFT_KEY); } catch (_) {}
+}
+
+function getAuditDraft() {
+  try {
+    const raw = localStorage.getItem(AUDIT_DRAFT_KEY);
+    if (!raw) return null;
+    const draft = JSON.parse(raw);
+    if (!draft.lineId || !draft.stationId || Date.now() - draft.savedAt > AUDIT_DRAFT_MAX_AGE) {
+      clearAuditDraft(); return null;
+    }
+    return draft;
+  } catch (_) { return null; }
+}
+
+async function restoreAuditDraft(draft) {
+  const lineEl = $('#auditLine');
+  lineEl.value = draft.lineId;
+  lineEl.dispatchEvent(new Event('change', { bubbles: true }));
+  await new Promise(r => setTimeout(r, 400));
+  const stEl = $('#auditStation');
+  stEl.value = draft.stationId;
+  stEl.dispatchEvent(new Event('change', { bubbles: true }));
+  const layerEl = $('#auditLayer');
+  if (draft.auditLayer) layerEl.value = draft.auditLayer;
+  const langEl = $('#checklistLanguage');
+  if (draft.language) langEl.value = draft.language;
+  await loadChecklist();
+  // Apply answers
+  $$('.checklist-card').forEach(card => {
+    const id = card.dataset.checklistId;
+    const answer = draft.answers?.[id];
+    if (!answer?.result) return;
+    const btn = $(`.result-button[data-result="${answer.result}"]`, card);
+    if (btn) btn.click();
+    if (answer.result === 'NG' && draft.ngData?.[id]) {
+      const ng = draft.ngData[id];
+      const set = (field, val) => { const el = $(`[data-field="${field}"]`, card); if (el && val) { el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); } };
+      set('findingDetail', ng.findingDetail);
+      set('correctiveAction', ng.correctiveAction);
+      set('assignedRole', ng.assignedRole);
+      set('dueDate', ng.dueDate);
+      set('remark', ng.remark);
+    }
+  });
+  if (draft.remark && $('#auditRemark')) $('#auditRemark').value = draft.remark;
+  updateAuditSaveButtonState();
+  showToast('กู้คืนร่าง Audit ที่บันทึกไว้อัตโนมัติ', 'info', 5000);
+}
 function fieldFile(root, field) { const element = $(`[data-field="${field}"]`, root); return element && element.files ? element.files[0] : null; }
 function selectedText(selector) { const select = $(selector); return select.selectedIndex >= 0 ? select.options[select.selectedIndex].text : ''; }
 function monthToPeriod(value) { return value || ''; }
