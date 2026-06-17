@@ -496,8 +496,9 @@ function auditNgDetailsComplete() {
     const answer = state.auditAnswers[item.ChecklistID];
     if (!answer || answer.result !== 'NG') return true;
     const card = $(`.checklist-card[data-checklist-id="${cssEscape(item.ChecklistID)}"]`);
+    // Before Photo is optional — only require core finding fields
     return Boolean(card && fieldValue(card, 'findingDetail') && fieldValue(card, 'correctiveAction') &&
-      fieldValue(card, 'assignedRole') && fieldValue(card, 'dueDate') && fieldFile(card, 'beforePhoto'));
+      fieldValue(card, 'assignedRole') && fieldValue(card, 'dueDate'));
   });
 }
 
@@ -551,12 +552,12 @@ async function saveAudit() {
       record.dueDate = fieldValue(card, 'dueDate');
       record.status = record.assignedRole ? 'Assigned' : 'Open';
       record.findingStatus = record.status;
-      const photo = fieldFile(card, 'beforePhoto');
-      if (!record.findingDetail || !record.correctiveAction || !record.assignedRole || !record.dueDate || !photo) {
+      if (!record.findingDetail || !record.correctiveAction || !record.assignedRole || !record.dueDate) {
         setAuditSavingState(false);
-        return showToast(`กรุณากรอก Finding และ Before Photo ของ ${item.ChecklistID} ให้ครบ`, 'warning');
+        return showToast(`กรุณากรอก Finding Detail, Corrective Action, ตำแหน่งรับผิดชอบ และ Due Date ของ ${item.ChecklistID} ให้ครบ`, 'warning');
       }
-      record._photo = photo;
+      const photo = fieldFile(card, 'beforePhoto');
+      if (photo) record._photo = photo;
     }
     records.push(record);
   }
@@ -565,15 +566,19 @@ async function saveAudit() {
     return;
   }
   if (!state.auditClientSubmissionId) state.auditClientSubmissionId = createClientSubmissionId();
-  showLoading('กำลังบันทึกข้อมูล กรุณารอสักครู่');
+  const photoRecords = records.filter(r => r._photo);
+  const totalPhotos = photoRecords.length;
   try {
-    for (const record of records) {
-      if (record._photo) {
-        const upload = await uploadFile(record._photo, 'AuditDraft', `DRAFT-${Date.now()}`, 'BeforePhoto', false);
-        record.beforePhotoUrl = upload.DriveFileURL;
-        delete record._photo;
-      }
+    // Step 1: upload photos first with per-photo progress
+    for (let i = 0; i < photoRecords.length; i++) {
+      const record = photoRecords[i];
+      showLoading(`กำลังอัปโหลดรูปภาพ ${i + 1}/${totalPhotos}... กรุณารอสักครู่`);
+      const upload = await uploadFile(record._photo, 'AuditDraft', `DRAFT-${Date.now()}`, 'BeforePhoto', false);
+      record.beforePhotoUrl = upload.DriveFileURL;
+      delete record._photo;
     }
+    // Step 2: save audit data
+    showLoading('กำลังบันทึกผลการตรวจ...');
     const auditDate = $('#auditDate').value;
     const payload = {
       auditDate, auditTime: $('#auditTime').value, periodMonth: auditDate.slice(0, 7),
@@ -1483,7 +1488,7 @@ async function navigateTo(page) {
   closeMobileDrawer();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (page === 'audit' && !state.startingPlanAudit) enterManualAuditMode();
-  if (page === 'dashboard' && !state.dashboard) loadDashboard();
+  if (page === 'dashboard') loadDashboard(false);
   if (['audit', 'audit-plan', 'findings', 'checklist', 'admin'].includes(page)) {
     try {
       await ensureMasterDataLoaded(true);
@@ -1491,7 +1496,8 @@ async function navigateTo(page) {
       return;
     }
   }
-  if (page === 'findings' && !state.findings.length) loadFindings();
+  if (page === 'findings') { loadFindings(); pollFindingNotifications(true); }
+  if (page === 'dashboard') pollFindingNotifications(true);
   if (page === 'audit-plan' && !state.auditRules.length) loadAuditPlan();
   if (page === 'admin' && hasPermission('users.view')) loadUsers();
   if (page === 'admin' && String(state.user?.Role || '').toLowerCase() === 'admin') loadShiftLists();

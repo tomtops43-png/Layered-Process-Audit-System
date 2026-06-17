@@ -104,7 +104,7 @@ label{display:flex;flex-direction:column;gap:7px;font-size:.88rem;font-weight:70
 .btn-compact{min-height:36px;padding:7px 11px;white-space:nowrap;font-size:.8rem}
 .table-subtext{display:block;margin-top:4px;color:var(--muted)}
 .late-reason-cell{min-width:150px;white-space:normal}
-.audit-plan-table td{vertical-align:middle}
+.audit-plan-table td{vertical-align:middle}.audit-plan-table .action-cell{white-space:nowrap;min-width:110px}
 .save-bar{position:sticky;z-index:20;bottom:15px;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 18px;background:rgba(255,255,255,.96);border:1px solid var(--border);border-radius:13px;box-shadow:0 12px 35px rgba(11,41,72,.18);backdrop-filter:blur(8px)}
 .save-bar small{display:block;color:var(--muted);margin-top:3px}
 .finding-card{background:#fff;border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
