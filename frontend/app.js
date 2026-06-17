@@ -608,6 +608,7 @@ async function saveAudit() {
       const upload = await uploadFile(record._photo, 'AuditDraft', `DRAFT-${Date.now()}`, 'BeforePhoto', false);
       record.beforePhotoUrl = upload.DriveFileURL;
       delete record._photo;
+      hideLoading();
     }
     // Step 2: save audit data
     showLoading('กำลังบันทึกผลการตรวจ...');
