@@ -9,6 +9,7 @@ const state = {
   checklist: [],
   auditAnswers: {},
   findings: [],
+  findingsCache: null,
   dashboard: null,
   auditPlans: [],
   auditRules: [],
@@ -60,6 +61,7 @@ function initApp() {
 
 function bindVisualViewport() {
   const updateViewportHeight = () => {
+    if (document.querySelector('dialog[open]')) return;
     const height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
     document.documentElement.style.setProperty('--visual-viewport-height', `${Math.round(height)}px`);
   };
@@ -117,7 +119,7 @@ function bindEvents() {
   $('#findingLine').addEventListener('change', () => populateStationSelect('#findingStation', $('#findingLine').value, true));
   $('#checklistLine').addEventListener('change', () => populateStationSelect('#checklistStation', $('#checklistLine').value, false));
   $('#applyFindingFilters').addEventListener('click', loadFindings);
-  $('#refreshFindings').addEventListener('click', loadFindings);
+  $('#refreshFindings').addEventListener('click', () => loadFindings(true));
   $('#loadReportButton').addEventListener('click', loadMonthlyReport);
   $('#printReportButton').addEventListener('click', () => window.print());
   $('#exportCsvButton').addEventListener('click', exportReportCsv);
@@ -710,20 +712,29 @@ async function uploadFile(file, relatedType, relatedId, fileType, manageLoading 
   }
 }
 
-async function loadFindings() {
+async function loadFindings(force = false) {
+  const payload = {
+    lineId: optionalFilterValue($('#findingLine').value), stationId: optionalFilterValue($('#findingStation').value),
+    category: optionalFilterValue($('#findingCategory').value), status: optionalFilterValue($('#findingStatus').value),
+    pic: optionalFilterValue($('#findingPicName').value), picName: optionalFilterValue($('#findingPicName').value),
+    periodMonth: monthToPeriod($('#findingMonth').value),
+    myFindings: optionalFilterValue($('#findingMine').value),
+    overdueOnly: $('#findingOverdue').checked
+  };
+  Object.keys(payload).forEach(key => { if (payload[key] === '' || payload[key] === false) delete payload[key]; });
+  const cacheKey = JSON.stringify(payload);
+  const CACHE_TTL = 5 * 60 * 1000;
+  if (!force && state.findingsCache && state.findingsCache.key === cacheKey &&
+      Date.now() - state.findingsCache.ts < CACHE_TTL) {
+    state.findings = state.findingsCache.data;
+    renderFindings();
+    return;
+  }
   showLoading('กำลังโหลด Finding...');
   try {
-    const payload = {
-      lineId: optionalFilterValue($('#findingLine').value), stationId: optionalFilterValue($('#findingStation').value),
-      category: optionalFilterValue($('#findingCategory').value), status: optionalFilterValue($('#findingStatus').value),
-      pic: optionalFilterValue($('#findingPicName').value), picName: optionalFilterValue($('#findingPicName').value),
-      periodMonth: monthToPeriod($('#findingMonth').value),
-      myFindings: optionalFilterValue($('#findingMine').value),
-      overdueOnly: $('#findingOverdue').checked
-    };
-    Object.keys(payload).forEach(key => { if (payload[key] === '' || payload[key] === false) delete payload[key]; });
     const data = await apiCall('getFindings', payload);
     state.findings = Array.isArray(data.findings) ? data.findings : [];
+    state.findingsCache = { key: cacheKey, data: state.findings, ts: Date.now() };
     renderFindings();
   } catch (error) {
     showToast(error.message, 'error');
@@ -853,7 +864,8 @@ async function runFindingWorkflow(action, payload, options) {
     }
     await apiCall(action, payload);
     $('#findingDialog').close();
-    await loadFindings();
+    state.findingsCache = null;
+    await loadFindings(true);
     await loadDashboard(false);
     showToast(settings.successMessage, 'success');
   } catch (error) {
