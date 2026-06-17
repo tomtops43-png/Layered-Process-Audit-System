@@ -153,16 +153,35 @@ function bindEvents() {
   document.addEventListener('visibilitychange', handleNotificationVisibilityChange);
 }
 
+function makeWorkerTimeout(ms) {
+  // Web Workers are not throttled by Chrome background-tab policies
+  const code = 'self.onmessage=function(e){setTimeout(function(){self.postMessage(1)},e.data);}';
+  const url = URL.createObjectURL(new Blob([code], { type: 'application/javascript' }));
+  let worker, resolve, reject;
+  const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+  try {
+    worker = new Worker(url);
+    worker.onmessage = () => { URL.revokeObjectURL(url); reject(new Error('__timeout__')); };
+    worker.onerror = () => { URL.revokeObjectURL(url); reject(new Error('__timeout__')); };
+    worker.postMessage(ms);
+  } catch (_) {
+    URL.revokeObjectURL(url);
+    setTimeout(() => reject(new Error('__timeout__')), ms);
+  }
+  const cancel = () => { try { worker && worker.terminate(); URL.revokeObjectURL(url); } catch (_) {} };
+  return { promise, cancel };
+}
+
 async function apiCall(action, payload = {}) {
   const TIMEOUT_MS = action === 'uploadFile' ? 90000 : 45000;
-  const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error(`ระบบใช้เวลานานเกินไป (${TIMEOUT_MS / 1000}s) กรุณาลองใหม่อีกครั้ง`)), TIMEOUT_MS)
-  );
+  const { promise: timeoutPromise, cancel: cancelTimeout } = makeWorkerTimeout(TIMEOUT_MS);
+  const timeoutMsg = `ระบบใช้เวลานานเกินไป (${TIMEOUT_MS / 1000}s) กรุณาลองใหม่อีกครั้ง`;
   const fetchPromise = fetch(CONFIG.API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ action, token: state.token || '', payload })
   }).then(async response => {
+    cancelTimeout();
     if (!response.ok) throw new Error(`เซิร์ฟเวอร์ตอบกลับ HTTP ${response.status}`);
     const result = await response.json();
     if (!result.success) {
@@ -178,6 +197,8 @@ async function apiCall(action, payload = {}) {
   try {
     return await Promise.race([fetchPromise, timeoutPromise]);
   } catch (error) {
+    cancelTimeout();
+    if (error.message === '__timeout__') throw new Error(timeoutMsg);
     if (error instanceof TypeError) throw new Error('ไม่สามารถเชื่อมต่อระบบได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่');
     throw error;
   }
