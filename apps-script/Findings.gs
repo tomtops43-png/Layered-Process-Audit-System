@@ -1,4 +1,19 @@
 /** Finding search, update, and closure APIs. */
+var FINDINGS_RAW_CACHE_KEY = 'LPA_FINDINGS_RAW';
+var FINDINGS_RAW_CACHE_TTL = 120;
+
+function getCachedFindingRows_() {
+  var cached = safeCacheGetJson_(FINDINGS_RAW_CACHE_KEY);
+  if (cached) return cached;
+  var rows = getRowsAsObjects(SHEET_NAMES.FINDINGS);
+  safeCachePutJson_(FINDINGS_RAW_CACHE_KEY, rows, FINDINGS_RAW_CACHE_TTL);
+  return rows;
+}
+
+function invalidateFindingsCache_() {
+  safeCacheRemove_(FINDINGS_RAW_CACHE_KEY);
+}
+
 function getFindings(payload, currentUser) {
   try {
     payload = payload || {};
@@ -12,7 +27,7 @@ function getFindings(payload, currentUser) {
     var myFindings = findingFilterValue_(payload.myFindings).toLowerCase();
     var overdueOnly = payload.overdueOnly === true ||
       ['true', 'yes', '1'].indexOf(cleanString_(payload.overdueOnly).toLowerCase()) !== -1;
-    var rows = getRowsAsObjects(SHEET_NAMES.FINDINGS).map(refreshOverdueForRead_).filter(function (row) {
+    var rows = getCachedFindingRows_().map(refreshOverdueForRead_).filter(function (row) {
       var rowPeriodMonth = normalizeFindingPeriod_(row.PeriodMonth) || normalizeFindingPeriod_(row.FoundDate);
       return (!lineId || valuesEqual_(row.LineID, lineId)) &&
         (!stationId || valuesEqual_(row.StationID, stationId)) &&
@@ -37,7 +52,7 @@ function getMyFindingNotificationSummary(payload, currentUser) {
     payload = payload || {};
     var lastSeenAt = cleanString_(payload.lastSeenAt);
     var now = formatDateTimeBangkok(new Date());
-    var visible = getRowsAsObjects(SHEET_NAMES.FINDINGS).map(refreshOverdueForRead_).filter(function (row) {
+    var visible = getCachedFindingRows_().map(refreshOverdueForRead_).filter(function (row) {
       return canViewFindingRbac_(currentUser, row);
     }).map(sanitizeFindingForClient_);
     var assignedOpen = visible.filter(function (row) {
@@ -152,6 +167,7 @@ function updateFinding(payload, currentUser) {
     updates.UpdatedBy = currentUser.UserID;
     var updated = updateObjectById(SHEET_NAMES.FINDINGS, 'FindingID', payload.findingId, updates);
     appendActionLog_(payload.findingId, oldStatus, newStatus, updates, payload.remark || '', payload.evidenceUrl || '', currentUser, timestamp);
+    invalidateFindingsCache_();
     return jsonResponse(true, 'Finding updated successfully.', { finding: sanitizeFindingForClient_(updated) });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
@@ -189,6 +205,7 @@ function submitFinding(payload, currentUser) {
     updates.ActionRemark = actionRemark;
     var updated = updateObjectById(SHEET_NAMES.FINDINGS, 'FindingID', payload.findingId, updates);
     appendActionLog_(payload.findingId, oldStatus, updates.Status, updates, payload.remark || 'Submitted for verification', payload.evidenceUrl || afterPhoto, currentUser, timestamp);
+    invalidateFindingsCache_();
     return jsonResponse(true, 'Finding submitted for verification.', { finding: sanitizeFindingForClient_(updated) });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
@@ -270,6 +287,7 @@ function closeFinding(payload, currentUser) {
     };
     var updated = updateObjectById(SHEET_NAMES.FINDINGS, 'FindingID', payload.findingId, updates);
     appendActionLog_(payload.findingId, finding.Status, 'Closed', updates, payload.remark || closeRemark || '', payload.evidenceUrl || '', currentUser, timestamp);
+    invalidateFindingsCache_();
     invalidateDashboardCachesForUser_(currentUser);
     return jsonResponse(true, 'Finding closed successfully.', { finding: sanitizeFindingForClient_(updated) });
   } catch (error) {

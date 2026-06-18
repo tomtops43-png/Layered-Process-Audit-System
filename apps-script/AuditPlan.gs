@@ -389,6 +389,7 @@ function invalidateDashboardCachesForUser_(user) {
     auditPlanSummaryCacheKey_(user, period, lineAccess),
     auditRuleSummaryCacheKey_(user, formatDateBangkok_(new Date()), lineAccess)
   ]);
+  invalidateFindingsCache_();
 }
 
 function dateBelongsToPlan_(auditDate, plan) {
