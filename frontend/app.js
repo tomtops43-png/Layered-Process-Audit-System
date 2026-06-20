@@ -275,6 +275,12 @@ async function initializeAuthenticatedApp(validateSession = true) {
   applyAuditLayerPermissions();
   showDashboardSkeleton();
   await navigateTo('dashboard');
+  // Pre-warm GAS findings cache in background so Finding Tracking page loads fast on first visit
+  setTimeout(() => apiCall('getFindings', {}).then(data => {
+    if (!state.findingsCache) {
+      state.findingsCache = { key: JSON.stringify({}), data: Array.isArray(data.findings) ? data.findings : [], ts: Date.now() };
+    }
+  }).catch(() => {}), 3000);
 }
 
 async function loadMasterData(withLoading = true) {
@@ -1563,13 +1569,16 @@ async function navigateTo(page) {
   }
   if (page === 'dashboard') loadDashboard(false);
   if (['audit', 'audit-plan', 'findings', 'checklist', 'admin'].includes(page)) {
-    try {
-      await ensureMasterDataLoaded(true);
-    } catch (_) {
-      return;
+    if (page === 'findings') {
+      // Run master data + findings in parallel — they are independent GAS calls
+      loadFindings();
+      pollFindingNotifications(true);
+      try { await ensureMasterDataLoaded(false); } catch (_) { return; }
+    } else {
+      try { await ensureMasterDataLoaded(true); } catch (_) { return; }
     }
   }
-  if (page === 'findings') { loadFindings(); pollFindingNotifications(true); }
+  if (page === 'findings') { /* already handled above */ }
   if (page === 'dashboard') pollFindingNotifications(true);
   if (page === 'audit-plan' && !state.auditRules.length) loadAuditPlan();
   if (page === 'admin' && hasPermission('users.view')) loadUsers();

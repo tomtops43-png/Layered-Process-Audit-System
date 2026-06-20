@@ -230,15 +230,26 @@ function getRuleBasedAuditSummary_(currentUser, now, lineAccess, auditRows) {
   return summary;
 }
 
+var AUDIT_RULES_CACHE_KEY = 'LPA_AUDIT_RULES_RAW';
+var AUDIT_RULES_CACHE_TTL = 300;
+
 function getAuditPlanRuleRows_() {
+  var cached = safeCacheGetJson_(AUDIT_RULES_CACHE_KEY);
+  if (cached) return cached;
   try {
-    return getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN_RULES);
+    var rows = getRowsAsObjects(SHEET_NAMES.AUDIT_PLAN_RULES);
+    safeCachePutJson_(AUDIT_RULES_CACHE_KEY, rows, AUDIT_RULES_CACHE_TTL);
+    return rows;
   } catch (error) {
     if (/Required sheet not found/.test(safeErrorMessage_(error))) {
       throw new Error('AuditPlanRules sheet is not set up. Run setupHeaders() in Apps Script, then try again.');
     }
     throw error;
   }
+}
+
+function invalidateAuditRulesCache_() {
+  safeCacheRemove_(AUDIT_RULES_CACHE_KEY);
 }
 
 function auditRuleSummaryCacheKey_(user, date, lineAccess) {

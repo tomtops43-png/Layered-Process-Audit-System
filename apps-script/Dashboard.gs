@@ -13,7 +13,7 @@ function getDashboard(payload, currentUser) {
     var cached = safeCacheGetJson_(cacheKey);
     if (cached) return jsonResponse(true, 'Dashboard loaded from cache.', cached);
     var audits = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
-    var findings = getRowsAsObjects(SHEET_NAMES.FINDINGS).map(refreshOverdueForRead_);
+    var findings = getCachedFindingRows_().map(refreshOverdueForRead_);
     var allFindings = findings.slice();
     var ruleSummary = { DueToday: 0, Overdue: 0, Missed: 0, ThisWeek: 0, CompletedThisMonth: 0, RuleCount: 0 };
     try {
