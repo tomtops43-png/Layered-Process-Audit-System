@@ -60,26 +60,70 @@ function appendBatch_(sheetName, objects) {
 
 /** Generate N sequential IDs while the caller already owns the script lock. */
 function generateMultipleIdsWithoutLock_(prefix, sheetName, idColumnName, periodMonth, count) {
-  var ids = getRowsAsObjects(sheetName).map(function (row) { return cleanString_(row[idColumnName]); });
   var period = cleanString_(periodMonth);
   var stem = prefix + (period ? '-' + period : '');
   var width = ['AR', 'LOG', 'ATT'].indexOf(prefix) !== -1 ? 6 : 4;
-  var maximum = 0;
-  ids.forEach(function (id) {
-    if (id.indexOf(stem + '-') === 0 || (!period && id.indexOf(prefix) === 0)) {
-      var match = id.match(/(\d+)$/);
-      if (match) maximum = Math.max(maximum, Number(match[1]));
-    }
-  });
   var sequenceKey = 'LPA_SEQUENCE_' + sheetName + '_' + idColumnName + '_' + (period || 'ALL');
   var properties = PropertiesService.getScriptProperties();
-  maximum = Math.max(maximum, toNumber_(properties.getProperty(sequenceKey)));
+  var stored = toNumber_(properties.getProperty(sequenceKey));
+  var maximum = stored;
+  // Skip sheet read when PropertiesService already tracks the sequence
+  if (!stored) {
+    var ids = getRowsAsObjects(sheetName).map(function (row) { return cleanString_(row[idColumnName]); });
+    ids.forEach(function (id) {
+      if (id.indexOf(stem + '-') === 0 || (!period && id.indexOf(prefix) === 0)) {
+        var match = id.match(/(\d+)$/);
+        if (match) maximum = Math.max(maximum, Number(match[1]));
+      }
+    });
+  }
   var result = [];
   for (var i = 0; i < count; i++) {
     result.push(stem + (period ? '-' : '') + padNumber_(maximum + 1 + i, width));
   }
   properties.setProperty(sequenceKey, String(maximum + count));
   return result;
+}
+
+/** Cached sheet readers for hot paths (saveAudit) */
+var _CHECKLIST_CACHE_KEY = 'LPA_CL_ALL_ROWS';
+var _USERS_CACHE_KEY = 'LPA_USERS_ALL_ROWS';
+var _LISTS_CACHE_KEY = 'LPA_LISTS_ALL_ROWS';
+
+function getCachedChecklistRows_() {
+  var cached = safeCacheGetJson_(_CHECKLIST_CACHE_KEY);
+  if (cached) return cached;
+  var rows = getRowsAsObjects(SHEET_NAMES.CHECKLIST);
+  safeCachePutJson_(_CHECKLIST_CACHE_KEY, rows, 600);
+  return rows;
+}
+
+function getCachedUserRows_() {
+  var cached = safeCacheGetJson_(_USERS_CACHE_KEY);
+  if (cached) return cached;
+  var rows = getRowsAsObjects(SHEET_NAMES.USERS);
+  safeCachePutJson_(_USERS_CACHE_KEY, rows, 300);
+  return rows;
+}
+
+function getCachedListRows_() {
+  var cached = safeCacheGetJson_(_LISTS_CACHE_KEY);
+  if (cached) return cached;
+  var rows = getRowsAsObjects(SHEET_NAMES.LISTS);
+  safeCachePutJson_(_LISTS_CACHE_KEY, rows, 600);
+  return rows;
+}
+
+function invalidateUserCache_() { safeCacheRemove_(_USERS_CACHE_KEY); }
+function invalidateChecklistCache_() { safeCacheRemove_([_CHECKLIST_CACHE_KEY, _LISTS_CACHE_KEY]); }
+
+function getDefaultDueDays_() {
+  var cacheKey = 'LPA_SETTING_DUE_DAYS';
+  var cached = CacheService.getScriptCache().get(cacheKey);
+  if (cached !== null) return toNumber_(cached) || 7;
+  var days = toNumber_(getSetting('DEFAULT_DUE_DAYS')) || 7;
+  CacheService.getScriptCache().put(cacheKey, String(days), 600);
+  return days;
 }
 
 function updateObjectById(sheetName, idColumnName, idValue, updateObject) {

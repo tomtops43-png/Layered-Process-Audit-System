@@ -609,13 +609,14 @@ async function saveAudit() {
   const photoRecords = records.filter(r => r._photo);
   const totalPhotos = photoRecords.length;
   try {
-    // Step 1: upload photos first with per-photo progress
-    for (let i = 0; i < photoRecords.length; i++) {
-      const record = photoRecords[i];
-      showLoading(`กำลังอัปโหลดรูปภาพ ${i + 1}/${totalPhotos}... กรุณารอสักครู่`);
-      const upload = await uploadFile(record._photo, 'AuditDraft', `DRAFT-${Date.now()}`, 'BeforePhoto', false);
-      record.beforePhotoUrl = upload.DriveFileURL;
-      delete record._photo;
+    // Step 1: upload all photos in parallel
+    if (totalPhotos > 0) {
+      showLoading(`กำลังอัปโหลดรูปภาพ ${totalPhotos} รูป... กรุณารอสักครู่`);
+      await Promise.all(photoRecords.map(async record => {
+        const upload = await uploadFile(record._photo, 'AuditDraft', `DRAFT-${Date.now()}`, 'BeforePhoto', false);
+        record.beforePhotoUrl = upload.DriveFileURL;
+        delete record._photo;
+      }));
       hideLoading();
     }
     // Step 2: save audit data

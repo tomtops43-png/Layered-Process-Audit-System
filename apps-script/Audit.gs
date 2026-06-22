@@ -24,8 +24,8 @@ function saveAudit(payload, currentUser) {
     if (!Array.isArray(payload.records) || !payload.records.length) throw new Error('At least one audit record is required.');
     var shift = cleanString_(payload.shift);
     if (!shift) throw new Error('กรุณาเลือก Shift');
-    var activeShift = getActiveListRows_('Shift').some(function (row) {
-      return valuesEqual_(row.ListValue, shift);
+    var activeShift = getCachedListRows_().some(function (row) {
+      return valuesEqual_(row.ListType, 'Shift') && valuesEqual_(row.ListValue, shift) && isActive_(row.ActiveStatus);
     });
     if (!activeShift) throw new Error('Shift ที่เลือกไม่ได้เปิดใช้งาน กรุณาเลือก Shift ใหม่');
     var checklistIds = {};
@@ -44,7 +44,8 @@ function saveAudit(payload, currentUser) {
           validateAssignableFindingRole_(selectedRole);
         } else {
           var selectedUserId = cleanString_(record.assignedUserId || record.assignedToUserId || record.picUserId);
-          var selectedUser = selectedUserId ? findById_(SHEET_NAMES.USERS, 'UserID', selectedUserId) : null;
+          var _uRows = getCachedUserRows_();
+          var selectedUser = selectedUserId ? _uRows.filter(function(u){ return valuesEqual_(u.UserID, selectedUserId); })[0] : null;
           if (!selectedUserId || !selectedUser || !isActive_(selectedUser.ActiveStatus)) {
             throw new Error('Record ' + (index + 1) + ': assigned user was not found or is inactive.');
           }
@@ -61,11 +62,17 @@ function saveAudit(payload, currentUser) {
     if (isBackdated && !lateReason) throw new Error('คุณกำลังบันทึก Audit ย้อนหลัง กรุณาระบุเหตุผล');
     var auditTime = cleanString_(payload.auditTime) || Utilities.formatDate(now, APP_TIMEZONE, 'HH:mm:ss');
     var periodMonth = getPeriodMonth(parseDate_(auditDate) || now);
-    var line = findById_(SHEET_NAMES.LINES, 'LineID', payload.lineId) || {};
-    var station = findById_(SHEET_NAMES.STATIONS, 'StationID', payload.stationId) || {};
-    var lineName = cleanString_(payload.lineName) || cleanString_(line.LineName) || cleanString_(station.LineName);
-    var stationName = cleanString_(payload.stationName) || cleanString_(station.StationName);
-    var area = cleanString_(payload.area) || cleanString_(station.Area) || cleanString_(line.Area);
+    // Use payload names if provided — avoids LINES/STATIONS sheet reads
+    var lineName = cleanString_(payload.lineName);
+    var stationName = cleanString_(payload.stationName);
+    var area = cleanString_(payload.area);
+    if (!lineName || !stationName) {
+      var line = findById_(SHEET_NAMES.LINES, 'LineID', payload.lineId) || {};
+      var station = findById_(SHEET_NAMES.STATIONS, 'StationID', payload.stationId) || {};
+      if (!lineName) lineName = cleanString_(line.LineName) || cleanString_(station.LineName);
+      if (!stationName) stationName = cleanString_(station.StationName);
+      if (!area) area = cleanString_(station.Area) || cleanString_(line.Area);
+    }
     var clientSubmissionId = cleanString_(payload.clientSubmissionId);
     var explicitPlanId = cleanString_(payload.planId);
     var auditKey = buildAuditKey_(auditDate, payload.lineId, payload.stationId, payload.auditLayer, shift, currentUser.UserID);
@@ -74,12 +81,13 @@ function saveAudit(payload, currentUser) {
     saveLock.waitLock(30000);
     saveLockAcquired = true;
 
+    // Read AUDIT_SESSIONS once — reuse for duplicate check AND ID generation
     var existingSessions = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
     var idempotentSession = existingSessions.filter(function (row) {
       return valuesEqual_(row.ClientSubmissionID, clientSubmissionId);
     })[0];
     if (idempotentSession) {
-      var existingFindingIds = getRowsAsObjects(SHEET_NAMES.FINDINGS).filter(function (row) {
+      var existingFindingIds = getCachedFindingRows_().filter(function (row) {
         return valuesEqual_(row.AuditID, idempotentSession.AuditID);
       }).map(function (row) { return row.FindingID; });
       return jsonResponse(true, 'Audit already saved; returning the existing result.', {
@@ -110,7 +118,8 @@ function saveAudit(payload, currentUser) {
         !valuesEqual_(matchingPlan.LineID, payload.lineId) || !valuesEqual_(matchingPlan.StationID, payload.stationId))) {
       throw new Error('Audit Plan does not match the selected audit scope.');
     }
-    var auditId = generateIdWithoutLock_('LPA', SHEET_NAMES.AUDIT_SESSIONS, 'AuditID', periodMonth);
+    // Generate LPA ID from already-read existingSessions — no second sheet read
+    var auditId = generateMultipleIdsWithoutLock_('LPA', SHEET_NAMES.AUDIT_SESSIONS, 'AuditID', periodMonth, 1)[0];
     var planDueAt = matchingPlan ? cleanString_(matchingPlan.DueDate) + ' ' + (cleanString_(matchingPlan.DueTime) || '17:00') + ':00' : '';
     var isLate = isBackdated || (planDueAt && timestamp > planDueAt);
     var planStatus = matchingPlan ? (isLate ? 'Late Submitted' : 'Completed') : '';
@@ -134,12 +143,12 @@ function saveAudit(payload, currentUser) {
       UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
     });
 
-    // Pre-load reference data once to avoid repeated sheet reads inside the loop
+    // Use cached sheet reads — no repeated Sheets API calls
     var checklistMap = {};
-    getRowsAsObjects(SHEET_NAMES.CHECKLIST).forEach(function (row) { checklistMap[cleanString_(row.ChecklistID)] = row; });
+    getCachedChecklistRows_().forEach(function (row) { checklistMap[cleanString_(row.ChecklistID)] = row; });
     var usersMap = {};
-    getRowsAsObjects(SHEET_NAMES.USERS).forEach(function (row) { usersMap[cleanString_(row.UserID)] = row; });
-    var defaultDays = toNumber_(getSetting('DEFAULT_DUE_DAYS')) || 7;
+    getCachedUserRows_().forEach(function (row) { usersMap[cleanString_(row.UserID)] = row; });
+    var defaultDays = getDefaultDueDays_();
     var ngCount = payload.records.filter(function (r) { return normalizeAuditResult_(r.result) === 'NG'; }).length;
     // Pre-generate all IDs in two batch calls (one sheet read each)
     var recordIds = generateMultipleIdsWithoutLock_('AR', SHEET_NAMES.AUDIT_RECORDS, 'RecordID', periodMonth, payload.records.length);
