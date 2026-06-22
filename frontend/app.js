@@ -315,8 +315,11 @@ async function ensureMasterDataLoaded(withLoading = true) {
 async function loadDashboard() {
   const role = state.user?.Role || '';
   const isLeaderRole = role === 'Leader' || role === 'Supervisor';
+  const isMgrRole = role === 'Manager';
   $('#leaderDashboard').classList.toggle('hidden', !isLeaderRole);
-  $('#managerDashboard').classList.toggle('hidden', isLeaderRole);
+  $('#mgrDashboard').classList.toggle('hidden', !isMgrRole);
+  $('#managerDashboard').classList.toggle('hidden', isLeaderRole || isMgrRole);
+  if (isMgrRole) { await loadManagerDashboard(); return; }
   if (isLeaderRole) { await loadLeaderDashboard(); return; }
   const refreshButton = $('#refreshDashboard');
   refreshButton.disabled = true;
@@ -506,6 +509,177 @@ function openFindingForEdit(findingId) {
   navigateTo('findings').then(() => {
     setTimeout(() => openFindingEditor(findingId), 800);
   });
+}
+
+// ===== Manager Dashboard =====
+if (!state.mgrData) state.mgrData = { complianceData: null, dashData: null, findings: [], period: 'month', selectedLine: '' };
+
+async function loadManagerDashboard(period) {
+  if (period) state.mgrData.period = period;
+  const p = state.mgrData.period;
+  $('#mgrMetrics').innerHTML = Array.from({length:4}, () => '<div class="ld-card skeleton-card" style="min-height:90px"></div>').join('');
+  $('#mgrBarChart').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
+  $('#mgrHeatmap').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
+  $('#mgrEscalation').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
+  try {
+    const [complianceData, dashData, findingsData] = await Promise.all([
+      apiCall('getManagerComplianceData', { period: p }),
+      apiCall('getDashboard', {}),
+      apiCall('getFindings', { limit: 500 }).catch(() => ({ findings: [] }))
+    ]);
+    state.mgrData.complianceData = complianceData;
+    state.mgrData.dashData = dashData;
+    state.mgrData.findings = findingsData.findings || [];
+    // Populate line selector for heatmap
+    const lineIds = [...new Set((complianceData.byStationRole || []).map(r => r.lineId))].sort();
+    const lineNames = {};
+    (complianceData.byLine || []).forEach(l => { lineNames[l.lineId] = l.lineName; });
+    const heatmapSel = $('#mgrHeatmapLine');
+    heatmapSel.innerHTML = lineIds.map(lid => `<option value="${escapeAttr(lid)}">${escapeHtml(lineNames[lid] || lid)}</option>`).join('');
+    if (!state.mgrData.selectedLine || !lineIds.includes(state.mgrData.selectedLine)) {
+      state.mgrData.selectedLine = lineIds[0] || '';
+    }
+    heatmapSel.value = state.mgrData.selectedLine;
+    renderMgrHeader(p);
+    renderMgrMetrics(complianceData, dashData);
+    renderMgrBarChart(complianceData.byLine || []);
+    renderMgrHeatmap(complianceData.byStationRole || [], state.mgrData.selectedLine);
+    renderMgrEscalation(state.mgrData.findings);
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+function renderMgrHeader(period) {
+  const user = state.user;
+  const cd = state.mgrData.complianceData || {};
+  const dateLabel = cd.startDate && cd.endDate ? `${formatDate(cd.startDate)} – ${formatDate(cd.endDate)}` : '';
+  $('#mgrHeader').innerHTML = `
+    <div class="mgr-header-left">
+      <div class="ld-greeting">👔 ${escapeHtml(user.FullName || user.Username)} · Manager</div>
+      <div class="ld-sub">Plant Overview Dashboard</div>
+    </div>
+    <div class="mgr-period-row">
+      <button class="mgr-period-btn ${period==='month'?'active':''}" onclick="loadManagerDashboard('month')">เดือนนี้</button>
+      <button class="mgr-period-btn ${period==='week'?'active':''}" onclick="loadManagerDashboard('week')">สัปดาห์นี้</button>
+      <span style="font-size:.78rem;opacity:.75">${escapeHtml(dateLabel)}</span>
+      <button class="mgr-export-btn" onclick="window.print()">⬇ Export PDF</button>
+    </div>`;
+}
+
+function renderMgrMetrics(cd, dashData) {
+  const overall = cd.overall || {};
+  const compliance = overall.compliance ?? 100;
+  const done = overall.done || 0;
+  const expected = overall.expected || 0;
+  const rs = dashData.AuditRuleSummary || {};
+  const openFindings = (dashData.OpenFinding || 0) + (dashData.OnGoingFinding || 0);
+  const avgClose = cd.avgCloseDays ?? '-';
+  const complianceCls = compliance >= 90 ? 'ok' : compliance >= 70 ? 'warn' : 'danger';
+  const cards = [
+    { label: 'Compliance รวม Plant', value: `${compliance}%`, note: `${done}/${expected} รอบ`, cls: complianceCls },
+    { label: 'Audit ทำแล้ว / ทั้งหมด', value: `${done}/${expected}`, note: 'รอบที่ควรตรวจ', cls: '' },
+    { label: 'Finding เปิดอยู่', value: openFindings, note: 'Open + In Progress', cls: openFindings > 0 ? 'danger' : 'ok' },
+    { label: 'Avg Close Time', value: avgClose === '-' ? '-' : `${avgClose} วัน`, note: 'เฉลี่ยจาก Finding ที่ปิดแล้ว', cls: '' }
+  ];
+  $('#mgrMetrics').innerHTML = cards.map(c => `<div class="ld-card ${c.cls}"><div class="ld-card-label">${escapeHtml(c.label)}</div><div class="ld-card-value">${escapeHtml(String(c.value))}</div><div class="ld-card-note">${escapeHtml(c.note)}</div></div>`).join('');
+}
+
+function mgrComplianceCls(pct) {
+  return pct >= 90 ? 'green' : pct >= 70 ? 'yellow' : 'red';
+}
+
+function renderMgrBarChart(byLine) {
+  if (!byLine.length) { $('#mgrBarChart').innerHTML = '<div class="empty-state">ไม่มีข้อมูล</div>'; return; }
+  const sorted = [...byLine].sort((a, b) => a.compliance - b.compliance); // worst first
+  $('#mgrBarChart').innerHTML = `<div class="mgr-bar-wrap" style="padding:16px 20px">${sorted.map(l => {
+    const cls = mgrComplianceCls(l.compliance);
+    return `<div class="mgr-bar-row">
+      <div class="mgr-bar-label" title="${escapeAttr(l.lineName)}">${escapeHtml(l.lineName)}</div>
+      <div class="mgr-bar-track"><div class="mgr-bar-fill ${cls}" style="width:${l.compliance}%"></div></div>
+      <div class="mgr-bar-pct ${cls}">${l.compliance}%</div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function renderMgrHeatmap(byStationRole, lineId) {
+  state.mgrData.selectedLine = lineId;
+  const rows = byStationRole.filter(r => r.lineId === lineId);
+  if (!rows.length) { $('#mgrHeatmap').innerHTML = '<div class="empty-state">ไม่มีข้อมูลสำหรับ Line นี้</div>'; $('#mgrHeatmapInsight').className = 'mgr-insight'; return; }
+  const roles = [...new Set(rows.map(r => r.role))].sort();
+  const stations = [...new Set(rows.map(r => r.stationId))].sort();
+  const cellMap = {};
+  rows.forEach(r => { cellMap[`${r.stationId}|${r.role}`] = r; });
+  const headCols = roles.map(r => `<th>${escapeHtml(r)}</th>`).join('');
+  const tableRows = stations.map(sid => {
+    const stName = (rows.find(r => r.stationId === sid) || {}).stationName || sid;
+    const cells = roles.map(role => {
+      const c = cellMap[`${sid}|${role}`];
+      if (!c) return `<td class="hm-empty">—</td>`;
+      const cls = c.compliance >= 90 ? 'hm-green' : c.compliance >= 70 ? 'hm-yellow' : 'hm-red';
+      return `<td class="${cls}" title="${escapeAttr(`${c.done}/${c.expected} รอบ`)}">${c.compliance}%</td>`;
+    }).join('');
+    return `<tr><td>${escapeHtml(stName)}</td>${cells}</tr>`;
+  }).join('');
+  $('#mgrHeatmap').innerHTML = `<div class="mgr-heatmap-wrap"><table class="mgr-hm-table"><thead><tr><th>Station</th>${headCols}</tr></thead><tbody>${tableRows}</tbody></table></div>`;
+  // Insight: worst cell
+  const worst = rows.reduce((a, b) => (b.expected > 0 && b.compliance < a.compliance) ? b : a, { compliance: 101 });
+  const insightEl = $('#mgrHeatmapInsight');
+  if (worst.compliance <= 100 && worst.expected > 0) {
+    insightEl.textContent = `⚠️ ${worst.stationName} · ${worst.role} ต่ำที่สุด (${worst.compliance}%) — ควรติดตาม`;
+    insightEl.className = 'mgr-insight visible';
+  } else {
+    insightEl.className = 'mgr-insight';
+  }
+}
+
+function onMgrLineChange() {
+  const lineId = $('#mgrHeatmapLine').value;
+  if (state.mgrData.complianceData) {
+    renderMgrHeatmap(state.mgrData.complianceData.byStationRole || [], lineId);
+  }
+}
+
+function renderMgrEscalation(findings) {
+  const now = new Date(); now.setHours(0,0,0,0);
+  const urgent = findings.filter(f => {
+    if ((f.Status||'').toLowerCase() === 'closed') return false;
+    const overdue = String(f.OverdueFlag).toLowerCase() === 'yes';
+    if (overdue) return true;
+    if (!f.DueDate) return false;
+    const due = new Date(f.DueDate); due.setHours(0,0,0,0);
+    return Math.round((due - now) / 86400000) <= 2;
+  }).sort((a, b) => {
+    const aOver = Number(a.DaysOverdue) || 0;
+    const bOver = Number(b.DaysOverdue) || 0;
+    if (aOver !== bOver) return bOver - aOver;
+    return (a.DueDate||'').localeCompare(b.DueDate||'');
+  });
+  if (!urgent.length) { $('#mgrEscalation').innerHTML = '<div class="empty-state">✅ ไม่มี Finding ที่ต้อง Escalate</div>'; return; }
+  $('#mgrEscalation').innerHTML = urgent.map(f => {
+    const overdue = String(f.OverdueFlag).toLowerCase() === 'yes';
+    const days = Number(f.DaysOverdue) || 0;
+    let dueLabel, dueCls;
+    if (overdue) {
+      dueLabel = `เกิน ${days} วัน`; dueCls = 'color:var(--red);font-weight:900';
+    } else {
+      const due = new Date(f.DueDate); due.setHours(0,0,0,0);
+      const diff = Math.round((due - now) / 86400000);
+      dueLabel = diff === 0 ? 'Due วันนี้!' : `เหลือ ${diff} วัน`;
+      dueCls = diff <= 1 ? 'color:var(--red);font-weight:800' : 'color:var(--orange);font-weight:700';
+    }
+    const badge = overdue ? '<span class="ld-badge overdue">🔴 เกิน Due</span>' : '<span class="ld-badge pending">⏰ Due ใกล้</span>';
+    const pic = f.AssignmentDisplay || f.AssignedToName || f.PICName || '-';
+    return `<div class="mgr-esc-row">
+      ${badge}
+      <div class="mgr-esc-info">
+        <div class="mgr-esc-name">${escapeHtml(f.ProblemDetail || f.FindingID)}</div>
+        <div class="mgr-esc-meta">${escapeHtml(f.LineName||f.LineID)} / ${escapeHtml(f.StationName||f.StationID)} · PIC: ${escapeHtml(pic)}</div>
+      </div>
+      <div class="mgr-esc-due" style="${dueCls}">${escapeHtml(formatDate(f.DueDate))}<div class="ld-days">${escapeHtml(dueLabel)}</div></div>
+      <button class="btn btn-outline btn-compact" onclick="openFindingForEdit(${JSON.stringify(f.FindingID)})">ติดตาม</button>
+    </div>`;
+  }).join('');
 }
 
 function notificationStorageKey() {

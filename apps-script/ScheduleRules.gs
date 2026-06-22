@@ -1,4 +1,94 @@
 /** Lightweight rule-based LPA schedule APIs and in-memory due calculation. */
+function getManagerComplianceData(payload, currentUser) {
+  try {
+    requirePermission_(currentUser, 'dashboard.view');
+    var now = new Date();
+    var period = cleanString_(payload.period) || 'month';
+    var lineId = cleanString_(payload.lineId) || '';
+    var startDate, endDate;
+    if (period === 'week') {
+      var dow = now.getDay() === 0 ? 7 : now.getDay();
+      var monday = new Date(now); monday.setDate(now.getDate() - (dow - 1)); monday.setHours(0, 0, 0, 0);
+      startDate = formatDateBangkok_(monday);
+    } else {
+      var y = Number(formatDateBangkok_(now).slice(0, 4));
+      var m = Number(formatDateBangkok_(now).slice(5, 7));
+      startDate = y + '-' + ('0' + m).slice(-2) + '-01';
+    }
+    endDate = formatDateBangkok_(now);
+
+    var rules = getAuditPlanRuleRows_().filter(function (r) {
+      return isActive_(r.ActiveStatus) && (!lineId || valuesEqual_(r.LineID, lineId));
+    });
+    var auditRows = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS).filter(function (a) {
+      return cleanString_(a.AuditDate) >= startDate && cleanString_(a.AuditDate) <= endDate;
+    });
+    var auditMap = {};
+    auditRows.forEach(function (a) {
+      auditMap[[cleanString_(a.AuditDate), cleanString_(a.LineID), cleanString_(a.StationID), cleanString_(a.AuditLayer).toLowerCase()].join('|')] = true;
+    });
+
+    var byLine = {}, byStationRole = {}, totalExpected = 0, totalDone = 0;
+    rules.forEach(function (rule) {
+      var dates = getRuleDatesInRange_(rule, startDate, endDate);
+      var lid = cleanString_(rule.LineID), sid = cleanString_(rule.StationID), role = cleanString_(rule.RequiredRole);
+      if (!byLine[lid]) byLine[lid] = { lineId: lid, lineName: cleanString_(rule.LineName) || lid, expected: 0, done: 0 };
+      var ck = lid + '|' + sid + '|' + role;
+      if (!byStationRole[ck]) byStationRole[ck] = { lineId: lid, lineName: cleanString_(rule.LineName) || lid, stationId: sid, stationName: cleanString_(rule.StationName) || sid, role: role, expected: 0, done: 0 };
+      dates.forEach(function (date) {
+        byLine[lid].expected++; byStationRole[ck].expected++; totalExpected++;
+        if (auditMap[[date, lid, sid, role.toLowerCase()].join('|')]) { byLine[lid].done++; byStationRole[ck].done++; totalDone++; }
+      });
+    });
+
+    var finRows = getCachedFindingRows_();
+    var closedWithDates = finRows.filter(function (f) { return isClosedStatus_(f.Status) && cleanString_(f.FoundDate) && cleanString_(f.ClosedDate || f.ClosedAt); });
+    var avgClose = 0;
+    if (closedWithDates.length) {
+      var sumDays = closedWithDates.reduce(function (s, f) {
+        var found = parseDate_(f.FoundDate), closed = parseDate_(f.ClosedDate || f.ClosedAt);
+        return s + (found && closed ? Math.max(0, Math.round((closed - found) / 86400000)) : 0);
+      }, 0);
+      avgClose = Math.round(sumDays / closedWithDates.length);
+    }
+
+    function pct(d, e) { return e ? Math.round(d * 1000 / e) / 10 : 100; }
+    var byLineArr = Object.keys(byLine).sort().map(function (k) { var b = byLine[k]; b.compliance = pct(b.done, b.expected); return b; });
+    var bySRArr = Object.keys(byStationRole).sort().map(function (k) { var b = byStationRole[k]; b.compliance = pct(b.done, b.expected); return b; });
+    return jsonResponse(true, 'Manager compliance loaded.', {
+      byLine: byLineArr, byStationRole: bySRArr,
+      overall: { expected: totalExpected, done: totalDone, compliance: pct(totalDone, totalExpected) },
+      period: period, startDate: startDate, endDate: endDate, avgCloseDays: avgClose
+    });
+  } catch (error) {
+    return jsonResponse(false, safeErrorMessage_(error), {});
+  }
+}
+
+function getRuleDatesInRange_(rule, startDate, endDate) {
+  var freq = cleanString_(rule.Frequency) || 'Daily';
+  var dates = [];
+  var start = parseDate_(startDate), end = parseDate_(endDate);
+  if (!start || !end) return dates;
+  if (freq === 'Monthly') {
+    var dayNum = toNumber_(rule.DayOfMonth) || 1;
+    var lastDay = new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+    var d = new Date(start.getFullYear(), start.getMonth(), Math.min(dayNum, lastDay));
+    var ds = formatDateBangkok_(d);
+    if (ds >= startDate && ds <= endDate) dates.push(ds);
+    return dates;
+  }
+  var seenWeeks = {};
+  for (var cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
+    if (!ruleDayMatches_(rule, cursor)) continue;
+    if (freq === 'Weekly') {
+      var wk = isoWeekKey_(cursor); if (seenWeeks[wk]) continue; seenWeeks[wk] = true;
+    }
+    dates.push(formatDateBangkok_(new Date(cursor)));
+  }
+  return dates;
+}
+
 function getAuditPlanRules(payload, currentUser) {
   try {
     requirePermission_(currentUser, 'audit.plan.view');

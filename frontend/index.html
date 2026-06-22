@@ -62,7 +62,28 @@
             <div id="ldFindings"></div>
           </div>
         </div>
-        <!-- Manager / Admin Dashboard -->
+        <!-- Manager Dashboard -->
+        <div id="mgrDashboard" class="hidden">
+          <div id="mgrHeader" class="mgr-header"></div>
+          <div id="mgrMetrics" class="ld-metrics"></div>
+          <div class="ld-section">
+            <div class="ld-section-title">📊 Compliance ตาม Line</div>
+            <div id="mgrBarChart" class="mgr-bar-wrap"></div>
+          </div>
+          <div class="ld-section">
+            <div class="ld-section-title" style="display:flex;align-items:center;gap:10px">
+              🔥 Compliance Heatmap
+              <select id="mgrHeatmapLine" class="mgr-line-select" onchange="onMgrLineChange()"></select>
+            </div>
+            <div id="mgrHeatmap" class="mgr-heatmap-wrap"></div>
+            <div id="mgrHeatmapInsight" class="mgr-insight"></div>
+          </div>
+          <div class="ld-section">
+            <div class="ld-section-title">🚨 Finding ที่ต้อง Escalate</div>
+            <div id="mgrEscalation"></div>
+          </div>
+        </div>
+        <!-- Admin Dashboard -->
         <div id="managerDashboard">
           <div class="page-heading"><div><p class="eyebrow">ภาพรวมระบบ</p><h2>Dashboard</h2></div><button class="btn btn-outline" id="refreshDashboard">↻ รีเฟรช</button></div>
           <div id="dashboardCards" class="metric-grid"></div>
