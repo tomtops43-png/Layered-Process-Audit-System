@@ -3,6 +3,9 @@ function getDirectorDashboardData(payload, currentUser) {
   try {
     requirePermission_(currentUser, 'dashboard.view.all');
     var months = Math.min(Math.max(toNumber_(payload.months) || 3, 1), 12);
+    var dirCacheKey = 'DIR_DASH_' + months;
+    var dirCached = safeCacheGetJson_(dirCacheKey);
+    if (dirCached) return jsonResponse(true, 'Director dashboard loaded from cache.', dirCached);
     var now = new Date();
     var today = formatDateBangkok_(now);
 
@@ -119,7 +122,7 @@ function getDirectorDashboardData(payload, currentUser) {
     var monthlyCompliance=currMonths.map(function(mo){return computed[mo.month];}).filter(Boolean);
     var sparklineData=sparkMonths.map(function(mo){var c=computed[mo.month];return c?{month:mo.month,compliance:c.compliance}:null;}).filter(Boolean);
 
-    return jsonResponse(true, 'Director dashboard loaded.', {
+    var dirResult = {
       monthlyCompliance:monthlyCompliance, sparklineData:sparklineData,
       chronicFindings:chronicFindings, layerSummary:layerSummary, lines:lines,
       overallKPIs:{
@@ -129,7 +132,9 @@ function getDirectorDashboardData(payload, currentUser) {
         currDone:curr.done, currExpected:curr.expected
       },
       months:months, startDate:currMonths[0].month.slice(0,4)+'-'+currMonths[0].month.slice(4,6)+'-01', endDate:today
-    });
+    };
+    safeCachePutJson_(dirCacheKey, dirResult, 300);
+    return jsonResponse(true, 'Director dashboard loaded.', dirResult);
   } catch(error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
@@ -138,6 +143,9 @@ function getDirectorDashboardData(payload, currentUser) {
 function getManagerComplianceData(payload, currentUser) {
   try {
     requirePermission_(currentUser, 'dashboard.view');
+    var mgrCacheKey = 'MGR_COMP_' + cleanString_(payload.period || 'month') + '_' + cleanString_(payload.lineId || 'ALL');
+    var mgrCached = safeCacheGetJson_(mgrCacheKey);
+    if (mgrCached) return jsonResponse(true, 'Manager compliance loaded from cache.', mgrCached);
     var now = new Date();
     var period = cleanString_(payload.period) || 'month';
     var lineId = cleanString_(payload.lineId) || '';
@@ -191,11 +199,13 @@ function getManagerComplianceData(payload, currentUser) {
     function pct(d, e) { return e ? Math.round(d * 1000 / e) / 10 : 100; }
     var byLineArr = Object.keys(byLine).sort().map(function (k) { var b = byLine[k]; b.compliance = pct(b.done, b.expected); return b; });
     var bySRArr = Object.keys(byStationRole).sort().map(function (k) { var b = byStationRole[k]; b.compliance = pct(b.done, b.expected); return b; });
-    return jsonResponse(true, 'Manager compliance loaded.', {
+    var mgrResult = {
       byLine: byLineArr, byStationRole: bySRArr,
       overall: { expected: totalExpected, done: totalDone, compliance: pct(totalDone, totalExpected) },
       period: period, startDate: startDate, endDate: endDate, avgCloseDays: avgClose
-    });
+    };
+    safeCachePutJson_(mgrCacheKey, mgrResult, 120);
+    return jsonResponse(true, 'Manager compliance loaded.', mgrResult);
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }

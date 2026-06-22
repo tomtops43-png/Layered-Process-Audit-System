@@ -387,7 +387,9 @@ function invalidateDashboardCachesForUser_(user) {
   safeCacheRemove_([
     dashboardCacheKey_(user, period, lineAccess, ''),
     auditPlanSummaryCacheKey_(user, period, lineAccess),
-    auditRuleSummaryCacheKey_(user, formatDateBangkok_(new Date()), lineAccess)
+    auditRuleSummaryCacheKey_(user, formatDateBangkok_(new Date()), lineAccess),
+    'MGR_COMP_month_ALL', 'MGR_COMP_week_ALL',
+    'DIR_DASH_1', 'DIR_DASH_3', 'DIR_DASH_6'
   ]);
   invalidateFindingsCache_();
   invalidateAuditRulesCache_();

@@ -234,6 +234,14 @@ function jsonResponse(success, message, data) {
   })).setMimeType(ContentService.MimeType.JSON);
 }
 
+function getCachedData_(key, fetchFn, ttlSeconds) {
+  var cached = safeCacheGetJson_(key);
+  if (cached !== null) return cached;
+  var data = fetchFn();
+  safeCachePutJson_(key, data, ttlSeconds || 300);
+  return data;
+}
+
 function safeCacheGetJson_(key) {
   try {
     var value = CacheService.getScriptCache().get(key);
