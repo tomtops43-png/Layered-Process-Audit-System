@@ -13,6 +13,7 @@ const state = {
   dashboard: null,
   auditPlans: [],
   auditRules: [],
+  todayAudits: [],
   report: null,
   editingFinding: null,
   adminUsers: [],
@@ -442,10 +443,29 @@ function renderDashboard(data) {
   $('#dashboardCards').innerHTML = cards.map(card => `<article class="metric-card ${card[3]}"><span class="metric-label">${escapeHtml(card[0])}</span><strong class="metric-value">${escapeHtml(String(card[1] ?? 0))}</strong><small class="metric-note">${escapeHtml(card[2])}</small></article>`).join('');
   const notificationCount = number(data.MyOpenFindings) + number(data.PendingMyVerification);
   updateFindingBadges(notificationCount);
-  $('#auditNavBadge').textContent = '0';
-  $('#auditNavBadge').classList.add('hidden');
-  $('#auditPlanAlert').classList.add('hidden');
-  $('#auditPlanAlert').innerHTML = '';
+  // Audit badge — show DueToday count
+  const dueToday = number(ruleSummary.DueToday);
+  const overdueAudit = number(ruleSummary.Overdue);
+  const auditBadge = $('#auditNavBadge');
+  if (dueToday > 0 || overdueAudit > 0) {
+    auditBadge.textContent = String(dueToday + overdueAudit);
+    auditBadge.classList.remove('hidden');
+  } else {
+    auditBadge.textContent = '0';
+    auditBadge.classList.add('hidden');
+  }
+  // Audit alert banner
+  const alertEl = $('#auditPlanAlert');
+  if (dueToday > 0 || overdueAudit > 0) {
+    const parts = [];
+    if (dueToday > 0) parts.push(`<strong>${dueToday} รายการ</strong> ต้องตรวจวันนี้`);
+    if (overdueAudit > 0) parts.push(`<strong>${overdueAudit} รายการ</strong> เกินกำหนดแล้ว`);
+    alertEl.innerHTML = `<span>⏰ ${parts.join(' · ')}</span><button class="btn btn-sm btn-primary" onclick="navigateTo('audit')">ไปตรวจเลย →</button>`;
+    alertEl.classList.remove('hidden');
+  } else {
+    alertEl.classList.add('hidden');
+    alertEl.innerHTML = '';
+  }
   renderMonthlyBars(data.MonthlyAuditResult || []);
   $('#lineSummary').innerHTML = tableHtml(['Line', 'Total Audit', 'Total NG', 'Open Finding'], (data.SummaryByLine || []).map(row => [row.LineName || row.LineID, row.TotalAudit, row.TotalNG, row.OpenFinding]));
   const nearDue = data.ActionsNearDueDate || [];
@@ -906,16 +926,21 @@ async function loadAuditPlan() {
   if (!hasPermission('audit.plan.view')) return;
   showLoading('กำลังโหลดกฎตารางตรวจ...');
   try {
-    const data = await apiCall('getAuditPlanRules', {
-      lineId: optionalFilterValue($('#planLine').value),
-      stationId: optionalFilterValue($('#planStation').value),
-      requiredRole: optionalFilterValue($('#planRole').value),
-      requiredUserId: optionalFilterValue($('#planUser').value),
-      frequency: optionalFilterValue($('#planFrequency').value),
-      activeStatus: optionalFilterValue($('#planRuleStatus').value),
-      limit: 100
-    });
-    state.auditRules = data.rules || [];
+    const today = localDateInput(new Date());
+    const [rulesData, auditsData] = await Promise.all([
+      apiCall('getAuditPlanRules', {
+        lineId: optionalFilterValue($('#planLine').value),
+        stationId: optionalFilterValue($('#planStation').value),
+        requiredRole: optionalFilterValue($('#planRole').value),
+        requiredUserId: optionalFilterValue($('#planUser').value),
+        frequency: optionalFilterValue($('#planFrequency').value),
+        activeStatus: optionalFilterValue($('#planRuleStatus').value),
+        limit: 100
+      }),
+      apiCall('getAuditList', { auditDate: today, limit: 500 }).catch(() => ({ audits: [] }))
+    ]);
+    state.auditRules = rulesData.rules || [];
+    state.todayAudits = auditsData.audits || [];
     renderAuditRules();
   } catch (error) {
     showToast(error.message, 'error');
@@ -930,7 +955,24 @@ function renderAuditRules() {
     return;
   }
   const canManage = hasPermission('audit.plan.manage');
-  $('#auditPlanTable').innerHTML = `<table class="data-table audit-plan-table"><thead><tr><th>Role</th><th>Assignment</th><th>User</th><th>Line</th><th>Station</th><th>Frequency</th><th>Day</th><th>Due Time</th><th>Status</th><th>Action</th></tr></thead><tbody>${state.auditRules.map(rule => `<tr><td>${escapeHtml(rule.RequiredRole || '-')}</td><td>${escapeHtml(formatAssignmentMode(rule))}</td><td>${escapeHtml(formatRuleUser(rule))}</td><td>${escapeHtml(rule.LineName || rule.LineID)}</td><td>${escapeHtml(rule.StationName || rule.StationID)}</td><td>${escapeHtml(rule.Frequency || '-')}</td><td>${escapeHtml(rule.Frequency === 'Monthly' ? rule.DayOfMonth : (rule.DayOfWeek || 'Working days'))}</td><td>${escapeHtml(formatDueTime(rule.DueTime || '17:00'))}</td><td><span class="status-badge ${String(rule.ActiveStatus).toLowerCase() === 'active' ? 'status-ok' : 'status-na'}">${escapeHtml(rule.ActiveStatus || '-')}</span></td><td class="action-cell">${canManage ? `<button class="btn btn-outline btn-compact" data-rule-id="${escapeAttr(rule.RuleID)}">แก้ไข</button><button class="btn btn-danger btn-compact" data-delete-rule-id="${escapeAttr(rule.RuleID)}" data-rule-label="${escapeAttr((rule.RequiredRole||'') + ' / ' + (rule.LineName||rule.LineID) + ' / ' + (rule.StationName||rule.StationID))}">ลบ</button>` : '-'}</td></tr>`).join('')}</tbody></table>`;
+  const todayStr = localDateInput(new Date());
+  const todayMap = {};
+  (state.todayAudits || []).forEach(a => {
+    const key = `${a.LineID}|${a.StationID}|${String(a.AuditLayer||'').toLowerCase()}`;
+    todayMap[key] = (todayMap[key] || 0) + 1;
+  });
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  function ruleTodayStatus(rule) {
+    if (String(rule.ActiveStatus).toLowerCase() !== 'active') return '';
+    const key = `${rule.LineID}|${rule.StationID}|${String(rule.RequiredRole||'').toLowerCase()}`;
+    if (todayMap[key]) return '<span class="status-badge status-ok">✅ ตรวจแล้ว</span>';
+    const [h, m] = (rule.DueTime || '17:00').split(':').map(Number);
+    const dueMinutes = h * 60 + m;
+    if (nowMinutes > dueMinutes) return '<span class="status-badge status-overdue">❗ เกินกำหนด</span>';
+    return '<span class="status-badge status-na">⏰ รอตรวจ</span>';
+  }
+  $('#auditPlanTable').innerHTML = `<table class="data-table audit-plan-table"><thead><tr><th>สถานะวันนี้</th><th>Role</th><th>Assignment</th><th>User</th><th>Line</th><th>Station</th><th>Frequency</th><th>Day</th><th>Due Time</th><th>Status</th><th>Action</th></tr></thead><tbody>${state.auditRules.map(rule => `<tr><td class="action-cell">${ruleTodayStatus(rule)}</td><td>${escapeHtml(rule.RequiredRole || '-')}</td><td>${escapeHtml(formatAssignmentMode(rule))}</td><td>${escapeHtml(formatRuleUser(rule))}</td><td>${escapeHtml(rule.LineName || rule.LineID)}</td><td>${escapeHtml(rule.StationName || rule.StationID)}</td><td>${escapeHtml(rule.Frequency || '-')}</td><td>${escapeHtml(rule.Frequency === 'Monthly' ? rule.DayOfMonth : (rule.DayOfWeek || 'Working days'))}</td><td>${escapeHtml(formatDueTime(rule.DueTime || '17:00'))}</td><td><span class="status-badge ${String(rule.ActiveStatus).toLowerCase() === 'active' ? 'status-ok' : 'status-na'}">${escapeHtml(rule.ActiveStatus || '-')}</span></td><td class="action-cell">${canManage ? `<button class="btn btn-outline btn-compact" data-rule-id="${escapeAttr(rule.RuleID)}">แก้ไข</button><button class="btn btn-danger btn-compact" data-delete-rule-id="${escapeAttr(rule.RuleID)}" data-rule-label="${escapeAttr((rule.RequiredRole||'') + ' / ' + (rule.LineName||rule.LineID) + ' / ' + (rule.StationName||rule.StationID))}">ลบ</button>` : '-'}</td></tr>`).join('')}</tbody></table>`;
   $$('#auditPlanTable [data-delete-rule-id]').forEach(btn => btn.addEventListener('click', () => deleteAuditRule(btn.dataset.deleteRuleId, btn.dataset.ruleLabel)));
 }
 
