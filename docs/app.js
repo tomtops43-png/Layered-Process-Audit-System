@@ -557,7 +557,7 @@ function auditNgDetailsComplete() {
     if (!answer || answer.result !== 'NG') return true;
     const card = $(`.checklist-card[data-checklist-id="${cssEscape(item.ChecklistID)}"]`);
     // Before Photo is optional — only require core finding fields
-    return Boolean(card && fieldValue(card, 'findingDetail') && fieldValue(card, 'correctiveAction') &&
+    return Boolean(card && fieldValue(card, 'findingDetail') &&
       fieldValue(card, 'assignedRole') && fieldValue(card, 'dueDate'));
   });
 }
