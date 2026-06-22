@@ -327,6 +327,16 @@ async function initializeAuthenticatedApp(validateSession = true) {
       state.findingsCache = { key: JSON.stringify({}), data: Array.isArray(data.findings) ? data.findings : [], ts: Date.now() };
     }
   }).catch(() => {}), 3000);
+  // Prefetch schedule rules when browser is idle (speeds up first LPA Schedule Rules tab visit)
+  const idlePrefetch = () => {
+    if (!state.auditRules.length && hasPermission('audit.plan.view')) {
+      apiCall('getAuditPlanRules', { activeStatus: 'Active', limit: 300 })
+        .then(data => { if (!state.auditRules.length) state.auditRules = data.rules || []; })
+        .catch(() => {});
+    }
+  };
+  if ('requestIdleCallback' in window) requestIdleCallback(idlePrefetch, { timeout: 8000 });
+  else setTimeout(idlePrefetch, 8000);
 }
 
 async function loadMasterData(withLoading = true) {
