@@ -1407,6 +1407,7 @@ async function loadFindings(force = false) {
     renderFindings();
     return;
   }
+  $('#findingsList').innerHTML = Array.from({length: 4}, () => '<article class="finding-card skeleton-card" style="min-height:110px"></article>').join('');
   showLoading('กำลังโหลด Finding...');
   try {
     const data = await apiCall('getFindings', payload);
@@ -1530,6 +1531,8 @@ async function runFindingWorkflow(action, payload, options) {
   const settings = typeof options === 'string'
     ? { successMessage: options, loadingMessage: 'กำลังบันทึก Finding...' }
     : options;
+  const actionBtns = $$('#findingDialog .modal-actions button');
+  actionBtns.forEach(b => { b.disabled = true; });
   showLoading(settings.loadingMessage);
   try {
     const file = $('#editAfterPhoto').files[0];
@@ -1550,6 +1553,7 @@ async function runFindingWorkflow(action, payload, options) {
     showToast(error.message, 'error');
   } finally {
     hideLoading();
+    actionBtns.forEach(b => { b.disabled = false; });
   }
 }
 
