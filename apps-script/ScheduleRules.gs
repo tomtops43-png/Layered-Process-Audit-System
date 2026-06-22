@@ -35,15 +35,15 @@ function upsertAuditPlanRule(payload, currentUser) {
     var role = cleanString_(payload.requiredRole);
     var frequency = cleanString_(payload.frequency);
     var stationSelection = cleanString_(payload.stationId);
-    var bulkCreate = valuesEqual_(stationSelection, 'ALL');
+    var bulkAllLines = isAllFilter_(payload.lineId);
+    var bulkCreate = valuesEqual_(stationSelection, 'ALL') || bulkAllLines;
     var assignmentMode = cleanString_(payload.assignmentMode).toUpperCase() || (cleanString_(payload.requiredUserId) ? 'USER' : 'ROLE');
     if (['ROLE', 'USER'].indexOf(assignmentMode) === -1) throw new Error('AssignmentMode must be ROLE or USER.');
     if (['Leader', 'Supervisor', 'Manager'].indexOf(role) === -1) throw new Error('RequiredRole must be Leader, Supervisor, or Manager.');
     if (['Daily', 'Weekly', 'Monthly'].indexOf(frequency) === -1) throw new Error('Frequency must be Daily, Weekly, or Monthly.');
-    if (bulkCreate && cleanString_(payload.ruleId)) throw new Error('All Stations can only be used when creating new rules.');
-    if (!isAdmin_(currentUser)) requireLineAccess_(currentUser, payload.lineId, 'Manage');
-    var line = findById_(SHEET_NAMES.LINES, 'LineID', payload.lineId) || {};
-    if (!line.LineID || !isActive_(line.ActiveStatus)) throw new Error('Selected Line is not active or was not found.');
+    if (bulkCreate && cleanString_(payload.ruleId)) throw new Error('All Lines/Stations can only be used when creating new rules.');
+    if (!isAdmin_(currentUser) && !bulkAllLines) requireLineAccess_(currentUser, payload.lineId, 'Manage');
+    if (!isAdmin_(currentUser) && bulkAllLines) requirePermission_(currentUser, 'audit.plan.manage');
     var assignedUser = null;
     if (assignmentMode === 'USER') {
       if (!cleanString_(payload.requiredUserId)) throw new Error('Assigned user is required for Specific user mode.');
@@ -52,12 +52,14 @@ function upsertAuditPlanRule(payload, currentUser) {
       if (!valuesEqual_(assignedUser.Role, role)) throw new Error('Assigned user role must match RequiredRole.');
     }
 
-    var activeStations = getRowsAsObjects(SHEET_NAMES.STATIONS).filter(function (station) {
-      return isActive_(station.ActiveStatus) && valuesEqual_(station.LineID, payload.lineId) &&
-        (bulkCreate || valuesEqual_(station.StationID, stationSelection));
+    var allStationRows = getRowsAsObjects(SHEET_NAMES.STATIONS).filter(function (s) { return isActive_(s.ActiveStatus); });
+    var activeStations = allStationRows.filter(function (station) {
+      var lineMatch = bulkAllLines || valuesEqual_(station.LineID, payload.lineId);
+      var stationMatch = bulkCreate || valuesEqual_(station.StationID, stationSelection);
+      return lineMatch && stationMatch;
     });
     if (!activeStations.length) {
-      throw new Error(bulkCreate ? 'No active stations were found for the selected Line.' : 'Selected station is not active or does not belong to the selected Line.');
+      throw new Error('No active stations were found for the selected Line/Station combination.');
     }
 
     var normalizedDayOfWeek = frequency === 'Weekly' ? cleanString_(payload.dayOfWeek) : '';
@@ -80,11 +82,17 @@ function upsertAuditPlanRule(payload, currentUser) {
     })[0] : null;
     if (cleanString_(payload.ruleId) && !editedRule) throw new Error('Audit schedule rule not found: ' + payload.ruleId);
 
+    var lineCache = {};
     activeStations.forEach(function (station) {
+      var stationLineId = station.LineID;
+      if (!lineCache[stationLineId]) {
+        lineCache[stationLineId] = findById_(SHEET_NAMES.LINES, 'LineID', stationLineId) || {};
+      }
+      var stationLine = lineCache[stationLineId];
       var candidate = {
         AssignmentMode: assignmentMode, RequiredRole: role,
         RequiredUserID: assignmentMode === 'USER' ? assignedUser.UserID : '',
-        LineID: payload.lineId, StationID: station.StationID, Frequency: frequency,
+        LineID: stationLineId, StationID: station.StationID, Frequency: frequency,
         DayOfWeek: normalizedDayOfWeek, DayOfMonth: normalizedDayOfMonth,
         DueTime: normalizedDueTime, ActiveStatus: normalizedActiveStatus
       };
@@ -100,7 +108,7 @@ function upsertAuditPlanRule(payload, currentUser) {
         RuleID: ruleId, AssignmentMode: assignmentMode, RequiredRole: role,
         RequiredUserID: assignmentMode === 'USER' ? assignedUser.UserID : '',
         RequiredUserName: assignmentMode === 'USER' ? assignedUser.FullName : '',
-        LineID: payload.lineId, LineName: line.LineName || station.LineName || '',
+        LineID: stationLineId, LineName: stationLine.LineName || station.LineName || '',
         StationID: station.StationID, StationName: station.StationName || '',
         Frequency: frequency, DayOfWeek: normalizedDayOfWeek, DayOfMonth: normalizedDayOfMonth,
         DueTime: normalizedDueTime, ActiveStatus: normalizedActiveStatus,

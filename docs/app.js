@@ -1400,7 +1400,7 @@ function populateAllMasterSelects() {
   populateStationSelect('#findingStation', '', true);
   populateStationSelect('#checklistStation', '', false);
   populateStationSelect('#planStation', '', true);
-  populateSelect('#auditRuleLine', state.masterData.lines || [], 'LineID', 'LineName', 'เลือก Line');
+  populateSelect('#auditRuleLine', state.masterData.lines || [], 'LineID', 'LineName', 'เลือก Line', 'ทั้งหมด (ALL Lines)');
   populateAuditRuleStationSelect('', true);
   populateSelect('#planUser', state.masterData.users || [], 'UserID', 'FullName', 'ทั้งหมด');
   populateSelect('#auditRuleUser', state.masterData.users || [], 'UserID', 'FullName', 'ตาม Role');
@@ -1425,7 +1425,13 @@ function activeStationsForLine(lineId) {
 }
 
 function handleAuditRuleLineChange() {
-  populateAuditRuleStationSelect($('#auditRuleLine').value, true);
+  const lineId = $('#auditRuleLine').value;
+  if (lineId === 'ALL') {
+    $('#auditRuleStation').innerHTML = '<option value="ALL">ทั้งหมด (ALL Stations)</option>';
+    $('#auditRuleStation').value = 'ALL';
+  } else {
+    populateAuditRuleStationSelect(lineId, true);
+  }
 }
 
 function populateAuditRuleStationSelect(lineId, allowAll) {
@@ -1438,11 +1444,13 @@ function populateAuditRuleStationSelect(lineId, allowAll) {
   if ((current === 'ALL' && allowAll) || rows.some(row => String(row.StationID) === current)) select.value = current;
 }
 
-function populateSelect(selector, rows, valueField, textField, firstLabel) {
+function populateSelect(selector, rows, valueField, textField, firstLabel, allOptionLabel) {
   const select = $(selector);
   const current = select.value;
-  select.innerHTML = `<option value="">${escapeHtml(firstLabel)}</option>` + rows.map(row => `<option value="${escapeAttr(row[valueField])}">${escapeHtml(row[textField] || row[valueField])}</option>`).join('');
-  if (rows.some(row => String(row[valueField]) === current)) select.value = current;
+  const allOpt = allOptionLabel ? `<option value="ALL">${escapeHtml(allOptionLabel)}</option>` : '';
+  select.innerHTML = `<option value="">${escapeHtml(firstLabel)}</option>${allOpt}` + rows.map(row => `<option value="${escapeAttr(row[valueField])}">${escapeHtml(row[textField] || row[valueField])}</option>`).join('');
+  if (current === 'ALL' && allOptionLabel) select.value = 'ALL';
+  else if (rows.some(row => String(row[valueField]) === current)) select.value = current;
 }
 
 function assignableRoles() {
