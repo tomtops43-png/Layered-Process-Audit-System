@@ -807,11 +807,14 @@ async function loadManagerDashboard(period) {
   const mgrKey = `mgr_comp_${p}`;
   const mgrCached = GASCache.get(mgrKey);
   if (mgrCached && !period) {
-    const { complianceData, dashData, findings } = mgrCached;
-    state.mgrData.complianceData = complianceData; state.mgrData.dashData = dashData; state.mgrData.findings = findings;
-    renderMgrHeader(p); renderMgrMetrics(complianceData, dashData); renderMgrBarChart(complianceData.byLine || []);
-    renderMgrHeatmap(complianceData.byStationRole || [], state.mgrData.selectedLine); renderMgrEscalation(findings); return;
+    try {
+      const { complianceData, dashData, findings } = mgrCached;
+      state.mgrData.complianceData = complianceData; state.mgrData.dashData = dashData; state.mgrData.findings = findings;
+      renderMgrHeader(p); renderMgrMetrics(complianceData, dashData); renderMgrBarChart(complianceData.byLine || []);
+      renderMgrHeatmap(complianceData.byStationRole || [], state.mgrData.selectedLine); renderMgrEscalation(findings); return;
+    } catch (_) { GASCache.invalidate(mgrKey); }
   }
+  $('#mgrHeader').innerHTML = '<div class="mgr-header-left"><div class="ld-greeting">กำลังโหลด Dashboard...</div></div>';
   $('#mgrMetrics').innerHTML = Array.from({length:4}, () => '<div class="ld-card skeleton-card" style="min-height:90px"></div>').join('');
   $('#mgrBarChart').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   $('#mgrHeatmap').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
@@ -826,15 +829,18 @@ async function loadManagerDashboard(period) {
     state.mgrData.dashData = dashData;
     state.mgrData.findings = findingsData.findings || [];
     // Populate line selector for heatmap
-    const lineIds = [...new Set((complianceData.byStationRole || []).map(r => r.lineId))].sort();
+    const byStationRole = complianceData.byStationRole || [];
+    const lineIds = [...new Set(byStationRole.map(r => r.lineId))].sort();
     const lineNames = {};
     (complianceData.byLine || []).forEach(l => { lineNames[l.lineId] = l.lineName; });
     const heatmapSel = $('#mgrHeatmapLine');
-    heatmapSel.innerHTML = lineIds.map(lid => `<option value="${escapeAttr(lid)}">${escapeHtml(lineNames[lid] || lid)}</option>`).join('');
-    if (!state.mgrData.selectedLine || !lineIds.includes(state.mgrData.selectedLine)) {
-      state.mgrData.selectedLine = lineIds[0] || '';
+    if (heatmapSel) {
+      heatmapSel.innerHTML = lineIds.map(lid => `<option value="${escapeAttr(lid)}">${escapeHtml(lineNames[lid] || lid)}</option>`).join('');
+      if (!state.mgrData.selectedLine || !lineIds.includes(state.mgrData.selectedLine)) {
+        state.mgrData.selectedLine = lineIds[0] || '';
+      }
+      heatmapSel.value = state.mgrData.selectedLine;
     }
-    heatmapSel.value = state.mgrData.selectedLine;
     renderMgrHeader(p);
     renderMgrMetrics(complianceData, dashData);
     renderMgrBarChart(complianceData.byLine || []);
@@ -842,6 +848,8 @@ async function loadManagerDashboard(period) {
     renderMgrEscalation(state.mgrData.findings);
     GASCache.set(mgrKey, { complianceData, dashData, findings: state.mgrData.findings }, 3);
   } catch (error) {
+    $('#mgrHeader').innerHTML = `<div class="mgr-header-left"><div class="ld-greeting">❌ โหลดไม่สำเร็จ</div><div class="ld-sub">${escapeHtml(error.message)}</div></div><button class="mgr-export-btn" onclick="loadManagerDashboard()">↻ ลองใหม่</button>`;
+    ['#mgrMetrics','#mgrBarChart','#mgrHeatmap','#mgrEscalation'].forEach(s => { const el = $(s); if (el) el.innerHTML = ''; });
     showToast(error.message, 'error');
   }
 }
