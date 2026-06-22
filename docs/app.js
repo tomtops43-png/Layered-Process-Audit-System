@@ -1,5 +1,48 @@
 'use strict';
 
+const GASCache = {
+  _store: {},
+  _ttl: {},
+  set(key, data, ttlMinutes = 5) {
+    this._store[key] = data;
+    this._ttl[key] = Date.now() + ttlMinutes * 60000;
+    try { sessionStorage.setItem('gas_' + key, JSON.stringify({ data, expiry: this._ttl[key] })); } catch (_) {}
+  },
+  get(key) {
+    if (this._store[key] && Date.now() < (this._ttl[key] || 0)) return this._store[key];
+    try {
+      const raw = sessionStorage.getItem('gas_' + key);
+      if (raw) {
+        const { data, expiry } = JSON.parse(raw);
+        if (Date.now() < expiry) { this._store[key] = data; this._ttl[key] = expiry; return data; }
+        sessionStorage.removeItem('gas_' + key);
+      }
+    } catch (_) {}
+    return null;
+  },
+  invalidate(...keys) {
+    keys.forEach(k => {
+      delete this._store[k]; delete this._ttl[k];
+      try { sessionStorage.removeItem('gas_' + k); } catch (_) {}
+    });
+  },
+  invalidatePrefix(prefix) {
+    Object.keys(this._store).filter(k => k.startsWith(prefix)).forEach(k => this.invalidate(k));
+    try { Object.keys(sessionStorage).filter(k => k.startsWith('gas_' + prefix)).forEach(k => sessionStorage.removeItem(k)); } catch (_) {}
+  },
+  invalidateAll() {
+    this._store = {}; this._ttl = {};
+    try { Object.keys(sessionStorage).filter(k => k.startsWith('gas_')).forEach(k => sessionStorage.removeItem(k)); } catch (_) {}
+  }
+};
+
+async function cachedApiCall(action, payload, cacheKey, ttlMinutes = 5) {
+  if (cacheKey) { const hit = GASCache.get(cacheKey); if (hit) return hit; }
+  const data = await apiCall(action, payload);
+  if (cacheKey) GASCache.set(cacheKey, data, ttlMinutes);
+  return data;
+}
+
 const state = {
   token: localStorage.getItem('lpa_token') || '',
   user: readStoredJson('lpa_user'),
@@ -250,6 +293,7 @@ function logout(notify = true) {
   state.auditAnswers = {};
   localStorage.removeItem('lpa_token');
   localStorage.removeItem('lpa_user');
+  GASCache.invalidateAll();
   stopFindingNotificationPolling();
   updateFindingBadges(0);
   showLogin();
@@ -326,9 +370,11 @@ async function loadDashboard() {
   if (isLeaderRole) { await loadLeaderDashboard(); return; }
   const refreshButton = $('#refreshDashboard');
   refreshButton.disabled = true;
+  const cachedDash = GASCache.get('dashboard');
+  if (cachedDash) { state.dashboard = cachedDash; renderDashboard(cachedDash); refreshButton.disabled = false; return; }
   showDashboardSkeleton();
   try {
-    state.dashboard = await apiCall('getDashboard', {});
+    state.dashboard = await cachedApiCall('getDashboard', {}, 'dashboard', 1);
     renderDashboard(state.dashboard);
   } catch (error) {
     showToast(error.message, 'error');
@@ -341,12 +387,19 @@ async function loadLeaderDashboard() {
   const today = localDateInput(new Date());
   const role = state.user.Role;
   const rolesToFetch = role === 'Supervisor' ? ['Supervisor', 'Leader'] : ['Leader'];
+  const ldKey = `leader_${state.user?.UserID}_${today}`;
+  const ldCached = GASCache.get(ldKey);
+  if (ldCached) {
+    const { dashData, rules, todayAudits, myFindings } = ldCached;
+    renderLeaderHeader(dashData); renderLeaderMetrics(dashData, rules, todayAudits, myFindings);
+    renderLeaderTasks(rules, todayAudits); renderLeaderFindings(myFindings); return;
+  }
   $('#ldTasks').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   $('#ldFindings').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   $('#ldMetrics').innerHTML = Array.from({length: 4}, () => '<div class="ld-card skeleton-card" style="min-height:90px"></div>').join('');
   try {
     const [dashData, rulesData, auditsData, findingsData] = await Promise.all([
-      apiCall('getDashboard', {}),
+      cachedApiCall('getDashboard', {}, 'dashboard', 1),
       apiCall('getAuditPlanRules', { activeStatus: 'Active', limit: 300 }),
       apiCall('getAuditList', { auditDate: today, limit: 500 }).catch(() => ({ audits: [] })),
       apiCall('getFindings', { myFindings: 'assigned', limit: 200 }).catch(() => ({ findings: [] }))
@@ -359,6 +412,7 @@ async function loadLeaderDashboard() {
     renderLeaderMetrics(dashData, rules, todayAudits, myFindings);
     renderLeaderTasks(rules, todayAudits);
     renderLeaderFindings(myFindings);
+    GASCache.set(ldKey, { dashData, rules, todayAudits, myFindings }, 1);
   } catch (error) {
     showToast(error.message, 'error');
   }
@@ -520,12 +574,18 @@ if (!state.dirData) state.dirData = { data: null, months: 3 };
 async function loadDirectorDashboard(months) {
   if (months) state.dirData.months = months;
   const m = state.dirData.months;
+  const dirKey = `dir_dash_${m}`;
+  const dirCached = GASCache.get(dirKey);
+  if (dirCached && !months) {
+    state.dirData.data = dirCached;
+    renderDirHeader(dirCached); renderDirKPIs(dirCached); renderDirTrend(dirCached); renderDirChronic(dirCached); renderDirLayer(dirCached); return;
+  }
   $('#dirKPIs').innerHTML = Array.from({length:3},()=>'<div class="dir-kpi-card skeleton-card" style="min-height:120px"></div>').join('');
   $('#dirTrend').innerHTML = '<div class="dir-trend-placeholder">กำลังโหลด...</div>';
   $('#dirChronic').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   $('#dirLayer').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   try {
-    const data = await apiCall('getDirectorDashboardData', { months: m });
+    const data = await cachedApiCall('getDirectorDashboardData', { months: m }, dirKey, 5);
     state.dirData.data = data;
     renderDirHeader(data);
     renderDirKPIs(data);
@@ -734,14 +794,22 @@ if (!state.mgrData) state.mgrData = { complianceData: null, dashData: null, find
 async function loadManagerDashboard(period) {
   if (period) state.mgrData.period = period;
   const p = state.mgrData.period;
+  const mgrKey = `mgr_comp_${p}`;
+  const mgrCached = GASCache.get(mgrKey);
+  if (mgrCached && !period) {
+    const { complianceData, dashData, findings } = mgrCached;
+    state.mgrData.complianceData = complianceData; state.mgrData.dashData = dashData; state.mgrData.findings = findings;
+    renderMgrHeader(p); renderMgrMetrics(complianceData, dashData); renderMgrBarChart(complianceData.byLine || []);
+    renderMgrHeatmap(complianceData.byStationRole || [], state.mgrData.selectedLine); renderMgrEscalation(findings); return;
+  }
   $('#mgrMetrics').innerHTML = Array.from({length:4}, () => '<div class="ld-card skeleton-card" style="min-height:90px"></div>').join('');
   $('#mgrBarChart').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   $('#mgrHeatmap').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   $('#mgrEscalation').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   try {
     const [complianceData, dashData, findingsData] = await Promise.all([
-      apiCall('getManagerComplianceData', { period: p }),
-      apiCall('getDashboard', {}),
+      cachedApiCall('getManagerComplianceData', { period: p }, mgrKey, 3),
+      cachedApiCall('getDashboard', {}, 'dashboard', 1),
       apiCall('getFindings', { limit: 500 }).catch(() => ({ findings: [] }))
     ]);
     state.mgrData.complianceData = complianceData;
@@ -762,6 +830,7 @@ async function loadManagerDashboard(period) {
     renderMgrBarChart(complianceData.byLine || []);
     renderMgrHeatmap(complianceData.byStationRole || [], state.mgrData.selectedLine);
     renderMgrEscalation(state.mgrData.findings);
+    GASCache.set(mgrKey, { complianceData, dashData, findings: state.mgrData.findings }, 3);
   } catch (error) {
     showToast(error.message, 'error');
   }
@@ -1225,6 +1294,7 @@ async function saveAudit() {
     const findingText = (data.FindingIDs || []).length ? ` | Finding: ${data.FindingIDs.join(', ')}` : '';
     showToast(`บันทึกสำเร็จ AuditID: ${data.AuditID}${findingText}`, 'success', 7000);
     state.auditPlans = [];
+    GASCache.invalidate('dashboard'); GASCache.invalidatePrefix('mgr_comp_'); GASCache.invalidatePrefix('dir_dash_'); GASCache.invalidatePrefix('leader_');
     clearAuditDraft();
     resetAuditForm();
     loadDashboard(false);
@@ -1462,6 +1532,7 @@ async function runFindingWorkflow(action, payload, options) {
     await apiCall(action, payload);
     $('#findingDialog').close();
     state.findingsCache = null;
+    GASCache.invalidate('dashboard'); GASCache.invalidatePrefix('mgr_comp_'); GASCache.invalidatePrefix('dir_dash_');
     await loadFindings(true);
     await loadDashboard(false);
     showToast(settings.successMessage, 'success');
