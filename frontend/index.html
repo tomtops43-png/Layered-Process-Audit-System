@@ -49,14 +49,30 @@
 
     <main class="main-content">
       <section id="page-dashboard" class="page active-page">
-        <div class="page-heading"><div><p class="eyebrow">ภาพรวมระบบ</p><h2>Dashboard</h2></div><button class="btn btn-outline" id="refreshDashboard">↻ รีเฟรช</button></div>
-        <div id="dashboardCards" class="metric-grid"></div>
-        <div id="auditPlanAlert" class="plan-alert hidden"></div>
-        <div class="content-grid two-columns">
-          <article class="panel"><div class="panel-title"><h3>ผลการตรวจรายเดือน</h3></div><div id="monthlyAuditChart" class="bar-chart empty-state">กำลังโหลด...</div></article>
-          <article class="panel"><div class="panel-title"><h3>สรุปตาม Line</h3></div><div id="lineSummary" class="table-wrap"></div></article>
+        <!-- Leader / Supervisor Dashboard -->
+        <div id="leaderDashboard" class="hidden">
+          <div id="ldHeader" class="ld-header"></div>
+          <div id="ldMetrics" class="ld-metrics"></div>
+          <div class="ld-section">
+            <div class="ld-section-title">📋 งานตรวจวันนี้</div>
+            <div id="ldTasks"></div>
+          </div>
+          <div class="ld-section">
+            <div class="ld-section-title">⚠️ Finding ที่ฉันรับผิดชอบ</div>
+            <div id="ldFindings"></div>
+          </div>
         </div>
-        <article class="panel"><div class="panel-title"><h3>Action ใกล้ Due Date ภายใน 7 วัน</h3></div><div id="nearDueList" class="responsive-list"></div></article>
+        <!-- Manager / Admin Dashboard -->
+        <div id="managerDashboard">
+          <div class="page-heading"><div><p class="eyebrow">ภาพรวมระบบ</p><h2>Dashboard</h2></div><button class="btn btn-outline" id="refreshDashboard">↻ รีเฟรช</button></div>
+          <div id="dashboardCards" class="metric-grid"></div>
+          <div id="auditPlanAlert" class="plan-alert hidden"></div>
+          <div class="content-grid two-columns">
+            <article class="panel"><div class="panel-title"><h3>ผลการตรวจรายเดือน</h3></div><div id="monthlyAuditChart" class="bar-chart empty-state">กำลังโหลด...</div></article>
+            <article class="panel"><div class="panel-title"><h3>สรุปตาม Line</h3></div><div id="lineSummary" class="table-wrap"></div></article>
+          </div>
+          <article class="panel"><div class="panel-title"><h3>Action ใกล้ Due Date ภายใน 7 วัน</h3></div><div id="nearDueList" class="responsive-list"></div></article>
+        </div>
       </section>
 
       <section id="page-audit" class="page">

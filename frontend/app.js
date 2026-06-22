@@ -223,6 +223,7 @@ async function login() {
     state.user.lineAccess = data.lineAccess || [];
     localStorage.setItem('lpa_token', state.token);
     localStorage.setItem('lpa_user', JSON.stringify(state.user));
+    localStorage.setItem('lpa_line_access', JSON.stringify(data.lineAccess || []));
     $('#password').value = '';
     showApplication();
     showToast(`ยินดีต้อนรับ ${state.user.FullName || state.user.Username}`, 'success');
@@ -312,6 +313,11 @@ async function ensureMasterDataLoaded(withLoading = true) {
 }
 
 async function loadDashboard() {
+  const role = state.user?.Role || '';
+  const isLeaderRole = role === 'Leader' || role === 'Supervisor';
+  $('#leaderDashboard').classList.toggle('hidden', !isLeaderRole);
+  $('#managerDashboard').classList.toggle('hidden', isLeaderRole);
+  if (isLeaderRole) { await loadLeaderDashboard(); return; }
   const refreshButton = $('#refreshDashboard');
   refreshButton.disabled = true;
   showDashboardSkeleton();
@@ -323,6 +329,183 @@ async function loadDashboard() {
   } finally {
     refreshButton.disabled = false;
   }
+}
+
+async function loadLeaderDashboard() {
+  const today = localDateInput(new Date());
+  const role = state.user.Role;
+  const rolesToFetch = role === 'Supervisor' ? ['Supervisor', 'Leader'] : ['Leader'];
+  $('#ldTasks').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
+  $('#ldFindings').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
+  $('#ldMetrics').innerHTML = Array.from({length: 4}, () => '<div class="ld-card skeleton-card" style="min-height:90px"></div>').join('');
+  try {
+    const [dashData, rulesData, auditsData, findingsData] = await Promise.all([
+      apiCall('getDashboard', {}),
+      apiCall('getAuditPlanRules', { activeStatus: 'Active', limit: 300 }),
+      apiCall('getAuditList', { auditDate: today, limit: 500 }).catch(() => ({ audits: [] })),
+      apiCall('getFindings', { myFindings: 'assigned', limit: 200 }).catch(() => ({ findings: [] }))
+    ]);
+    state.dashboard = dashData;
+    const rules = (rulesData.rules || []).filter(r => rolesToFetch.includes(r.RequiredRole));
+    const todayAudits = auditsData.audits || [];
+    const myFindings = (findingsData.findings || []).filter(f => (f.Status || '').toLowerCase() !== 'closed');
+    renderLeaderHeader(dashData);
+    renderLeaderMetrics(dashData, rules, todayAudits, myFindings);
+    renderLeaderTasks(rules, todayAudits);
+    renderLeaderFindings(myFindings);
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+function renderLeaderHeader(dashData) {
+  const user = state.user;
+  const rs = dashData.AuditRuleSummary || {};
+  const hasDue = (rs.DueToday || 0) > 0;
+  const lineAccess = JSON.parse(localStorage.getItem('lpa_line_access') || '[]');
+  const lineNames = lineAccess.length ? lineAccess.map(l => l.LineName || l.LineID).join(', ') : (user.LineDefault || '-');
+  const now = new Date();
+  const thaiDate = now.toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  $('#ldHeader').innerHTML = `
+    <div class="ld-header-left">
+      <div class="ld-greeting">สวัสดี, ${escapeHtml(user.FullName || user.Username)} 👋</div>
+      <div class="ld-sub">${escapeHtml(user.Role)} · ${escapeHtml(lineNames)}</div>
+      <div class="ld-sub">${escapeHtml(thaiDate)}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="ld-refresh" onclick="loadLeaderDashboard()" title="รีเฟรช">↻</button>
+      <button class="ld-bell" onclick="navigateTo('findings')" title="Finding ของฉัน">
+        🔔${hasDue ? `<span class="ld-bell-badge">${rs.DueToday}</span>` : ''}
+      </button>
+    </div>`;
+}
+
+function renderLeaderMetrics(dashData, rules, todayAudits, myFindings) {
+  const rs = dashData.AuditRuleSummary || {};
+  const dueToday = rs.DueToday || 0;
+  const todayMap = {};
+  todayAudits.forEach(a => { todayMap[`${a.LineID}|${a.StationID}|${String(a.AuditLayer||'').toLowerCase()}`] = true; });
+  const todayRules = rules.filter(r => rulesMatchToday(r));
+  const doneToday = todayRules.filter(r => todayMap[`${r.LineID}|${r.StationID}|${r.RequiredRole.toLowerCase()}`]).length;
+  const openFindings = myFindings.length;
+  const completed = rs.CompletedThisMonth || 0;
+  const total = completed + (rs.Overdue || 0);
+  const compliance = total > 0 ? Math.round(completed / total * 100) : (dueToday === 0 && completed === 0 ? 100 : 0);
+  const cards = [
+    { label: 'ต้องตรวจวันนี้', value: dueToday, note: 'Station', cls: dueToday > 0 ? 'warn' : 'ok' },
+    { label: 'ตรวจแล้ววันนี้', value: doneToday, note: `จาก ${todayRules.length} รายการ`, cls: doneToday >= todayRules.length && todayRules.length > 0 ? 'ok' : '' },
+    { label: 'Finding ค้างอยู่', value: openFindings, note: 'รายการที่มอบหมายฉัน', cls: openFindings > 0 ? 'danger' : 'ok' },
+    { label: 'Compliance เดือนนี้', value: `${compliance}%`, note: `ตรวจแล้ว ${completed} รอบ`, cls: compliance >= 80 ? 'ok' : compliance >= 50 ? 'warn' : 'danger' }
+  ];
+  $('#ldMetrics').innerHTML = cards.map(c => `<div class="ld-card ${c.cls}"><div class="ld-card-label">${escapeHtml(c.label)}</div><div class="ld-card-value">${escapeHtml(String(c.value))}</div><div class="ld-card-note">${escapeHtml(c.note)}</div></div>`).join('');
+}
+
+function rulesMatchToday(rule) {
+  if (!rule || (String(rule.ActiveStatus).toLowerCase() !== 'active')) return false;
+  const freq = rule.Frequency || 'Daily';
+  const now = new Date();
+  const day = now.getDay();
+  if (freq === 'Monthly') {
+    return now.getDate() === Number(rule.DayOfMonth || 1);
+  }
+  if (freq === 'Weekly') {
+    const names = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const selected = String(rule.DayOfWeek || '');
+    return selected.split(',').some(v => {
+      const t = v.trim();
+      return t === String(day) || t.slice(0,3).toLowerCase() === names[day].toLowerCase();
+    });
+  }
+  // Daily — working days (Mon-Fri) unless DayOfWeek specified
+  if (rule.DayOfWeek) {
+    const names = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    return rule.DayOfWeek.split(',').some(v => {
+      const t = v.trim();
+      return t === String(day) || t.slice(0,3).toLowerCase() === names[day].toLowerCase();
+    });
+  }
+  return day !== 0 && day !== 6;
+}
+
+function renderLeaderTasks(rules, todayAudits) {
+  const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const todayMap = {};
+  todayAudits.forEach(a => { todayMap[`${a.LineID}|${a.StationID}|${String(a.AuditLayer||'').toLowerCase()}`] = true; });
+  const todayRules = rules.filter(rulesMatchToday).sort((a, b) => (a.DueTime||'17:00').localeCompare(b.DueTime||'17:00'));
+  if (!todayRules.length) {
+    $('#ldTasks').innerHTML = '<div class="empty-state">ไม่มีงานตรวจวันนี้</div>';
+    return;
+  }
+  $('#ldTasks').innerHTML = todayRules.map(r => {
+    const key = `${r.LineID}|${r.StationID}|${r.RequiredRole.toLowerCase()}`;
+    const done = !!todayMap[key];
+    const [h, m] = (r.DueTime || '17:00').split(':').map(Number);
+    const overdue = !done && nowMin > h * 60 + m;
+    const badge = done ? '<span class="ld-badge done">✅ ตรวจแล้ว</span>'
+      : overdue ? '<span class="ld-badge overdue">⏰ เกินกำหนด</span>'
+      : '<span class="ld-badge pending">🕐 รอตรวจ</span>';
+    const timeLabel = done ? '' : `${r.DueTime || '17:00'}`;
+    const startBtn = done ? '' : `<button class="btn btn-primary btn-compact" onclick="startAuditFromDashboard(${JSON.stringify(r.LineID)},${JSON.stringify(r.StationID)},${JSON.stringify(r.RequiredRole)})">เริ่มตรวจ</button>`;
+    return `<div class="ld-task-row">
+      ${badge}
+      <div class="ld-task-info"><div class="ld-task-name">${escapeHtml(r.StationName || r.StationID)}</div><div class="ld-task-meta">${escapeHtml(r.LineName || r.LineID)} · ${escapeHtml(r.RequiredRole)} · ${escapeHtml(r.Frequency || '')}</div></div>
+      <div class="ld-task-time">${escapeHtml(timeLabel)}</div>
+      ${startBtn}
+    </div>`;
+  }).join('');
+}
+
+function renderLeaderFindings(findings) {
+  if (!findings.length) {
+    $('#ldFindings').innerHTML = '<div class="empty-state">✅ ไม่มี Finding ค้างอยู่</div>';
+    return;
+  }
+  const now = new Date(); now.setHours(0,0,0,0);
+  $('#ldFindings').innerHTML = findings.map(f => {
+    const status = f.Status || 'Open';
+    const overdue = String(f.OverdueFlag).toLowerCase() === 'yes';
+    const dueDate = f.DueDate || '';
+    let daysLabel = '';
+    let dueCls = '';
+    if (dueDate) {
+      const due = new Date(dueDate); due.setHours(0,0,0,0);
+      const diff = Math.round((due - now) / 86400000);
+      daysLabel = diff < 0 ? `เกิน ${Math.abs(diff)} วัน` : diff === 0 ? 'Due วันนี้' : `เหลือ ${diff} วัน`;
+      dueCls = diff < 0 ? 'color:var(--red);font-weight:800' : diff <= 3 ? 'color:var(--orange);font-weight:700' : '';
+    }
+    const badge = overdue ? '<span class="ld-badge overdue">🔴 เกิน Due</span>'
+      : status.toLowerCase().includes('progress') ? '<span class="ld-badge pending">🔧 กำลังแก้</span>'
+      : '<span class="ld-badge done">📋 ' + escapeHtml(status) + '</span>';
+    return `<div class="ld-finding-row">
+      ${badge}
+      <div class="ld-finding-info"><div class="ld-finding-name">${escapeHtml(f.ProblemDetail || f.FindingID)}</div><div class="ld-finding-meta">${escapeHtml(f.LineName || f.LineID)} / ${escapeHtml(f.StationName || f.StationID)}</div></div>
+      <div class="ld-due-label" style="${dueCls}">${escapeHtml(formatDate(dueDate))}<div class="ld-days">${escapeHtml(daysLabel)}</div></div>
+      <button class="btn btn-outline btn-compact" onclick="openFindingForEdit(${JSON.stringify(f.FindingID)})">อัปเดต</button>
+    </div>`;
+  }).join('');
+}
+
+function startAuditFromDashboard(lineId, stationId, role) {
+  navigateTo('audit').then(() => {
+    const lineEl = $('#auditLine');
+    if (lineEl) { lineEl.value = lineId; lineEl.dispatchEvent(new Event('change')); }
+    setTimeout(() => {
+      const stEl = $('#auditStation');
+      if (stEl) { stEl.value = stationId; stEl.dispatchEvent(new Event('change')); }
+      const layerEl = $('#auditLayer');
+      if (layerEl) {
+        const opt = Array.from(layerEl.options).find(o => o.value.toLowerCase() === role.toLowerCase());
+        if (opt) { layerEl.value = opt.value; }
+      }
+    }, 400);
+  });
+}
+
+function openFindingForEdit(findingId) {
+  navigateTo('findings').then(() => {
+    setTimeout(() => openFindingEditor(findingId), 800);
+  });
 }
 
 function notificationStorageKey() {
