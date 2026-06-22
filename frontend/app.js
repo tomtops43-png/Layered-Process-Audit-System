@@ -1016,9 +1016,13 @@ async function saveAuditRule() {
   if (payload.frequency === 'Weekly') payload.dayOfMonth = '';
   if (payload.frequency === 'Monthly') payload.dayOfWeek = '';
   if (payload.stationId === 'ALL') {
-    const stationCount = activeStationsForLine(payload.lineId).length;
+    const allLines = payload.lineId === 'ALL';
+    const stationCount = allLines
+      ? (state.masterData.stations || []).filter(s => String(s.ActiveStatus || '').toLowerCase() === 'active').length
+      : activeStationsForLine(payload.lineId).length;
     if (!stationCount) return showToast('ไม่พบ Station ที่ Active ใน Line ที่เลือก', 'warning');
-    const confirmed = window.confirm('ระบบจะสร้างกฎสำหรับ Station ที่ Active ทั้งหมดใน Line นี้ ต้องการดำเนินการต่อหรือไม่?');
+    const lineLabel = allLines ? 'ทุก Line' : 'Line นี้';
+    const confirmed = window.confirm(`ระบบจะสร้างกฎสำหรับ Station ที่ Active ทั้งหมดใน ${lineLabel} ต้องการดำเนินการต่อหรือไม่?`);
     if (!confirmed) return;
   }
   showLoading('กำลังบันทึกกฎตารางตรวจ...');
