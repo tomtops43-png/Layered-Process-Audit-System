@@ -931,7 +931,7 @@ async function loadAuditPlan() {
         requiredUserId: optionalFilterValue($('#planUser').value),
         frequency: optionalFilterValue($('#planFrequency').value),
         activeStatus: optionalFilterValue($('#planRuleStatus').value),
-        limit: 100
+        limit: 300
       }),
       apiCall('getAuditList', { auditDate: today, limit: 500 }).catch(() => ({ audits: [] }))
     ]);
