@@ -142,7 +142,9 @@ function getDirectorDashboardData(payload, currentUser) {
 
 function getManagerComplianceData(payload, currentUser) {
   try {
-    requirePermission_(currentUser, 'dashboard.view');
+    if (!hasPermission_(currentUser, 'dashboard.view') && !hasPermission_(currentUser, 'dashboard.view.all')) {
+      throw new Error('Permission denied: dashboard.view');
+    }
     var mgrCacheKey = 'MGR_COMP_' + cleanString_(payload.period || 'month') + '_' + cleanString_(payload.lineId || 'ALL');
     var mgrCached = safeCacheGetJson_(mgrCacheKey);
     if (mgrCached) return jsonResponse(true, 'Manager compliance loaded from cache.', mgrCached);
