@@ -443,12 +443,11 @@ function renderDashboard(data) {
   $('#dashboardCards').innerHTML = cards.map(card => `<article class="metric-card ${card[3]}"><span class="metric-label">${escapeHtml(card[0])}</span><strong class="metric-value">${escapeHtml(String(card[1] ?? 0))}</strong><small class="metric-note">${escapeHtml(card[2])}</small></article>`).join('');
   const notificationCount = number(data.MyOpenFindings) + number(data.PendingMyVerification);
   updateFindingBadges(notificationCount);
-  // Audit badge — show DueToday count
+  // Audit badge — show only DueToday (not accumulated overdue)
   const dueToday = number(ruleSummary.DueToday);
-  const overdueAudit = number(ruleSummary.Overdue);
   const auditBadge = $('#auditNavBadge');
-  if (dueToday > 0 || overdueAudit > 0) {
-    auditBadge.textContent = String(dueToday + overdueAudit);
+  if (dueToday > 0) {
+    auditBadge.textContent = String(dueToday);
     auditBadge.classList.remove('hidden');
   } else {
     auditBadge.textContent = '0';
@@ -456,11 +455,8 @@ function renderDashboard(data) {
   }
   // Audit alert banner
   const alertEl = $('#auditPlanAlert');
-  if (dueToday > 0 || overdueAudit > 0) {
-    const parts = [];
-    if (dueToday > 0) parts.push(`<strong>${dueToday} รายการ</strong> ต้องตรวจวันนี้`);
-    if (overdueAudit > 0) parts.push(`<strong>${overdueAudit} รายการ</strong> เกินกำหนดแล้ว`);
-    alertEl.innerHTML = `<span>⏰ ${parts.join(' · ')}</span><button class="btn btn-sm btn-primary" onclick="navigateTo('audit')">ไปตรวจเลย →</button>`;
+  if (dueToday > 0) {
+    alertEl.innerHTML = `<span>⏰ <strong>${dueToday} รายการ</strong> ต้องตรวจวันนี้</span><button class="btn btn-sm btn-primary" onclick="navigateTo('audit')">ไปตรวจเลย →</button>`;
     alertEl.classList.remove('hidden');
   } else {
     alertEl.classList.add('hidden');
