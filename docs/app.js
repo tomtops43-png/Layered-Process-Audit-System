@@ -491,7 +491,7 @@ function renderAuditChecklist() {
   }
   const roleOptions = assignableRoleOptions();
   const assignmentFields = `<label>มอบหมายให้ตำแหน่ง<select data-field="assignedRole"><option value="">เลือกตำแหน่งรับผิดชอบ</option>${roleOptions}</select></label><label>ตำแหน่งรับผิดชอบ<input data-field="responsiblePerson" readonly></label><input data-field="assignmentMode" type="hidden" value="ROLE"><input data-field="findingStatus" type="hidden" value="Assigned">`;
-  container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>เกณฑ์มาตรฐาน</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>ตัวอย่าง OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>ตัวอย่าง NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="N/A">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid"><label>รายละเอียดปัญหา *<textarea data-field="findingDetail" rows="2"></textarea></label><label>แนวทางแก้ไข *<textarea data-field="correctiveAction" rows="2"></textarea></label>${assignmentFields}<label>กำหนดวันแก้ไข *<input data-field="dueDate" type="date"></label><label>รูปก่อนแก้ไข *<input data-field="beforePhoto" type="file" accept="image/*"><span class="photo-preview" data-field="beforePhotoPreview"></span></label><label>หมายเหตุ<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
+  container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>เกณฑ์มาตรฐาน</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>ตัวอย่าง OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>ตัวอย่าง NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="N/A">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid"><label>รายละเอียดปัญหา *<textarea data-field="findingDetail" rows="2"></textarea></label>${assignmentFields}<label>กำหนดวันแก้ไข *<input data-field="dueDate" type="date"></label><label>รูปก่อนแก้ไข *<input data-field="beforePhoto" type="file" accept="image/*"><span class="photo-preview" data-field="beforePhotoPreview"></span></label><label>หมายเหตุ<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
   $$('.checklist-card', container).forEach(card => {
     $$('.result-button', card).forEach(button => button.addEventListener('click', () => selectAuditResult(card, button.dataset.result)));
     $$('input, select, textarea', card).forEach(field => {
@@ -577,7 +577,7 @@ async function saveAudit() {
     const record = { checklistId: item.ChecklistID, category: item.Category, checkItem: item.CheckItem, standardCriteria: item.StandardCriteria, checklistRevision: item.Revision, result: answer.result, remark: fieldValue(card, 'remark') };
     if (answer.result === 'NG') {
       record.findingDetail = fieldValue(card, 'findingDetail');
-      record.correctiveAction = fieldValue(card, 'correctiveAction');
+      record.correctiveAction = '';
       record.assignmentMode = fieldValue(card, 'assignmentMode') || 'ROLE';
       record.assignedRole = fieldValue(card, 'assignedRole');
       record.assignedRoleName = record.assignedRole;
@@ -592,9 +592,9 @@ async function saveAudit() {
       record.dueDate = fieldValue(card, 'dueDate');
       record.status = record.assignedRole ? 'Assigned' : 'Open';
       record.findingStatus = record.status;
-      if (!record.findingDetail || !record.correctiveAction || !record.assignedRole || !record.dueDate) {
+      if (!record.findingDetail || !record.assignedRole || !record.dueDate) {
         setAuditSavingState(false);
-        return showToast(`กรุณากรอก Finding Detail, Corrective Action, ตำแหน่งรับผิดชอบ และ Due Date ของ ${item.ChecklistID} ให้ครบ`, 'warning');
+        return showToast(`กรุณากรอก รายละเอียดปัญหา, ตำแหน่งรับผิดชอบ และ กำหนดวันแก้ไข ของ ${item.ChecklistID} ให้ครบ`, 'warning');
       }
       const photo = fieldFile(card, 'beforePhoto');
       if (photo) record._photo = photo;
