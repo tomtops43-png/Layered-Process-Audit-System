@@ -400,17 +400,24 @@ async function loadLeaderDashboard() {
   const ldKey = `leader_${state.user?.UserID}_${today}`;
   const ldCached = GASCache.get(ldKey);
   if (ldCached) {
-    const { dashData, rules, todayAudits, myFindings } = ldCached;
-    renderLeaderHeader(dashData); renderLeaderMetrics(dashData, rules, todayAudits, myFindings);
-    renderLeaderTasks(rules, todayAudits); renderLeaderFindings(myFindings); return;
+    try {
+      const { dashData, rules, todayAudits, myFindings } = ldCached;
+      renderLeaderHeader(dashData); renderLeaderMetrics(dashData, rules, todayAudits, myFindings);
+      renderLeaderTasks(rules, todayAudits); renderLeaderFindings(myFindings); return;
+    } catch (_) { GASCache.invalidate(ldKey); }
   }
+  $('#ldHeader').innerHTML = '<div class="ld-header-left"><div class="ld-greeting">กำลังโหลด Dashboard...</div></div>';
   $('#ldTasks').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   $('#ldFindings').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   $('#ldMetrics').innerHTML = Array.from({length: 4}, () => '<div class="ld-card skeleton-card" style="min-height:90px"></div>').join('');
   try {
-    const [dashData, rulesData, auditsData, findingsData] = await Promise.all([
+    // Round 1: dashboard + rules (Sheets read-heavy — separate from audits/findings)
+    const [dashData, rulesData] = await Promise.all([
       cachedApiCall('getDashboard', {}, 'dashboard', 1),
-      apiCall('getAuditPlanRules', { activeStatus: 'Active', limit: 300 }),
+      apiCall('getAuditPlanRules', { activeStatus: 'Active', limit: 300 })
+    ]);
+    // Round 2: today audits + my findings (lighter reads)
+    const [auditsData, findingsData] = await Promise.all([
       apiCall('getAuditList', { auditDate: today, limit: 500 }).catch(() => ({ audits: [] })),
       apiCall('getFindings', { myFindings: 'assigned', limit: 200 }).catch(() => ({ findings: [] }))
     ]);
@@ -424,7 +431,12 @@ async function loadLeaderDashboard() {
     renderLeaderFindings(myFindings);
     GASCache.set(ldKey, { dashData, rules, todayAudits, myFindings }, 1);
   } catch (error) {
-    showToast(error.message, 'error');
+    const msg = error.message || 'โหลดไม่สำเร็จ';
+    $('#ldHeader').innerHTML = `<div class="ld-header-left"><div class="ld-greeting">❌ ${escapeHtml(msg)}</div></div><button class="ld-refresh" onclick="loadLeaderDashboard()">↻ ลองใหม่</button>`;
+    $('#ldMetrics').innerHTML = '';
+    $('#ldTasks').innerHTML = '<div class="empty-state">โหลดไม่สำเร็จ — กด ↻ ลองใหม่</div>';
+    $('#ldFindings').innerHTML = '';
+    showToast(msg, 'error');
   }
 }
 
