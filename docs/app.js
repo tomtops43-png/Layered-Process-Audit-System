@@ -294,6 +294,7 @@ function logout(notify = true) {
   localStorage.removeItem('lpa_token');
   localStorage.removeItem('lpa_user');
   GASCache.invalidateAll();
+  state.leaderDashData = null;
   stopFindingNotificationPolling();
   updateFindingBadges(0);
   showLogin();
@@ -398,25 +399,37 @@ async function loadLeaderDashboard() {
   const role = state.user.Role;
   const rolesToFetch = role === 'Supervisor' ? ['Supervisor', 'Leader'] : ['Leader'];
   const ldKey = `leader_${state.user?.UserID}_${today}`;
-  const ldCached = GASCache.get(ldKey);
-  if (ldCached) {
-    try {
-      const { dashData, rules, todayAudits, myFindings } = ldCached;
-      renderLeaderHeader(dashData); renderLeaderMetrics(dashData, rules, todayAudits, myFindings);
-      renderLeaderTasks(rules, todayAudits); renderLeaderFindings(myFindings); return;
-    } catch (_) { GASCache.invalidate(ldKey); }
+
+  // Render from in-memory state immediately — no skeleton flash on tab switch
+  if (state.leaderDashData) {
+    renderLeaderFromData(state.leaderDashData);
+    // If GASCache still valid, done. If expired, refresh quietly in background.
+    if (GASCache.get(ldKey)) return;
+    fetchLeaderDashData(ldKey, today, rolesToFetch, true); // background refresh
+    return;
   }
+
+  // First load — show skeleton then fetch
   $('#ldHeader').innerHTML = '<div class="ld-header-left"><div class="ld-greeting">กำลังโหลด Dashboard...</div></div>';
+  $('#ldMetrics').innerHTML = Array.from({length: 4}, () => '<div class="ld-card skeleton-card" style="min-height:90px"></div>').join('');
   $('#ldTasks').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   $('#ldFindings').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
-  $('#ldMetrics').innerHTML = Array.from({length: 4}, () => '<div class="ld-card skeleton-card" style="min-height:90px"></div>').join('');
+  await fetchLeaderDashData(ldKey, today, rolesToFetch, false);
+}
+
+function renderLeaderFromData(d) {
+  renderLeaderHeader(d.dashData);
+  renderLeaderMetrics(d.dashData, d.rules, d.todayAudits, d.myFindings);
+  renderLeaderTasks(d.rules, d.todayAudits);
+  renderLeaderFindings(d.myFindings);
+}
+
+async function fetchLeaderDashData(ldKey, today, rolesToFetch, silent) {
   try {
-    // Round 1: dashboard + rules (Sheets read-heavy — separate from audits/findings)
     const [dashData, rulesData] = await Promise.all([
-      cachedApiCall('getDashboard', {}, 'dashboard', 1),
+      cachedApiCall('getDashboard', {}, 'dashboard', 5),
       apiCall('getAuditPlanRules', { activeStatus: 'Active', limit: 300 })
     ]);
-    // Round 2: today audits + my findings (lighter reads)
     const [auditsData, findingsData] = await Promise.all([
       apiCall('getAuditList', { auditDate: today, limit: 500 }).catch(() => ({ audits: [] })),
       apiCall('getFindings', { myFindings: 'assigned', limit: 200 }).catch(() => ({ findings: [] }))
@@ -425,17 +438,15 @@ async function loadLeaderDashboard() {
     const rules = (rulesData.rules || []).filter(r => rolesToFetch.includes(r.RequiredRole));
     const todayAudits = auditsData.audits || [];
     const myFindings = (findingsData.findings || []).filter(f => (f.Status || '').toLowerCase() !== 'closed');
-    renderLeaderHeader(dashData);
-    renderLeaderMetrics(dashData, rules, todayAudits, myFindings);
-    renderLeaderTasks(rules, todayAudits);
-    renderLeaderFindings(myFindings);
-    GASCache.set(ldKey, { dashData, rules, todayAudits, myFindings }, 1);
+    const d = { dashData, rules, todayAudits, myFindings };
+    state.leaderDashData = d;
+    GASCache.set(ldKey, d, 10); // 10-minute cache — today's data rarely changes
+    renderLeaderFromData(d);
   } catch (error) {
+    if (silent) return; // Background refresh failure — keep showing old data silently
     const msg = error.message || 'โหลดไม่สำเร็จ';
     $('#ldHeader').innerHTML = `<div class="ld-header-left"><div class="ld-greeting">❌ ${escapeHtml(msg)}</div></div><button class="ld-refresh" onclick="loadLeaderDashboard()">↻ ลองใหม่</button>`;
-    $('#ldMetrics').innerHTML = '';
-    $('#ldTasks').innerHTML = '<div class="empty-state">โหลดไม่สำเร็จ — กด ↻ ลองใหม่</div>';
-    $('#ldFindings').innerHTML = '';
+    $('#ldMetrics').innerHTML = ''; $('#ldTasks').innerHTML = '<div class="empty-state">โหลดไม่สำเร็จ — กด ↻ ลองใหม่</div>'; $('#ldFindings').innerHTML = '';
     showToast(msg, 'error');
   }
 }
@@ -1325,6 +1336,7 @@ async function saveAudit() {
     showToast(`บันทึกสำเร็จ AuditID: ${data.AuditID}${findingText}`, 'success', 7000);
     state.auditPlans = [];
     GASCache.invalidate('dashboard'); GASCache.invalidatePrefix('mgr_comp_'); GASCache.invalidatePrefix('dir_dash_'); GASCache.invalidatePrefix('leader_');
+    state.leaderDashData = null;
     clearAuditDraft();
     resetAuditForm();
     loadDashboard(false);
@@ -1565,6 +1577,7 @@ async function runFindingWorkflow(action, payload, options) {
     await apiCall(action, payload);
     $('#findingDialog').close();
     state.findingsCache = null;
+    state.leaderDashData = null;
     GASCache.invalidate('dashboard'); GASCache.invalidatePrefix('mgr_comp_'); GASCache.invalidatePrefix('dir_dash_');
     await loadFindings(true);
     await loadDashboard(false);
