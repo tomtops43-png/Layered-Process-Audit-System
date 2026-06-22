@@ -946,30 +946,94 @@ async function loadAuditPlan() {
 }
 
 function renderAuditRules() {
-  if (!state.auditRules.length) {
-    $('#auditPlanTable').innerHTML = emptyHtml('ไม่พบกฎตารางตรวจตามตัวกรอง');
-    return;
-  }
+  const container = $('#auditPlanTable');
+  if (!state.auditRules.length) { container.innerHTML = emptyHtml('ไม่พบกฎตารางตรวจตามตัวกรอง'); return; }
   const canManage = hasPermission('audit.plan.manage');
-  const todayStr = localDateInput(new Date());
-  const todayMap = {};
-  (state.todayAudits || []).forEach(a => {
-    const key = `${a.LineID}|${a.StationID}|${String(a.AuditLayer||'').toLowerCase()}`;
-    todayMap[key] = (todayMap[key] || 0) + 1;
-  });
   const now = new Date();
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  function ruleTodayStatus(rule) {
-    if (String(rule.ActiveStatus).toLowerCase() !== 'active') return '';
-    const key = `${rule.LineID}|${rule.StationID}|${String(rule.RequiredRole||'').toLowerCase()}`;
-    if (todayMap[key]) return '<span class="status-badge status-ok">✅ ตรวจแล้ว</span>';
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const todayMap = {};
+  (state.todayAudits || []).forEach(a => { todayMap[`${a.LineID}|${a.StationID}|${String(a.AuditLayer||'').toLowerCase()}`] = true; });
+
+  // Build matrix: lineId → stationId → role → { rule, status }
+  const lineOrder = [], lineMap = {}, roleSet = new Set(), roleFreq = {};
+  const ROLE_ORDER = { Leader: 1, Supervisor: 2, Engineer: 3, Manager: 4 };
+  state.auditRules.filter(r => String(r.ActiveStatus).toLowerCase() === 'active').forEach(rule => {
+    const { LineID: lid, StationID: sid, RequiredRole: role } = rule;
+    if (!lineMap[lid]) { lineMap[lid] = { name: rule.LineName || lid, stOrder: [], stMap: {} }; lineOrder.push(lid); }
+    if (!lineMap[lid].stMap[sid]) { lineMap[lid].stMap[sid] = { name: rule.StationName || sid, cells: {} }; lineMap[lid].stOrder.push(sid); }
+    roleSet.add(role);
+    if (!roleFreq[role]) {
+      const freq = rule.Frequency || 'Daily';
+      const sub = freq === 'Daily' ? (rule.DayOfWeek || 'Working days') : freq === 'Weekly' ? (rule.DayOfWeek || 'ทุกวัน') : `วันที่ ${rule.DayOfMonth || '1'}`;
+      roleFreq[role] = { freq, sub };
+    }
+    const todayKey = `${lid}|${sid}|${role.toLowerCase()}`;
     const [h, m] = (rule.DueTime || '17:00').split(':').map(Number);
-    const dueMinutes = h * 60 + m;
-    if (nowMinutes > dueMinutes) return '<span class="status-badge status-overdue">❗ เกินกำหนด</span>';
-    return '<span class="status-badge status-na">⏰ รอตรวจ</span>';
-  }
-  $('#auditPlanTable').innerHTML = `<table class="data-table audit-plan-table"><thead><tr><th>สถานะวันนี้</th><th>Role</th><th>Assignment</th><th>User</th><th>Line</th><th>Station</th><th>Frequency</th><th>Day</th><th>Due Time</th><th>Status</th><th>Action</th></tr></thead><tbody>${state.auditRules.map(rule => `<tr><td class="action-cell">${ruleTodayStatus(rule)}</td><td>${escapeHtml(rule.RequiredRole || '-')}</td><td>${escapeHtml(formatAssignmentMode(rule))}</td><td>${escapeHtml(formatRuleUser(rule))}</td><td>${escapeHtml(rule.LineName || rule.LineID)}</td><td>${escapeHtml(rule.StationName || rule.StationID)}</td><td>${escapeHtml(rule.Frequency || '-')}</td><td>${escapeHtml(rule.Frequency === 'Monthly' ? rule.DayOfMonth : (rule.DayOfWeek || 'Working days'))}</td><td>${escapeHtml(formatDueTime(rule.DueTime || '17:00'))}</td><td><span class="status-badge ${String(rule.ActiveStatus).toLowerCase() === 'active' ? 'status-ok' : 'status-na'}">${escapeHtml(rule.ActiveStatus || '-')}</span></td><td class="action-cell">${canManage ? `<button class="btn btn-outline btn-compact" data-rule-id="${escapeAttr(rule.RuleID)}">แก้ไข</button><button class="btn btn-danger btn-compact" data-delete-rule-id="${escapeAttr(rule.RuleID)}" data-rule-label="${escapeAttr((rule.RequiredRole||'') + ' / ' + (rule.LineName||rule.LineID) + ' / ' + (rule.StationName||rule.StationID))}">ลบ</button>` : '-'}</td></tr>`).join('')}</tbody></table>`;
-  $$('#auditPlanTable [data-delete-rule-id]').forEach(btn => btn.addEventListener('click', () => deleteAuditRule(btn.dataset.deleteRuleId, btn.dataset.ruleLabel)));
+    const status = todayMap[todayKey] ? 'done' : nowMin > (h * 60 + m) ? 'overdue' : 'pending';
+    lineMap[lid].stMap[sid].cells[role] = { rule, status };
+  });
+  const roles = Array.from(roleSet).sort((a, b) => (ROLE_ORDER[a] || 9) - (ROLE_ORDER[b] || 9));
+
+  // Counters
+  let totalOverdue = 0, totalDone = 0;
+  lineOrder.forEach(lid => lineMap[lid].stOrder.forEach(sid => {
+    roles.forEach(role => { const c = lineMap[lid].stMap[sid].cells[role]; if (!c) return; if (c.status === 'overdue') totalOverdue++; if (c.status === 'done') totalDone++; });
+  }));
+
+  // Filter bar
+  const filterBar = `<div class="mx-bar"><div class="mx-filters">
+    <button class="mx-btn active" data-mf="all">ทั้งหมด</button>
+    <button class="mx-btn" data-mf="overdue">🔴 เกินกำหนด</button>
+    <button class="mx-btn" data-mf="done">✅ ตรวจแล้ว</button>
+  </div><div class="mx-counter"><span class="mx-cnt-ov">🔴 <strong>${totalOverdue}</strong> เกินกำหนด</span><span class="mx-cnt-ok">✅ <strong>${totalDone}</strong> ตรวจแล้ว</span></div></div>`;
+
+  // Tables per line
+  const headCols = roles.map(role => {
+    const f = roleFreq[role] || {};
+    return `<th><div class="mx-role">${escapeHtml(role)}</div><div class="mx-freq">${escapeHtml(f.freq||'')} / ${escapeHtml(f.sub||'')}</div></th>`;
+  }).join('');
+
+  const tables = lineOrder.map(lid => {
+    const line = lineMap[lid];
+    const rows = line.stOrder.map(sid => {
+      const st = line.stMap[sid];
+      let nOver = 0, nDone = 0, nCell = 0;
+      const cells = roles.map(role => {
+        const c = st.cells[role];
+        if (!c) return `<td><span class="mx-badge mx-none">—</span></td>`;
+        nCell++;
+        if (c.status === 'done') nDone++;
+        if (c.status === 'overdue') nOver++;
+        const badge = c.status === 'done' ? `<span class="mx-badge mx-done">✅ ตรวจแล้ว</span>`
+          : c.status === 'overdue' ? `<span class="mx-badge mx-ov">⏰ เกินกำหนด</span>`
+          : `<span class="mx-badge mx-pend">รอตรวจ</span>`;
+        const btns = canManage ? `<div class="mx-acts"><button class="btn btn-outline btn-compact" data-rule-id="${escapeAttr(c.rule.RuleID)}">แก้ไข</button><button class="btn btn-danger btn-compact" data-delete-rule-id="${escapeAttr(c.rule.RuleID)}" data-rule-label="${escapeAttr(`${c.rule.RequiredRole}/${c.rule.LineName||c.rule.LineID}/${c.rule.StationName||c.rule.StationID}`)}">ลบ</button></div>` : '';
+        return `<td>${badge}${btns}</td>`;
+      }).join('');
+      return `<tr data-ov="${nOver}" data-done="${nDone}" data-cells="${nCell}"><td class="mx-st">${escapeHtml(st.name)}</td>${cells}</tr>`;
+    }).join('');
+    return `<div class="mx-line"><div class="mx-line-title">📊 ${escapeHtml(line.name)}</div><div class="table-wrap"><table class="data-table mx-table"><thead><tr><th>Station</th>${headCols}</tr></thead><tbody>${rows}</tbody></table></div></div>`;
+  }).join('');
+
+  container.innerHTML = filterBar + tables;
+
+  // Filter logic
+  $$('.mx-btn', container).forEach(btn => btn.addEventListener('click', () => {
+    $$('.mx-btn', container).forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const f = btn.dataset.mf;
+    $$('.mx-line tbody tr', container).forEach(row => {
+      const ov = +row.dataset.ov, done = +row.dataset.done, cells = +row.dataset.cells;
+      row.style.display = (f === 'overdue' ? ov > 0 : f === 'done' ? done === cells && cells > 0 : true) ? '' : 'none';
+    });
+  }));
+
+  // Edit/delete handlers
+  $$('[data-rule-id]', container).forEach(btn => btn.addEventListener('click', () => {
+    const rule = state.auditRules.find(r => r.RuleID === btn.dataset.ruleId);
+    if (rule) openAuditRuleEditor(rule);
+  }));
+  $$('[data-delete-rule-id]', container).forEach(btn => btn.addEventListener('click', () => deleteAuditRule(btn.dataset.deleteRuleId, btn.dataset.ruleLabel)));
 }
 
 function openAuditRuleEditor(rule = null) {

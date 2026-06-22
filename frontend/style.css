@@ -107,6 +107,26 @@ label{display:flex;flex-direction:column;gap:7px;font-size:.88rem;font-weight:70
 .audit-plan-table td{vertical-align:middle}.audit-plan-table .action-cell{white-space:nowrap;min-width:110px}
 .plan-alert{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 18px;background:linear-gradient(90deg,#fff4e0,#fff8ed);border:1.5px solid var(--orange);border-radius:12px;margin-bottom:18px;font-size:.95rem;color:var(--orange)}
 .plan-alert.hidden{display:none}
+/* Matrix View */
+.mx-bar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:18px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:12px}
+.mx-filters{display:flex;gap:8px;flex-wrap:wrap}
+.mx-btn{padding:6px 16px;border:1.5px solid var(--border);border-radius:8px;background:#fff;cursor:pointer;font-size:.87rem;font-weight:500;transition:all .15s}
+.mx-btn.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+.mx-counter{display:flex;gap:16px;font-size:.9rem;font-weight:500}
+.mx-cnt-ov{color:var(--red)}.mx-cnt-ok{color:var(--green)}
+.mx-line{margin-bottom:28px}
+.mx-line-title{font-weight:700;font-size:1rem;color:var(--navy);margin-bottom:10px;padding:6px 4px 10px;border-bottom:2px solid var(--border)}
+.mx-table th{text-align:center;background:#edf4f8;white-space:nowrap}
+.mx-role{font-weight:700;font-size:.9rem}
+.mx-freq{font-size:.75rem;color:var(--muted);font-weight:400;margin-top:2px}
+.mx-st{font-weight:600;white-space:nowrap;min-width:100px;text-align:left!important}
+.mx-table td{text-align:center;vertical-align:middle;padding:8px 10px}
+.mx-badge{display:inline-block;padding:4px 10px;border-radius:6px;font-size:.8rem;font-weight:600;white-space:nowrap}
+.mx-done{background:#EAF3DE;color:#3B6D11}
+.mx-ov{background:#FCEBEB;color:#A32D2D}
+.mx-pend{background:#f3f6f8;color:#657383}
+.mx-none{color:var(--muted);font-size:.9rem}
+.mx-acts{margin-top:5px;display:flex;gap:4px;justify-content:center;flex-wrap:wrap}
 .plan-alert .btn-sm{padding:6px 14px;font-size:.85rem;min-height:auto;white-space:nowrap}
 .save-bar{position:sticky;z-index:20;bottom:15px;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 18px;background:rgba(255,255,255,.96);border:1px solid var(--border);border-radius:13px;box-shadow:0 12px 35px rgba(11,41,72,.18);backdrop-filter:blur(8px)}
 .save-bar small{display:block;color:var(--muted);margin-top:3px}
