@@ -316,10 +316,13 @@ async function loadDashboard() {
   const role = state.user?.Role || '';
   const isLeaderRole = role === 'Leader' || role === 'Supervisor';
   const isMgrRole = role === 'Manager';
+  const isDirRole = role === 'Admin';
   $('#leaderDashboard').classList.toggle('hidden', !isLeaderRole);
   $('#mgrDashboard').classList.toggle('hidden', !isMgrRole);
-  $('#managerDashboard').classList.toggle('hidden', isLeaderRole || isMgrRole);
+  $('#dirDashboard').classList.toggle('hidden', !isDirRole);
+  $('#managerDashboard').classList.toggle('hidden', isLeaderRole || isMgrRole || isDirRole);
   if (isMgrRole) { await loadManagerDashboard(); return; }
+  if (isDirRole) { await loadDirectorDashboard(); return; }
   if (isLeaderRole) { await loadLeaderDashboard(); return; }
   const refreshButton = $('#refreshDashboard');
   refreshButton.disabled = true;
@@ -509,6 +512,220 @@ function openFindingForEdit(findingId) {
   navigateTo('findings').then(() => {
     setTimeout(() => openFindingEditor(findingId), 800);
   });
+}
+
+// ===== Director Dashboard =====
+if (!state.dirData) state.dirData = { data: null, months: 3 };
+
+async function loadDirectorDashboard(months) {
+  if (months) state.dirData.months = months;
+  const m = state.dirData.months;
+  $('#dirKPIs').innerHTML = Array.from({length:3},()=>'<div class="dir-kpi-card skeleton-card" style="min-height:120px"></div>').join('');
+  $('#dirTrend').innerHTML = '<div class="dir-trend-placeholder">กำลังโหลด...</div>';
+  $('#dirChronic').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
+  $('#dirLayer').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
+  try {
+    const data = await apiCall('getDirectorDashboardData', { months: m });
+    state.dirData.data = data;
+    renderDirHeader(data);
+    renderDirKPIs(data);
+    renderDirTrend(data);
+    renderDirChronic(data);
+    renderDirLayer(data);
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+function renderDirHeader(data) {
+  const user = state.user;
+  const ts = new Date().toLocaleString('th-TH', { year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+  const m = data.months;
+  $('#dirHeader').innerHTML = `
+    <div>
+      <div class="dir-title">LPA Overview Dashboard</div>
+      <div class="dir-sub">${escapeHtml(user.Department||user.FullName||'Plant')}</div>
+    </div>
+    <div class="dir-period-row">
+      <button class="dir-period-btn ${m===1?'active':''}" onclick="loadDirectorDashboard(1)">1 เดือน</button>
+      <button class="dir-period-btn ${m===3?'active':''}" onclick="loadDirectorDashboard(3)">3 เดือน</button>
+      <button class="dir-period-btn ${m===6?'active':''}" onclick="loadDirectorDashboard(6)">6 เดือน</button>
+      <span class="dir-ts">อัปเดต ${escapeHtml(ts)}</span>
+    </div>`;
+}
+
+function renderDirKPIs(data) {
+  const kpis = data.overallKPIs || {};
+  const spark = data.sparklineData || [];
+  const TARGET = 90;
+
+  function trendArrow(curr, prev) {
+    if (prev == null || prev === curr) return { icon:'→', cls:'flat', label:'' };
+    const diff = (curr - prev).toFixed(1);
+    return curr >= prev ? { icon:'▲', cls:'up', label:`+${diff}%` } : { icon:'▼', cls:'down', label:`${diff}%` };
+  }
+
+  function sparkSVG(points, color) {
+    if (!points.length || points.every(p => p == null)) return '';
+    const vals = points.map(p => p != null ? p : 0);
+    const w = 100, h = 30, max = 100, min = 0;
+    const xStep = vals.length > 1 ? w / (vals.length - 1) : w;
+    const pts = vals.map((v, i) => `${(i * xStep).toFixed(1)},${(h - (v - min) / (max - min) * h).toFixed(1)}`).join(' ');
+    const targetY = (h - (TARGET - min) / (max - min) * h).toFixed(1);
+    return `<svg class="dir-sparkline" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+      <line x1="0" y1="${targetY}" x2="${w}" y2="${targetY}" stroke="#d32929" stroke-width="0.8" stroke-dasharray="3,2"/>
+      <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>`;
+  }
+
+  const compliance = kpis.compliance ?? 0;
+  const compCls = compliance >= TARGET ? 'green' : compliance >= 70 ? 'orange' : 'red';
+  const compTrend = trendArrow(compliance, kpis.prevCompliance);
+  const compSpark = sparkSVG(spark.map(s => s.compliance), compliance >= TARGET ? '#16824b' : '#d32929');
+
+  const resRate = kpis.resolutionRate;
+  const resCls = resRate >= 80 ? 'green' : resRate >= 50 ? 'orange' : 'red';
+  const resTrend = trendArrow(resRate, kpis.prevResolutionRate);
+
+  const roles = ['Leader','Supervisor','Manager'];
+  const roleColors = { Leader:'var(--blue)', Supervisor:'var(--orange)', Manager:'var(--navy)' };
+  const layerData = data.layerSummary || [];
+  const maxComp = Math.max(1, ...layerData.map(l => l.compliance));
+  const miniBars = roles.map(role => {
+    const row = layerData.find(l => l.role === role) || {};
+    const pct = row.compliance ?? 0;
+    const barH = Math.max(3, Math.round(pct / maxComp * 28));
+    const color = roleColors[role] || 'var(--blue)';
+    return `<div class="dir-mini-bar-wrap"><div class="dir-mini-bar" style="height:${barH}px;background:${color}" title="${role}: ${pct}%"></div><div class="dir-mini-bar-label">${role.slice(0,3)}</div></div>`;
+  }).join('');
+
+  $('#dirKPIs').innerHTML = `
+    <div class="dir-kpi-card">
+      <div class="dir-kpi-label">Overall Compliance</div>
+      <div class="dir-kpi-value ${compCls}">${compliance}%</div>
+      <div class="dir-kpi-trend ${compTrend.cls}">${compTrend.icon} ${compTrend.label || 'เทียบกับช่วงก่อน'}</div>
+      ${compSpark}
+      <div class="dir-target-note">Target: ${TARGET}% ${compliance < TARGET ? '⚠️ ต่ำกว่า Target' : '✅ ผ่าน Target'}</div>
+    </div>
+    <div class="dir-kpi-card">
+      <div class="dir-kpi-label">Finding Resolution Rate</div>
+      <div class="dir-kpi-value ${resCls}">${resRate != null ? resRate+'%' : '-'}</div>
+      <div class="dir-kpi-trend ${resTrend.cls}">${resTrend.icon} ${resTrend.label || 'เทียบกับช่วงก่อน'}</div>
+      <div class="dir-target-note">% Finding ที่ปิดได้ตรงเวลา</div>
+    </div>
+    <div class="dir-kpi-card">
+      <div class="dir-kpi-label">Audit Completion by Layer</div>
+      <div class="dir-kpi-value">${compliance}%</div>
+      <div class="dir-mini-bars">${miniBars}</div>
+      <div class="dir-target-note">Leader / Supervisor / Manager</div>
+    </div>`;
+}
+
+function renderDirTrend(data) {
+  const monthly = data.monthlyCompliance || [];
+  const lines = data.lines || [];
+  if (monthly.length < 2) {
+    $('#dirTrend').innerHTML = '<div class="dir-trend-placeholder">ยังไม่มีข้อมูลเพียงพอ · ต้องการอย่างน้อย 2 เดือน</div>';
+    return;
+  }
+  const W = 560, H = 180, PL = 40, PR = 10, PT = 14, PB = 30;
+  const chartW = W - PL - PR, chartH = H - PT - PB;
+  const months = monthly.map(m => m.month);
+  const TARGET = 90;
+
+  // Collect per-line data across months
+  const lineColors = ['#1769aa','#16824b','#d56a00','#8f1111','#7b3fa0','#0b6e6e','#b85c00','#456b00'];
+  const lineMap = {};
+  monthly.forEach(m => {
+    Object.keys(m.byLine || {}).forEach(lid => {
+      if (!lineMap[lid]) lineMap[lid] = {};
+      lineMap[lid][m.month] = m.byLine[lid].expected ? Math.round(m.byLine[lid].done*1000/m.byLine[lid].expected)/10 : 100;
+    });
+  });
+
+  function xPos(i) { return PL + (months.length > 1 ? i / (months.length - 1) * chartW : chartW / 2); }
+  function yPos(pct) { return PT + chartH - (pct / 100 * chartH); }
+
+  // Grid lines + labels
+  const yGridLines = [0,25,50,75,100].map(v => {
+    const y = yPos(v);
+    return `<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="#e5ebef" stroke-width="0.8"/>
+            <text x="${PL-4}" y="${y+4}" text-anchor="end" font-size="9" fill="#657383">${v}</text>`;
+  }).join('');
+  const xLabels = months.map((m, i) => {
+    const x = xPos(i);
+    const label = m.slice(0,4) + '/' + m.slice(4,6);
+    return `<text x="${x}" y="${H-4}" text-anchor="middle" font-size="9" fill="#657383">${label}</text>`;
+  }).join('');
+  const targetY = yPos(TARGET);
+  const targetLine = `<line x1="${PL}" y1="${targetY}" x2="${W-PR}" y2="${targetY}" stroke="#d32929" stroke-width="1" stroke-dasharray="5,3"/>
+    <text x="${W-PR+2}" y="${targetY+3}" font-size="8" fill="#d32929">T</text>`;
+
+  // Line paths
+  const linePaths = lines.slice(0,8).map((line, li) => {
+    const color = lineColors[li % lineColors.length];
+    const pts = months.map((m, i) => {
+      const v = lineMap[line.lineId] && lineMap[line.lineId][m] != null ? lineMap[line.lineId][m] : null;
+      return v != null ? `${xPos(i).toFixed(1)},${yPos(v).toFixed(1)}` : null;
+    }).filter(Boolean);
+    if (pts.length < 1) return '';
+    return `<polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+  }).join('');
+
+  const legend = lines.slice(0,8).map((line, li) => {
+    const color = lineColors[li % lineColors.length];
+    return `<div class="dir-legend-item"><div class="dir-legend-dot" style="background:${color}"></div>${escapeHtml(line.lineName)}</div>`;
+  }).join('');
+
+  $('#dirTrend').innerHTML = `<div class="dir-trend-wrap">
+    <svg class="dir-svg-chart" viewBox="0 0 ${W} ${H}" style="max-height:220px">
+      ${yGridLines}${xLabels}${targetLine}${linePaths}
+    </svg>
+    <div class="dir-legend">${legend}
+      <div class="dir-legend-item"><div class="dir-legend-dot" style="background:#d32929;border-radius:0;height:2px;width:14px"></div>Target 90%</div>
+    </div>
+  </div>`;
+}
+
+function renderDirChronic(data) {
+  const chronic = data.chronicFindings || [];
+  if (!chronic.length) { $('#dirChronic').innerHTML = '<div class="empty-state">ไม่พบ Finding ในช่วงเวลานี้</div>'; return; }
+  const rows = chronic.map(c => {
+    const warn = c.avgCloseDays != null && c.avgCloseDays > 7;
+    const avgStr = c.avgCloseDays != null ? `${c.avgCloseDays} วัน` : '-';
+    return `<tr class="${warn?'chronic-warn':''}">
+      <td><strong>${escapeHtml(c.category)}</strong></td>
+      <td class="num">${c.count}</td>
+      <td>${escapeHtml(c.topLineName||c.topLineId||'-')}</td>
+      <td class="num ${warn?'':''}"><span style="${warn?'color:var(--red);font-weight:900':''}">${avgStr}</span></td>
+      <td class="num">${c.openCount}</td>
+    </tr>`;
+  }).join('');
+  $('#dirChronic').innerHTML = `<table class="dir-data-table">
+    <thead><tr><th>ประเภท Finding</th><th class="num">ครั้ง</th><th>Line ที่พบบ่อย</th><th class="num">Avg Close</th><th class="num">ยังเปิด</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div style="font-size:.72rem;color:var(--muted);padding:8px 12px">⚠️ แถวสีแดง = avg close time เกิน 7 วัน</div>`;
+}
+
+function renderDirLayer(data) {
+  const layers = data.layerSummary || [];
+  if (!layers.length) { $('#dirLayer').innerHTML = '<div class="empty-state">ไม่มีข้อมูล</div>'; return; }
+  const rows = layers.map(l => {
+    const compCls = l.compliance >= 90 ? 'color:var(--green)' : l.compliance >= 70 ? 'color:var(--orange)' : 'color:var(--red)';
+    const otCls = l.onTimeRate >= 90 ? 'color:var(--green)' : l.onTimeRate >= 70 ? 'color:var(--orange)' : 'color:var(--red)';
+    return `<tr>
+      <td><strong>${escapeHtml(l.role)}</strong></td>
+      <td class="num">${l.done}/${l.expected}</td>
+      <td class="num"><span style="${compCls};font-weight:900">${l.compliance}%</span></td>
+      <td class="num"><span style="${otCls};font-weight:900">${l.onTimeRate}%</span></td>
+      <td class="num">${l.findingCount}</td>
+    </tr>`;
+  }).join('');
+  $('#dirLayer').innerHTML = `<table class="dir-data-table">
+    <thead><tr><th>Role</th><th class="num">Audit Done/Total</th><th class="num">Compliance</th><th class="num">On-Time Rate</th><th class="num">Finding ที่พบ</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
 }
 
 // ===== Manager Dashboard =====

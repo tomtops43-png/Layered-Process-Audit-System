@@ -1,4 +1,140 @@
 /** Lightweight rule-based LPA schedule APIs and in-memory due calculation. */
+function getDirectorDashboardData(payload, currentUser) {
+  try {
+    requirePermission_(currentUser, 'dashboard.view.all');
+    var months = Math.min(Math.max(toNumber_(payload.months) || 3, 1), 12);
+    var now = new Date();
+    var today = formatDateBangkok_(now);
+
+    function monthKey(date) { return getPeriodMonth(date); }
+    function buildMonthList(offset, count) {
+      var list = [];
+      for (var i = offset + count - 1; i >= offset; i--) {
+        var d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        list.push({ month: monthKey(d), date: d });
+      }
+      return list;
+    }
+    var currMonths = buildMonthList(0, months);
+    var prevMonths = buildMonthList(months, months);
+    var sparkMonths = buildMonthList(0, Math.max(months, 6));
+
+    var allMonthKeys = {};
+    function registerMonths(arr) { arr.forEach(function(m){ allMonthKeys[m.month] = m.date; }); }
+    registerMonths(currMonths); registerMonths(prevMonths); registerMonths(sparkMonths);
+
+    var earliestMonth = Object.keys(allMonthKeys).sort()[0];
+    var auditRows = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS).filter(function(a) {
+      return cleanString_(a.PeriodMonth) >= earliestMonth;
+    });
+
+    var auditByMonth = {};
+    var auditsByRole = {};
+    auditRows.forEach(function(a) {
+      var m = cleanString_(a.PeriodMonth), role = cleanString_(a.AuditLayer);
+      if (!auditByMonth[m]) auditByMonth[m] = { keys: {} };
+      var key = [cleanString_(a.AuditDate), cleanString_(a.LineID), cleanString_(a.StationID), role.toLowerCase()].join('|');
+      auditByMonth[m].keys[key] = true;
+      if (!auditsByRole[role]) auditsByRole[role] = { done: 0, onTime: 0 };
+      auditsByRole[role].done++;
+      if (cleanString_(a.IsLate).toLowerCase() !== 'yes') auditsByRole[role].onTime++;
+    });
+
+    var rules = getAuditPlanRuleRows_().filter(function(r) { return isActive_(r.ActiveStatus); });
+
+    function computeMonth(monthDate) {
+      var m = monthKey(monthDate);
+      var monthAudits = (auditByMonth[m] || {}).keys || {};
+      var byLine = {}, byRole = {}, exp = 0, done = 0;
+      rules.forEach(function(rule) {
+        var dates = ruleExpectedDatesInMonth_(rule, monthDate);
+        var lid = cleanString_(rule.LineID), role = cleanString_(rule.RequiredRole);
+        if (!byLine[lid]) byLine[lid] = { lineName: cleanString_(rule.LineName)||lid, expected:0, done:0 };
+        if (!byRole[role]) byRole[role] = { expected:0, done:0 };
+        dates.forEach(function(date) {
+          if (date > today) return;
+          byLine[lid].expected++; byRole[role].expected++; exp++;
+          var key = [date, lid, cleanString_(rule.StationID), role.toLowerCase()].join('|');
+          if (monthAudits[key]) { byLine[lid].done++; byRole[role].done++; done++; }
+        });
+      });
+      return { month: m, expected: exp, done: done, compliance: exp ? Math.round(done*1000/exp)/10 : 100, byLine: byLine, byRole: byRole };
+    }
+
+    var computed = {};
+    Object.keys(allMonthKeys).forEach(function(m) { computed[m] = computeMonth(allMonthKeys[m]); });
+
+    function pct(d, e) { return e ? Math.round(d*1000/e)/10 : 100; }
+    function periodAgg(list) {
+      var e=0, d=0; list.forEach(function(m){ var c=computed[m.month]; if(c){e+=c.expected;d+=c.done;} }); return {expected:e,done:d,compliance:pct(d,e)};
+    }
+    var curr = periodAgg(currMonths), prev = periodAgg(prevMonths);
+
+    var rangeStart = currMonths[0].month;
+    var prevStart = prevMonths.length ? prevMonths[0].month : '';
+    var allFindingRows = getCachedFindingRows_();
+    var currFindings = allFindingRows.filter(function(f) { var fm=normalizeFindingPeriod_(f.PeriodMonth||f.FoundDate); return fm>=rangeStart; });
+    var prevFindingRows = prevStart ? allFindingRows.filter(function(f) { var fm=normalizeFindingPeriod_(f.PeriodMonth||f.FoundDate); return fm>=prevStart&&fm<rangeStart; }) : [];
+
+    function resolutionRate(findings) {
+      var closed = findings.filter(function(f){ return isClosedStatus_(f.Status) && cleanString_(f.DueDate); });
+      if (!closed.length) return null;
+      var onTime = closed.filter(function(f){ var cd=cleanString_(f.ClosedDate||f.ClosedAt); return cd&&cd<=cleanString_(f.DueDate); }).length;
+      return pct(onTime, closed.length);
+    }
+
+    var catMap = {};
+    currFindings.forEach(function(f) {
+      var cat = cleanString_(f.Category)||'Uncategorized', lid = cleanString_(f.LineID);
+      if (!catMap[cat]) catMap[cat]={category:cat,count:0,lines:{},closeTimes:[],openCount:0,lastStatus:''};
+      catMap[cat].count++; catMap[cat].lines[lid]=(catMap[cat].lines[lid]||0)+1;
+      if (!isClosedStatus_(f.Status)) catMap[cat].openCount++;
+      catMap[cat].lastStatus = f.Status||'';
+      var found=parseDate_(f.FoundDate), closed=parseDate_(f.ClosedDate||f.ClosedAt);
+      if (found&&closed) catMap[cat].closeTimes.push(Math.max(0,Math.round((closed-found)/86400000)));
+    });
+    var chronicFindings = Object.keys(catMap).sort(function(a,b){return catMap[b].count-catMap[a].count;}).slice(0,5).map(function(cat){
+      var c=catMap[cat];
+      var topLine=Object.keys(c.lines).sort(function(a,b){return c.lines[b]-c.lines[a];})[0]||'';
+      var lineRow=topLine?allFindingRows.filter(function(f){return cleanString_(f.LineID)===topLine;})[0]:null;
+      var avgClose=c.closeTimes.length?Math.round(c.closeTimes.reduce(function(s,v){return s+v;},0)/c.closeTimes.length*10)/10:null;
+      return {category:cat,count:c.count,topLineId:topLine,topLineName:lineRow?cleanString_(lineRow.LineName)||topLine:topLine,openCount:c.openCount,avgCloseDays:avgClose,lastStatus:c.lastStatus};
+    });
+
+    var findingByRole={};
+    currFindings.forEach(function(f){ var r=cleanString_(f.AuditorRole||''); if(r)findingByRole[r]=(findingByRole[r]||0)+1; });
+    var roleSet={};
+    rules.forEach(function(r){ roleSet[cleanString_(r.RequiredRole)]=true; });
+    var layerSummary=Object.keys(roleSet).sort().map(function(role){
+      var e=0,d=0;
+      currMonths.forEach(function(mo){ var c=computed[mo.month]; if(c&&c.byRole[role]){e+=c.byRole[role].expected;d+=c.byRole[role].done;} });
+      var ra=auditsByRole[role]||{done:0,onTime:0};
+      return {role:role,expected:e,done:d,compliance:pct(d,e),onTimeRate:ra.done?pct(ra.onTime,ra.done):100,findingCount:findingByRole[role]||0};
+    });
+
+    var lineSet={};
+    currMonths.forEach(function(mo){ var c=computed[mo.month]; if(c)Object.keys(c.byLine).forEach(function(lid){if(!lineSet[lid])lineSet[lid]=c.byLine[lid].lineName;}); });
+    var lines=Object.keys(lineSet).sort().map(function(lid){return{lineId:lid,lineName:lineSet[lid]};});
+
+    var monthlyCompliance=currMonths.map(function(mo){return computed[mo.month];}).filter(Boolean);
+    var sparklineData=sparkMonths.map(function(mo){var c=computed[mo.month];return c?{month:mo.month,compliance:c.compliance}:null;}).filter(Boolean);
+
+    return jsonResponse(true, 'Director dashboard loaded.', {
+      monthlyCompliance:monthlyCompliance, sparklineData:sparklineData,
+      chronicFindings:chronicFindings, layerSummary:layerSummary, lines:lines,
+      overallKPIs:{
+        compliance:curr.compliance, prevCompliance:prev.compliance,
+        resolutionRate:resolutionRate(currFindings), prevResolutionRate:resolutionRate(prevFindingRows),
+        auditCompletionRate:curr.compliance,
+        currDone:curr.done, currExpected:curr.expected
+      },
+      months:months, startDate:currMonths[0].month.slice(0,4)+'-'+currMonths[0].month.slice(4,6)+'-01', endDate:today
+    });
+  } catch(error) {
+    return jsonResponse(false, safeErrorMessage_(error), {});
+  }
+}
+
 function getManagerComplianceData(payload, currentUser) {
   try {
     requirePermission_(currentUser, 'dashboard.view');

@@ -102,6 +102,7 @@ function hasApiAccess_(user, action) {
     closeFinding: ['findings.close.minor', 'findings.close.major', 'findings.close.critical'],
     getDashboard: ['dashboard.view', 'dashboard.view.all'],
     getManagerComplianceData: ['dashboard.view', 'dashboard.view.all'],
+    getDirectorDashboardData: ['dashboard.view.all'],
     getMonthlyReport: ['reports.view'], exportReportCsv: ['reports.export'],
     uploadFile: ['findings.update.assigned', 'findings.update.line', 'findings.verify', 'findings.view.all',
       'audit.manager.create', 'audit.supervisor.create', 'audit.engineer.create', 'audit.leader.create']
