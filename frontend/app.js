@@ -623,7 +623,7 @@ function renderLeaderMetrics(dashData, rules, todayAudits, myFindings) {
     { label: 'ต้องตรวจวันนี้', value: dueToday, note: 'Station (เฉพาะ Line ที่ผลิต)', cls: dueToday > 0 ? 'warn' : 'ok' },
     { label: 'ตรวจแล้ววันนี้', value: doneToday, note: `จาก ${todayRules.length} รายการ`, cls: doneToday >= todayRules.length && todayRules.length > 0 ? 'ok' : '' },
     { label: 'Finding ค้างอยู่', value: openFindings, note: 'รายการที่มอบหมายฉัน', cls: openFindings > 0 ? 'danger' : 'ok' },
-    { label: 'Compliance เดือนนี้', value: `${compliance}%`, note: `ตรวจแล้ว ${completed} รอบ`, cls: compliance >= 80 ? 'ok' : compliance >= 50 ? 'warn' : 'danger' }
+    { label: 'Compliance วันนี้', value: `${compliance}%`, note: `ตรวจแล้ว ${doneToday}/${dueToday} รอบ`, cls: compliance >= 80 ? 'ok' : compliance >= 50 ? 'warn' : 'danger' }
   ];
   $('#ldMetrics').innerHTML = cards.map(c => `<div class="ld-card ${c.cls}"><div class="ld-card-label">${escapeHtml(c.label)}</div><div class="ld-card-value">${escapeHtml(String(c.value))}</div><div class="ld-card-note">${escapeHtml(c.note)}</div></div>`).join('');
 }
