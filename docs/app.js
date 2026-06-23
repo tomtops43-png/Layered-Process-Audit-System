@@ -703,10 +703,8 @@ function renderLeaderTasks(rules, todayAudits) {
   $('#ldTasks').innerHTML = todayRules.map(r => {
     const key = `${r.LineID}|${r.StationID}|${r.RequiredRole.toLowerCase()}`;
     const done = !!todayMap[key];
-    const [h, m] = (r.DueTime || '17:00').split(':').map(Number);
-    const overdue = !done && nowMin > h * 60 + m;
+    // เกินกำหนด = ข้ามวันเท่านั้น (หลังเที่ยงคืน) — ระหว่างวันยังเป็น "รอตรวจ"
     const badge = done ? '<span class="ld-badge done">✅ ตรวจแล้ว</span>'
-      : overdue ? '<span class="ld-badge overdue">⏰ เกินกำหนด</span>'
       : '<span class="ld-badge pending">🕐 รอตรวจ</span>';
     const timeLabel = '';
     const startBtn = done ? '' : `<button class="btn btn-primary btn-compact" onclick="startAuditFromDashboard(${JSON.stringify(r.LineID)},${JSON.stringify(r.StationID)},${JSON.stringify(r.RequiredRole)})">เริ่มตรวจ</button>`;
