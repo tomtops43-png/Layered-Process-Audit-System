@@ -311,7 +311,20 @@
     </form>
   </dialog>
 
+  <!-- Production Plan Check-in Dialog -->
+  <dialog id="prodPlanDialog" class="modal">
+    <div class="modal-head">
+      <div><p class="eyebrow">เริ่มต้นวันทำงาน</p><h3>🏭 วันนี้ผลิต Line ไหนบ้าง?</h3></div>
+    </div>
+    <div id="prodPlanLines" style="padding:16px 20px;max-height:50vh;overflow-y:auto"></div>
+    <div class="modal-actions" style="display:flex;gap:8px">
+      <button type="button" class="btn btn-outline" id="prodPlanToggleAll">เลือกทั้งหมด</button>
+      <div style="flex:1"></div>
+      <button type="button" class="btn btn-primary" id="prodPlanSave">✓ บันทึกและเริ่มงาน</button>
+    </div>
+  </dialog>
+
   <script src="config.js" defer></script>
-  <script src="app.js?v=20260622-rmuser" defer></script>
+  <script src="app.js?v=20260623-prodplan" defer></script>
 </body>
 </html>

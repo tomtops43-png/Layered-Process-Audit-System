@@ -303,6 +303,7 @@ function logout(notify = true) {
   localStorage.removeItem('lpa_user');
   GASCache.invalidateAll();
   state.leaderDashData = null;
+  state.productionPlan = null;
   stopFindingNotificationPolling();
   updateFindingBadges(0);
   showLogin();
@@ -402,11 +403,88 @@ async function loadDashboard() {
   }
 }
 
+// ===== Production Plan Check-in =====
+async function ensureProductionPlan() {
+  if (state.productionPlan) return true; // already set this session
+  try {
+    const data = await apiCall('getProductionPlan', {});
+    if (data.isSet) {
+      state.productionPlan = { activeLineIds: data.activeLineIds, date: data.date };
+      return true;
+    }
+    // Not set today — show modal
+    await openProductionPlanModal(data);
+    return !!state.productionPlan;
+  } catch (_) {
+    return true; // on error, don't block dashboard
+  }
+}
+
+async function openProductionPlanModal(planData) {
+  return new Promise(resolve => {
+    const lineAccess = JSON.parse(localStorage.getItem('lpa_line_access') || '[]');
+    const allLines = state.masterData.lines || [];
+    const myLines = allLines.filter(l =>
+      lineAccess.some(la => la.LineID === l.LineID || la.LineID === 'ALL')
+    );
+    if (!myLines.length) { resolve(); return; }
+
+    const currentIds = planData?.activeLineIds || null;
+    const isAllSelected = currentIds === null; // null = not set yet → default all checked
+
+    $('#prodPlanLines').innerHTML = myLines.map(l => `
+      <label class="prod-plan-line-item">
+        <input type="checkbox" class="prod-plan-cb" value="${escapeAttr(l.LineID)}"
+               ${isAllSelected || (currentIds && currentIds.includes(l.LineID)) ? 'checked' : ''}>
+        <span class="prod-plan-line-name">${escapeHtml(l.LineName || l.LineID)}</span>
+      </label>`).join('');
+
+    let allChecked = true;
+    $('#prodPlanToggleAll').textContent = 'ยกเลิกทั้งหมด';
+    $('#prodPlanToggleAll').onclick = () => {
+      allChecked = !allChecked;
+      $$('.prod-plan-cb').forEach(cb => { cb.checked = allChecked; });
+      $('#prodPlanToggleAll').textContent = allChecked ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด';
+    };
+
+    $('#prodPlanSave').onclick = async () => {
+      const selected = $$('.prod-plan-cb:checked').map(cb => cb.value);
+      if (!selected.length) { showToast('กรุณาเลือกอย่างน้อย 1 Line', 'warning'); return; }
+      $('#prodPlanSave').disabled = true;
+      $('#prodPlanSave').textContent = 'กำลังบันทึก...';
+      try {
+        const saved = await apiCall('saveProductionPlan', { lineIds: selected });
+        state.productionPlan = { activeLineIds: saved.activeLineIds, date: saved.date };
+        $('#prodPlanDialog').close();
+        resolve();
+      } catch (err) {
+        showToast(err.message, 'error');
+        $('#prodPlanSave').disabled = false;
+        $('#prodPlanSave').textContent = '✓ บันทึกและเริ่มงาน';
+      }
+    };
+
+    $('#prodPlanDialog').showModal();
+    $('#prodPlanDialog').oncancel = e => { e.preventDefault(); }; // prevent Esc close
+  });
+}
+
+function changeProdPlan() {
+  state.productionPlan = null;
+  state.leaderDashData = null;
+  GASCache.invalidatePrefix('leader_');
+  openProductionPlanModal(null).then(() => loadLeaderDashboard());
+}
+
 async function loadLeaderDashboard() {
   const today = localDateInput(new Date());
   const role = state.user.Role;
   const rolesToFetch = role === 'Supervisor' ? ['Supervisor', 'Leader'] : ['Leader'];
   const ldKey = `leader_${state.user?.UserID}_${today}`;
+
+  // Ensure production plan is set before showing dashboard
+  const ready = await ensureProductionPlan();
+  if (!ready) return;
 
   // Render from in-memory state immediately — no skeleton flash on tab switch
   if (state.leaderDashData) {
@@ -443,7 +521,10 @@ async function fetchLeaderDashData(ldKey, today, rolesToFetch, silent) {
       apiCall('getFindings', { myFindings: 'assigned', limit: 200 }).catch(() => ({ findings: [] }))
     ]);
     state.dashboard = dashData;
-    const rules = (rulesData.rules || []).filter(r => rolesToFetch.includes(r.RequiredRole));
+    const activeLineIds = state.productionPlan?.activeLineIds || null;
+    const rules = (rulesData.rules || [])
+      .filter(r => rolesToFetch.includes(r.RequiredRole))
+      .filter(r => !activeLineIds || activeLineIds.includes(r.LineID));
     const todayAudits = auditsData.audits || [];
     const myFindings = (findingsData.findings || []).filter(f => (f.Status || '').toLowerCase() !== 'closed');
     const d = { dashData, rules, todayAudits, myFindings };
@@ -462,38 +543,50 @@ async function fetchLeaderDashData(ldKey, today, rolesToFetch, silent) {
 function renderLeaderHeader(dashData) {
   const user = state.user;
   const rs = dashData.AuditRuleSummary || {};
-  const hasDue = (rs.DueToday || 0) > 0;
-  const lineAccess = JSON.parse(localStorage.getItem('lpa_line_access') || '[]');
-  const lineNames = lineAccess.length ? lineAccess.map(l => l.LineName || l.LineID).join(', ') : (user.LineDefault || '-');
+  const plan = state.productionPlan;
   const now = new Date();
   const thaiDate = now.toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+  // Show active lines from production plan
+  const allLines = state.masterData.lines || [];
+  let lineLabel, activeBadge = '';
+  if (plan && plan.activeLineIds) {
+    const activeNames = allLines.filter(l => plan.activeLineIds.includes(l.LineID)).map(l => l.LineName || l.LineID);
+    lineLabel = activeNames.join(', ') || '-';
+    activeBadge = `<span class="prod-active-badge">🟢 ${activeNames.length} Line ผลิตวันนี้</span>`;
+  } else {
+    const lineAccess = JSON.parse(localStorage.getItem('lpa_line_access') || '[]');
+    lineLabel = lineAccess.map(l => l.LineName || l.LineID).join(', ') || (user.LineDefault || '-');
+  }
+
+  const todayTasks = (state.leaderDashData?.rules || []).filter(r => rulesMatchToday(r)).length;
   $('#ldHeader').innerHTML = `
     <div class="ld-header-left">
       <div class="ld-greeting">สวัสดี, ${escapeHtml(user.FullName || user.Username)} 👋</div>
-      <div class="ld-sub">${escapeHtml(user.Role)} · ${escapeHtml(lineNames)}</div>
+      <div class="ld-sub">${escapeHtml(user.Role)} · ${escapeHtml(lineLabel)}</div>
       <div class="ld-sub">${escapeHtml(thaiDate)}</div>
+      ${activeBadge ? `<div style="margin-top:6px">${activeBadge} <button class="prod-change-btn" onclick="changeProdPlan()">เปลี่ยน</button></div>` : ''}
     </div>
     <div style="display:flex;align-items:center;gap:10px">
       <button class="ld-refresh" onclick="loadLeaderDashboard()" title="รีเฟรช">↻</button>
       <button class="ld-bell" onclick="navigateTo('findings')" title="Finding ของฉัน">
-        🔔${hasDue ? `<span class="ld-bell-badge">${rs.DueToday}</span>` : ''}
+        🔔${todayTasks > 0 ? `<span class="ld-bell-badge">${todayTasks}</span>` : ''}
       </button>
     </div>`;
 }
 
 function renderLeaderMetrics(dashData, rules, todayAudits, myFindings) {
   const rs = dashData.AuditRuleSummary || {};
-  const dueToday = rs.DueToday || 0;
   const todayMap = {};
   todayAudits.forEach(a => { todayMap[`${a.LineID}|${a.StationID}|${String(a.AuditLayer||'').toLowerCase()}`] = true; });
   const todayRules = rules.filter(r => rulesMatchToday(r));
+  // Use client-computed values from filtered rules (respects production plan)
+  const dueToday = todayRules.length;
   const doneToday = todayRules.filter(r => todayMap[`${r.LineID}|${r.StationID}|${r.RequiredRole.toLowerCase()}`]).length;
   const openFindings = myFindings.length;
-  const completed = rs.CompletedThisMonth || 0;
-  const total = completed + (rs.Overdue || 0);
-  const compliance = total > 0 ? Math.round(completed / total * 100) : (dueToday === 0 && completed === 0 ? 100 : 0);
+  const compliance = dueToday > 0 ? Math.round(doneToday / dueToday * 100) : (doneToday === 0 ? 100 : 0);
   const cards = [
-    { label: 'ต้องตรวจวันนี้', value: dueToday, note: 'Station', cls: dueToday > 0 ? 'warn' : 'ok' },
+    { label: 'ต้องตรวจวันนี้', value: dueToday, note: 'Station (เฉพาะ Line ที่ผลิต)', cls: dueToday > 0 ? 'warn' : 'ok' },
     { label: 'ตรวจแล้ววันนี้', value: doneToday, note: `จาก ${todayRules.length} รายการ`, cls: doneToday >= todayRules.length && todayRules.length > 0 ? 'ok' : '' },
     { label: 'Finding ค้างอยู่', value: openFindings, note: 'รายการที่มอบหมายฉัน', cls: openFindings > 0 ? 'danger' : 'ok' },
     { label: 'Compliance เดือนนี้', value: `${compliance}%`, note: `ตรวจแล้ว ${completed} รอบ`, cls: compliance >= 80 ? 'ok' : compliance >= 50 ? 'warn' : 'danger' }
