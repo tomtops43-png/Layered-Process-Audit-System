@@ -304,6 +304,7 @@ function logout(notify = true) {
   GASCache.invalidateAll();
   state.leaderDashData = null;
   state.productionPlan = null;
+  state.productionPlanSkipped = false;
   stopFindingNotificationPolling();
   updateFindingBadges(0);
   showLogin();
@@ -406,6 +407,7 @@ async function loadDashboard() {
 // ===== Production Plan Check-in =====
 async function ensureProductionPlan() {
   if (state.productionPlan) return true; // already set this session
+  if (state.productionPlanSkipped) return true; // user dismissed modal — proceed without filter
   try {
     const data = await apiCall('getProductionPlan', {});
     if (data.isSet) {
@@ -414,7 +416,8 @@ async function ensureProductionPlan() {
     }
     // Not set today — show modal
     await openProductionPlanModal(data);
-    return !!state.productionPlan;
+    if (!state.productionPlan) state.productionPlanSkipped = true; // dismissed → don't show again
+    return true;
   } catch (_) {
     return true; // on error, don't block dashboard
   }
@@ -503,8 +506,10 @@ async function openProductionPlanModal(planData) {
       }
     };
 
+    const closeFn = () => { $('#prodPlanDialog').close(); resolve(); };
+    $('#closeProdPlanDialog').onclick = closeFn;
+    $('#prodPlanDialog').oncancel = closeFn;
     $('#prodPlanDialog').showModal();
-    $('#prodPlanDialog').oncancel = e => { e.preventDefault(); };
   });
 }
 
