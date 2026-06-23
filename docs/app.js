@@ -187,6 +187,18 @@ function bindEvents() {
     $(selector).addEventListener('input', event => event.target.classList.remove('field-error'));
   });
   $('#addUserButton').addEventListener('click', () => openUserEditor());
+  $('#migrateRulesBtn').addEventListener('click', async () => {
+    if (!confirm('แปลง Rule ระดับ Station ทั้งหมด → Line Level?\n(ลบ Rule เก่า สร้าง Rule ใหม่ 1 ต่อ 1 Line)\nไม่สามารถย้อนกลับได้')) return;
+    const btn = $('#migrateRulesBtn');
+    btn.disabled = true; btn.textContent = 'กำลังแปลง...';
+    try {
+      const data = await apiCall('migrateRulesToLineLevel', {});
+      showToast(`แปลงสำเร็จ: สร้าง ${data.migrated} Rule ใหม่, ลบ ${data.deleted} Rule เก่า`, 'success', 8000);
+      state.auditRules = [];
+      GASCache.invalidatePrefix('mgr_comp_'); GASCache.invalidatePrefix('dir_dash_');
+    } catch(e) { showToast(e.message, 'error'); }
+    finally { btn.disabled = false; btn.textContent = '🔄 Migrate Rules → Line Level'; }
+  });
   $('#searchUsersButton').addEventListener('click', loadUsers);
   $('#addShiftButton').addEventListener('click', () => openShiftEditor());
   $('#cancelShiftButton').addEventListener('click', closeShiftEditor);
@@ -687,7 +699,7 @@ function renderLeaderTasks(rules, todayAudits) {
     const startBtn = done ? '' : `<button class="btn btn-primary btn-compact" onclick="startAuditFromDashboard(${JSON.stringify(r.LineID)},${JSON.stringify(r.StationID)},${JSON.stringify(r.RequiredRole)})">เริ่มตรวจ</button>`;
     return `<div class="ld-task-row">
       ${badge}
-      <div class="ld-task-info"><div class="ld-task-name">${escapeHtml(r.StationName || r.StationID)}</div><div class="ld-task-meta">${escapeHtml(r.LineName || r.LineID)} · ${escapeHtml(r.RequiredRole)} · ${escapeHtml(r.Frequency || '')}</div></div>
+      <div class="ld-task-info"><div class="ld-task-name">${escapeHtml(r.LineName || r.LineID)}</div><div class="ld-task-meta">${escapeHtml(r.RequiredRole)} · ${escapeHtml(r.Frequency || '')}</div></div>
       <div class="ld-task-time">${escapeHtml(timeLabel)}</div>
       ${startBtn}
     </div>`;
@@ -729,8 +741,8 @@ function startAuditFromDashboard(lineId, stationId, role) {
     const lineEl = $('#auditLine');
     if (lineEl) { lineEl.value = lineId; lineEl.dispatchEvent(new Event('change')); }
     setTimeout(() => {
-      const stEl = $('#auditStation');
-      if (stEl) { stEl.value = stationId; stEl.dispatchEvent(new Event('change')); }
+      // Line-level: station is always ALL
+      $('#auditStation').value = 'ALL';
       const layerEl = $('#auditLayer');
       if (layerEl) {
         const opt = Array.from(layerEl.options).find(o => o.value.toLowerCase() === role.toLowerCase());
@@ -2450,14 +2462,14 @@ function populateFindingAssignee(selectedUserId) {
 }
 
 function handleAuditLineChange() {
-  populateStationSelect('#auditStation', $('#auditLine').value, false);
+  // Line-level audit: always use ALL as station
+  $('#auditStation').value = 'ALL';
   updateAuditArea();
 }
 
 function updateAuditArea() {
-  const station = (state.masterData.stations || []).find(row => String(row.StationID) === $('#auditStation').value);
   const line = (state.masterData.lines || []).find(row => String(row.LineID) === $('#auditLine').value);
-  $('#auditArea').value = (station && station.Area) || (line && line.Area) || '';
+  $('#auditArea').value = (line && line.Area) || '';
 }
 
 function resetAuditForm() {

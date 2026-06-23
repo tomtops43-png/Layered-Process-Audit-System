@@ -3,7 +3,8 @@ function saveAudit(payload, currentUser) {
   var saveLock = null;
   var saveLockAcquired = false;
   try {
-    requireFields_(payload, ['auditDate', 'lineId', 'stationId', 'auditLayer', 'records']);
+    requireFields_(payload, ['auditDate', 'lineId', 'auditLayer', 'records']);
+    if (!payload.stationId) payload.stationId = 'ALL';
     var auditLayerPermissions = {
       leader: 'audit.leader.create',
       engineer: 'audit.engineer.create',
@@ -66,12 +67,14 @@ function saveAudit(payload, currentUser) {
     var lineName = cleanString_(payload.lineName);
     var stationName = cleanString_(payload.stationName);
     var area = cleanString_(payload.area);
-    if (!lineName || !stationName) {
+    if (!lineName) {
       var line = findById_(SHEET_NAMES.LINES, 'LineID', payload.lineId) || {};
-      var station = findById_(SHEET_NAMES.STATIONS, 'StationID', payload.stationId) || {};
-      if (!lineName) lineName = cleanString_(line.LineName) || cleanString_(station.LineName);
-      if (!stationName) stationName = cleanString_(station.StationName);
-      if (!area) area = cleanString_(station.Area) || cleanString_(line.Area);
+      lineName = cleanString_(line.LineName);
+      if (!area) area = cleanString_(line.Area);
+    }
+    if (!stationName) {
+      stationName = payload.stationId === 'ALL' ? 'ทั้ง Line'
+        : cleanString_((findById_(SHEET_NAMES.STATIONS, 'StationID', payload.stationId) || {}).StationName);
     }
     var clientSubmissionId = cleanString_(payload.clientSubmissionId);
     var explicitPlanId = cleanString_(payload.planId);

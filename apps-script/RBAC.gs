@@ -102,6 +102,7 @@ function hasApiAccess_(user, action) {
     closeFinding: ['findings.close.minor', 'findings.close.major', 'findings.close.critical'],
     getDashboard: ['dashboard.view', 'dashboard.view.all'],
     getManagerComplianceData: ['dashboard.view', 'dashboard.view.all'],
+    migrateRulesToLineLevel: ['audit.plan.manage'],
     getProductionPlan: ['audit.plan.view', 'audit.leader.create', 'audit.supervisor.create', 'audit.manager.create'],
     saveProductionPlan: ['audit.plan.view', 'audit.leader.create', 'audit.supervisor.create', 'audit.manager.create'],
     getDirectorDashboardData: ['dashboard.view.all'],

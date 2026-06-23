@@ -140,6 +140,69 @@ function getDirectorDashboardData(payload, currentUser) {
   }
 }
 
+function migrateRulesToLineLevel(payload, currentUser) {
+  try {
+    requirePermission_(currentUser, 'audit.plan.manage');
+    var rules = getAuditPlanRuleRows_();
+    var stationRules = rules.filter(function(r) { return cleanString_(r.StationID) !== 'ALL'; });
+    if (!stationRules.length) return jsonResponse(true, 'ไม่มี rule ระดับ Station ต้องแปลง', { migrated: 0, deleted: 0 });
+
+    // Group by unique (LineID, Role, AssignmentMode, UserID, Frequency, DueTime, DayOfWeek, DayOfMonth, ActiveStatus)
+    var groups = {};
+    stationRules.forEach(function(r) {
+      var key = [cleanString_(r.LineID), cleanString_(r.RequiredRole),
+        cleanString_(r.AssignmentMode) || 'ROLE', cleanString_(r.RequiredUserID),
+        cleanString_(r.Frequency), normalizeDueTime_(r.DueTime),
+        cleanString_(r.DayOfWeek), cleanString_(r.DayOfMonth),
+        cleanString_(r.ActiveStatus)].join('|');
+      if (!groups[key]) groups[key] = { sample: r };
+    });
+
+    var timestamp = formatDateTimeBangkok(new Date());
+    var migrated = 0;
+    Object.keys(groups).forEach(function(key) {
+      var s = groups[key].sample;
+      var lineRow = findById_(SHEET_NAMES.LINES, 'LineID', s.LineID) || {};
+      appendObject(SHEET_NAMES.AUDIT_PLAN_RULES, {
+        RuleID: generateId('RULE', SHEET_NAMES.AUDIT_PLAN_RULES, 'RuleID', ''),
+        AssignmentMode: cleanString_(s.AssignmentMode) || 'ROLE',
+        RequiredRole: cleanString_(s.RequiredRole),
+        RequiredUserID: cleanString_(s.RequiredUserID),
+        RequiredUserName: cleanString_(s.RequiredUserName),
+        LineID: cleanString_(s.LineID),
+        LineName: cleanString_(s.LineName) || cleanString_(lineRow.LineName) || '',
+        StationID: 'ALL', StationName: 'ทั้ง Line',
+        Frequency: cleanString_(s.Frequency),
+        DayOfWeek: cleanString_(s.DayOfWeek),
+        DayOfMonth: cleanString_(s.DayOfMonth),
+        DueTime: normalizeDueTime_(s.DueTime) || '17:00',
+        ActiveStatus: cleanString_(s.ActiveStatus),
+        CreatedAt: timestamp, CreatedBy: currentUser.UserID,
+        UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
+      });
+      migrated++;
+    });
+
+    // Delete old station-level rules (bottom to top)
+    var sheet = getSheet(SHEET_NAMES.AUDIT_PLAN_RULES);
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+    var idCol = headers.indexOf('RuleID');
+    var oldIds = {};
+    stationRules.forEach(function(r) { oldIds[cleanString_(r.RuleID)] = true; });
+    var lastRow = sheet.getLastRow();
+    if (lastRow >= 2) {
+      var ids = sheet.getRange(2, idCol + 1, lastRow - 1, 1).getDisplayValues();
+      for (var i = ids.length - 1; i >= 0; i--) {
+        if (oldIds[cleanString_(ids[i][0])]) sheet.deleteRow(i + 2);
+      }
+    }
+    invalidateAuditRulesCache_();
+    return jsonResponse(true, 'แปลง Rule เสร็จสมบูรณ์', { migrated: migrated, deleted: stationRules.length });
+  } catch(error) {
+    return jsonResponse(false, safeErrorMessage_(error), {});
+  }
+}
+
 function getManagerComplianceData(payload, currentUser) {
   try {
     if (!hasPermission_(currentUser, 'dashboard.view') && !hasPermission_(currentUser, 'dashboard.view.all')) {
@@ -272,14 +335,16 @@ function upsertAuditPlanRule(payload, currentUser) {
     requireFields_(payload, ['requiredRole', 'lineId', 'stationId', 'frequency', 'activeStatus']);
     var role = cleanString_(payload.requiredRole);
     var frequency = cleanString_(payload.frequency);
-    var stationSelection = cleanString_(payload.stationId);
+    var stationSelection = cleanString_(payload.stationId) || 'ALL';
     var bulkAllLines = isAllFilter_(payload.lineId);
-    var bulkCreate = valuesEqual_(stationSelection, 'ALL') || bulkAllLines;
+    // Line-level audit: stationId = 'ALL' creates ONE rule per line (not N per station)
+    var lineLevelRule = valuesEqual_(stationSelection, 'ALL');
+    var bulkCreate = bulkAllLines; // bulk only when ALL Lines selected
     var assignmentMode = cleanString_(payload.assignmentMode).toUpperCase() || (cleanString_(payload.requiredUserId) ? 'USER' : 'ROLE');
     if (['ROLE', 'USER'].indexOf(assignmentMode) === -1) throw new Error('AssignmentMode must be ROLE or USER.');
     if (['Leader', 'Supervisor', 'Manager'].indexOf(role) === -1) throw new Error('RequiredRole must be Leader, Supervisor, or Manager.');
     if (['Daily', 'Weekly', 'Monthly'].indexOf(frequency) === -1) throw new Error('Frequency must be Daily, Weekly, or Monthly.');
-    if (bulkCreate && cleanString_(payload.ruleId)) throw new Error('All Lines/Stations can only be used when creating new rules.');
+    if (bulkCreate && cleanString_(payload.ruleId)) throw new Error('All Lines can only be used when creating new rules.');
     if (!isAdmin_(currentUser) && !bulkAllLines) requireLineAccess_(currentUser, payload.lineId, 'Manage');
     if (!isAdmin_(currentUser) && bulkAllLines) requirePermission_(currentUser, 'audit.plan.manage');
     var assignedUser = null;
@@ -290,14 +355,27 @@ function upsertAuditPlanRule(payload, currentUser) {
       if (!valuesEqual_(assignedUser.Role, role)) throw new Error('Assigned user role must match RequiredRole.');
     }
 
-    var allStationRows = getRowsAsObjects(SHEET_NAMES.STATIONS).filter(function (s) { return isActive_(s.ActiveStatus); });
-    var activeStations = allStationRows.filter(function (station) {
-      var lineMatch = bulkAllLines || valuesEqual_(station.LineID, payload.lineId);
-      var stationMatch = bulkCreate || valuesEqual_(station.StationID, stationSelection);
-      return lineMatch && stationMatch;
-    });
+    // Build "station" list: for line-level rules use a virtual ALL entry per line
+    var activeStations;
+    if (lineLevelRule) {
+      // One entry per line (or one entry if single line)
+      var lineIds = bulkAllLines
+        ? getRowsAsObjects(SHEET_NAMES.LINES).filter(function(l){ return isActive_(l.ActiveStatus); }).map(function(l){ return l.LineID; })
+        : [cleanString_(payload.lineId)];
+      activeStations = lineIds.map(function(lid) {
+        var lineRow = findById_(SHEET_NAMES.LINES, 'LineID', lid) || {};
+        return { LineID: lid, LineName: lineRow.LineName || lid, StationID: 'ALL', StationName: 'ทั้ง Line' };
+      });
+    } else {
+      var allStationRows = getRowsAsObjects(SHEET_NAMES.STATIONS).filter(function (s) { return isActive_(s.ActiveStatus); });
+      activeStations = allStationRows.filter(function (station) {
+        var lineMatch = bulkAllLines || valuesEqual_(station.LineID, payload.lineId);
+        var stationMatch = valuesEqual_(station.StationID, stationSelection);
+        return lineMatch && stationMatch;
+      });
+    }
     if (!activeStations.length) {
-      throw new Error('No active stations were found for the selected Line/Station combination.');
+      throw new Error('No active lines/stations were found for the selected combination.');
     }
 
     var normalizedDayOfWeek = frequency === 'Weekly' ? cleanString_(payload.dayOfWeek) : '';

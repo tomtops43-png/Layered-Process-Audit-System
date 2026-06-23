@@ -77,18 +77,20 @@ function getChecklist(payload, currentUser) {
          hasPermission_(currentUser, 'audit.view.line'))) {
       requireLineAccess_(currentUser, payload.lineId, 'View');
     }
-    requireFields_(payload, ['lineId', 'stationId', 'auditLayer']);
+    requireFields_(payload, ['lineId', 'auditLayer']);
     var lineId = cleanString_(payload.lineId);
-    var stationId = cleanString_(payload.stationId);
+    var stationId = cleanString_(payload.stationId) || 'ALL';
     var layer = cleanString_(payload.auditLayer);
     var category = cleanString_(payload.category);
     var language = cleanString_(payload.language).toUpperCase() === 'EN' ? 'EN' : 'TH';
     var cacheKey = 'LPA_CL_' + lineId + '_' + stationId + '_' + layer + '_' + language + (category ? '_' + category : '');
     var cached = safeCacheGetJson_(cacheKey);
     if (cached) return jsonResponse(true, 'Checklist loaded from cache.', cached);
+    var isLineLevel = stationId === 'ALL';
     var rows = getRowsAsObjects(SHEET_NAMES.CHECKLIST).filter(function (row) {
       var lineMatches = valuesEqual_(row.LineID, lineId) || valuesEqual_(row.LineID, 'ALL');
-      var stationMatches = valuesEqual_(row.StationID, stationId) || valuesEqual_(row.StationID, 'ALL');
+      // Line-level audit: return all items for the line regardless of station
+      var stationMatches = isLineLevel ? true : (valuesEqual_(row.StationID, stationId) || valuesEqual_(row.StationID, 'ALL'));
       var layerMatches = valuesEqual_(row.AuditLayer, layer) || valuesEqual_(row.AuditLayer, 'ALL');
       var categoryMatches = !category || valuesEqual_(row.Category, category);
       return isActive_(row.ActiveStatus) && lineMatches && stationMatches && layerMatches && categoryMatches;

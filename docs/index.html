@@ -127,8 +127,8 @@
               <input id="auditPlanId" type="hidden">
               <label>Audit Time<input id="auditTime" type="time" required></label>
               <label>Line<select id="auditLine" required><option value="">เลือก Line</option></select></label>
-              <label>Station<select id="auditStation" required><option value="">เลือก Station</option></select></label>
-              <label>Area<input id="auditArea" readonly placeholder="เลือก Line / Station"></label>
+              <select id="auditStation" class="hidden"><option value="ALL">ALL</option></select>
+              <label>Area<input id="auditArea" readonly placeholder="เลือก Line"></label>
               <label>Shift<select id="auditShift" required><option value="">เลือก Shift</option></select></label>
               <label>Audit Layer<select id="auditLayer" required><option value="">กำลังโหลดสิทธิ์...</option></select></label>
               <label>Checklist Language<select id="checklistLanguage"><option value="TH" selected>ไทย</option><option value="EN">English</option></select></label>
@@ -162,7 +162,7 @@
             <label>Assignment Mode<select id="auditRuleAssignmentMode"><option value="ROLE">ตามตำแหน่ง / Role-based</option><option value="USER">ระบุรายบุคคล / Specific user</option></select></label>
             <label id="auditRuleUserField">Assigned User<select id="auditRuleUser"><option value="">เลือกผู้ตรวจ</option></select></label>
             <label>Line<select id="auditRuleLine" required><option value="">เลือก Line</option></select></label>
-            <label>Station<select id="auditRuleStation" required><option value="">เลือก Station</option><option value="ALL">ทั้งหมด</option></select></label>
+            <select id="auditRuleStation" class="hidden"><option value="ALL" selected>ALL</option></select>
             <label>Frequency<select id="auditRuleFrequency" required><option>Daily</option><option>Weekly</option><option>Monthly</option></select></label>
             <label>Day of Week<input id="auditRuleDayOfWeek" placeholder="Mon หรือ Mon,Wed,Fri"></label>
             <label>Day of Month<input id="auditRuleDayOfMonth" type="number" min="1" max="31" value="1"></label>
@@ -218,7 +218,7 @@
       </section>
 
       <section id="page-admin" class="page">
-        <div class="page-heading"><div><p class="eyebrow">ระบบผู้ใช้งานและสิทธิ์</p><h2>Admin Panel</h2></div><button id="addUserButton" class="btn btn-primary">+ Add User</button></div>
+        <div class="page-heading"><div><p class="eyebrow">ระบบผู้ใช้งานและสิทธิ์</p><h2>Admin Panel</h2></div><div style="display:flex;gap:8px"><button id="migrateRulesBtn" class="btn btn-outline" title="แปลง Rule ระดับ Station → Line (ทำครั้งเดียว)">🔄 Migrate Rules → Line Level</button><button id="addUserButton" class="btn btn-primary">+ Add User</button></div></div>
         <article class="panel filters-panel">
           <div class="form-grid filter-grid">
             <label>ค้นหา<input id="adminUserSearch" placeholder="Username / Full Name"></label>
@@ -326,6 +326,6 @@
   </dialog>
 
   <script src="config.js" defer></script>
-  <script src="app.js?v=20260623-modal-close" defer></script>
+  <script src="app.js?v=20260623-linelevel" defer></script>
 </body>
 </html>
