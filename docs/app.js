@@ -2329,7 +2329,13 @@ function renderMasterChecklist(rows) {
 }
 
 function populateAllMasterSelects() {
-  ['#auditLine', '#findingLine', '#checklistLine', '#planLine'].forEach((selector, index) => populateSelect(selector, state.masterData.lines || [], 'LineID', 'LineName', [1, 3].includes(index) ? 'ทั้งหมด' : 'เลือก Line'));
+  const allLines = state.masterData.lines || [];
+  // Audit Form: only show lines in today's production plan (interlock)
+  const activeIds = state.productionPlan?.activeLineIds;
+  const auditLines = activeIds ? allLines.filter(l => activeIds.includes(l.LineID)) : allLines;
+  populateSelect('#auditLine', auditLines, 'LineID', 'LineName', 'เลือก Line');
+  // Other selects use all lines
+  ['#findingLine', '#checklistLine', '#planLine'].forEach((selector, index) => populateSelect(selector, allLines, 'LineID', 'LineName', index === 1 ? 'ทั้งหมด' : 'เลือก Line'));
   populateStationSelect('#auditStation', '', false);
   populateStationSelect('#findingStation', '', true);
   populateStationSelect('#checklistStation', '', false);
@@ -2505,6 +2511,8 @@ async function navigateTo(page) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
   if (page === 'audit' && !state.startingPlanAudit) {
     enterManualAuditMode();
+    // Re-apply production plan interlock on audit line dropdown
+    if (state.masterData.lines?.length) populateAllMasterSelects();
     const draft = getAuditDraft();
     if (draft) restoreAuditDraft(draft);
   }
