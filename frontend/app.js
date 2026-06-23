@@ -708,7 +708,7 @@ function renderLeaderTasks(rules, todayAudits) {
     const badge = done ? '<span class="ld-badge done">✅ ตรวจแล้ว</span>'
       : overdue ? '<span class="ld-badge overdue">⏰ เกินกำหนด</span>'
       : '<span class="ld-badge pending">🕐 รอตรวจ</span>';
-    const timeLabel = done ? '' : `${r.DueTime || '17:00'}`;
+    const timeLabel = '';
     const startBtn = done ? '' : `<button class="btn btn-primary btn-compact" onclick="startAuditFromDashboard(${JSON.stringify(r.LineID)},${JSON.stringify(r.StationID)},${JSON.stringify(r.RequiredRole)})">เริ่มตรวจ</button>`;
     return `<div class="ld-task-row">
       ${badge}
