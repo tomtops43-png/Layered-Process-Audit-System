@@ -199,6 +199,19 @@ function bindEvents() {
     } catch(e) { showToast(e.message, 'error'); }
     finally { btn.disabled = false; btn.textContent = '🔄 Migrate Rules → Line Level'; }
   });
+  $('#deduplicateRulesBtn').addEventListener('click', async () => {
+    if (!confirm('ลบ Rule ที่ซ้ำกัน (Line+Role+Frequency เดียวกัน) ออก?\nจะเหลือ 1 Rule ต่อ Line')) return;
+    const btn = $('#deduplicateRulesBtn');
+    btn.disabled = true; btn.textContent = 'กำลังลบ...';
+    try {
+      const data = await apiCall('deduplicateLineRules', {});
+      showToast(`ลบ rule ซ้ำ ${data.deleted} รายการ`, 'success', 6000);
+      state.auditRules = [];
+      state.leaderDashData = null;
+      GASCache.invalidatePrefix('mgr_comp_'); GASCache.invalidatePrefix('leader_');
+    } catch(e) { showToast(e.message, 'error'); }
+    finally { btn.disabled = false; btn.textContent = '🧹 ลบ Rule ซ้ำ'; }
+  });
   $('#searchUsersButton').addEventListener('click', loadUsers);
   $('#addShiftButton').addEventListener('click', () => openShiftEditor());
   $('#cancelShiftButton').addEventListener('click', closeShiftEditor);

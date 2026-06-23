@@ -203,6 +203,43 @@ function migrateRulesToLineLevel(payload, currentUser) {
   }
 }
 
+function deduplicateLineRules(payload, currentUser) {
+  try {
+    requirePermission_(currentUser, 'audit.plan.manage');
+    var rules = getAuditPlanRuleRows_();
+    var lineRules = rules.filter(function(r) { return cleanString_(r.StationID) === 'ALL'; });
+    if (!lineRules.length) return jsonResponse(true, 'ไม่มี Line-level rule', { deleted: 0 });
+
+    // Keep first rule per (LineID, RequiredRole, AssignmentMode, RequiredUserID, Frequency, ActiveStatus)
+    var seen = {}, toDelete = [];
+    lineRules.forEach(function(r) {
+      var key = [cleanString_(r.LineID), cleanString_(r.RequiredRole),
+        cleanString_(r.AssignmentMode) || 'ROLE', cleanString_(r.RequiredUserID),
+        cleanString_(r.Frequency), cleanString_(r.ActiveStatus)].join('|');
+      if (seen[key]) { toDelete.push(cleanString_(r.RuleID)); }
+      else { seen[key] = true; }
+    });
+
+    if (!toDelete.length) return jsonResponse(true, 'ไม่มี rule ซ้ำ', { deleted: 0 });
+
+    var sheet = getSheet(SHEET_NAMES.AUDIT_PLAN_RULES);
+    var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+    var idCol = headers.indexOf('RuleID');
+    var delSet = {}; toDelete.forEach(function(id) { delSet[id] = true; });
+    var lastRow = sheet.getLastRow();
+    if (lastRow >= 2) {
+      var ids = sheet.getRange(2, idCol + 1, lastRow - 1, 1).getDisplayValues();
+      for (var i = ids.length - 1; i >= 0; i--) {
+        if (delSet[cleanString_(ids[i][0])]) sheet.deleteRow(i + 2);
+      }
+    }
+    invalidateAuditRulesCache_();
+    return jsonResponse(true, 'ลบ rule ซ้ำเสร็จสมบูรณ์', { deleted: toDelete.length });
+  } catch(error) {
+    return jsonResponse(false, safeErrorMessage_(error), {});
+  }
+}
+
 function getManagerComplianceData(payload, currentUser) {
   try {
     if (!hasPermission_(currentUser, 'dashboard.view') && !hasPermission_(currentUser, 'dashboard.view.all')) {

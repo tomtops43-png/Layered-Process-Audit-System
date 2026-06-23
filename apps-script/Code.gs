@@ -31,6 +31,7 @@ function doPost(e) {
       getManagerComplianceData: function (user) { return getManagerComplianceData(payload, user); },
       getDirectorDashboardData: function (user) { return getDirectorDashboardData(payload, user); },
       migrateRulesToLineLevel: function (user) { return migrateRulesToLineLevel(payload, user); },
+      deduplicateLineRules: function (user) { return deduplicateLineRules(payload, user); },
       getProductionPlan: function (user) { return getProductionPlan(payload, user); },
       saveProductionPlan: function (user) { return saveProductionPlan(payload, user); },
       upsertAuditPlanRule: function (user) { return upsertAuditPlanRule(payload, user); },

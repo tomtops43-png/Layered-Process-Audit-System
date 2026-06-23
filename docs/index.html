@@ -218,7 +218,7 @@
       </section>
 
       <section id="page-admin" class="page">
-        <div class="page-heading"><div><p class="eyebrow">ระบบผู้ใช้งานและสิทธิ์</p><h2>Admin Panel</h2></div><div style="display:flex;gap:8px"><button id="migrateRulesBtn" class="btn btn-outline" title="แปลง Rule ระดับ Station → Line (ทำครั้งเดียว)">🔄 Migrate Rules → Line Level</button><button id="addUserButton" class="btn btn-primary">+ Add User</button></div></div>
+        <div class="page-heading"><div><p class="eyebrow">ระบบผู้ใช้งานและสิทธิ์</p><h2>Admin Panel</h2></div><div style="display:flex;gap:8px"><button id="migrateRulesBtn" class="btn btn-outline" title="แปลง Rule ระดับ Station → Line (ทำครั้งเดียว)">🔄 Migrate Rules → Line Level</button><button id="deduplicateRulesBtn" class="btn btn-outline" title="ลบ Rule ซ้ำ เหลือ 1 ต่อ Line">🧹 ลบ Rule ซ้ำ</button><button id="addUserButton" class="btn btn-primary">+ Add User</button></div></div>
         <article class="panel filters-panel">
           <div class="form-grid filter-grid">
             <label>ค้นหา<input id="adminUserSearch" placeholder="Username / Full Name"></label>
@@ -326,6 +326,6 @@
   </dialog>
 
   <script src="config.js" defer></script>
-  <script src="app.js?v=20260623-noduetime" defer></script>
+  <script src="app.js?v=20260623-dedup" defer></script>
 </body>
 </html>
