@@ -1628,7 +1628,7 @@ async function loadAuditPlan() {
         lineId: optionalFilterValue($('#planLine').value),
         stationId: optionalFilterValue($('#planStation').value),
         requiredRole: optionalFilterValue($('#planRole').value),
-        requiredUserId: optionalFilterValue($('#planUser').value),
+        requiredUserId: '',
         frequency: optionalFilterValue($('#planFrequency').value),
         activeStatus: optionalFilterValue($('#planRuleStatus').value),
         limit: 300
@@ -2209,7 +2209,6 @@ function populateAllMasterSelects() {
   populateStationSelect('#planStation', '', true);
   populateSelect('#auditRuleLine', state.masterData.lines || [], 'LineID', 'LineName', 'เลือก Line', 'ทั้งหมด (ALL Lines)');
   populateAuditRuleStationSelect('', true);
-  populateSelect('#planUser', state.masterData.users || [], 'UserID', 'FullName', 'ทั้งหมด');
   populateSelect('#auditRuleUser', state.masterData.users || [], 'UserID', 'FullName', 'ตาม Role');
   populateSelect('#adminLineFilter', state.masterData.lines || [], 'LineID', 'LineName', 'ทั้งหมด');
   populateSelect('#adminLineDefault', state.masterData.lines || [], 'LineID', 'LineName', 'ไม่ระบุ');
