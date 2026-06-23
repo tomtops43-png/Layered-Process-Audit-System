@@ -500,9 +500,21 @@ textarea{line-height:1.45}
 @media(max-width:480px){.dir-kpis{grid-template-columns:1fr}.dir-kpi-card{padding:14px}}
 
 /* ===== Production Plan Check-in ===== */
-.prod-plan-line-item{display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1px solid var(--border);cursor:pointer}
-.prod-plan-line-item:last-child{border-bottom:0}
-.prod-plan-line-item input[type=checkbox]{width:20px;height:20px;flex-shrink:0;accent-color:var(--blue);cursor:pointer}
-.prod-plan-line-name{font-size:.95rem;font-weight:700}
+#prodPlanDialog .modal-head{background:linear-gradient(135deg,var(--navy) 0%,var(--blue) 100%);color:#fff;border-radius:var(--radius) var(--radius) 0 0;padding:20px 22px;margin:-1px -1px 0}
+#prodPlanDialog .modal-head p.eyebrow{color:rgba(255,255,255,.7);margin:0 0 4px}
+#prodPlanDialog .modal-head h3{color:#fff;margin:0;font-size:1.1rem}
+#prodPlanLines{padding:16px 20px;display:flex;flex-direction:column;gap:10px}
+.prod-plan-count{text-align:center;font-size:.8rem;font-weight:700;color:var(--muted);padding:0 0 6px}
+.prod-plan-line-item{display:flex!important;flex-direction:row!important;align-items:center!important;gap:0;background:#fff;border:2px solid var(--border);border-radius:12px;padding:0;cursor:pointer;transition:.15s;overflow:hidden;font-weight:400;color:var(--text)}
+.prod-plan-line-item:hover{border-color:var(--blue);box-shadow:0 0 0 3px rgba(23,105,170,.1)}
+.prod-plan-line-item.pp-checked{border-color:var(--blue);background:var(--cyan)}
+.prod-plan-cb-wrap{display:flex;align-items:center;justify-content:center;width:52px;height:64px;flex-shrink:0}
+.prod-plan-cb{width:22px!important;height:22px!important;accent-color:var(--blue);cursor:pointer;flex-shrink:0;min-height:auto!important}
+.prod-plan-line-icon{font-size:1.3rem;padding:0 4px 0 0;flex-shrink:0}
+.prod-plan-line-info{flex:1;padding:14px 0}
+.prod-plan-line-name{font-size:.95rem;font-weight:800;color:var(--text);display:block}
+.prod-plan-line-sub{font-size:.75rem;color:var(--muted);margin-top:2px;display:block}
+.prod-plan-tick{padding:0 16px;font-size:1.3rem;flex-shrink:0;opacity:0;transition:.15s}
+.prod-plan-line-item.pp-checked .prod-plan-tick{opacity:1}
 .prod-active-badge{display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.18);border-radius:99px;padding:3px 10px;font-size:.75rem;font-weight:700}
 .prod-change-btn{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:7px;padding:2px 10px;font-size:.72rem;font-weight:700;cursor:pointer;margin-left:4px}

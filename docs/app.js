@@ -430,20 +430,54 @@ async function openProductionPlanModal(planData) {
     if (!myLines.length) { resolve(); return; }
 
     const currentIds = planData?.activeLineIds || null;
-    const isAllSelected = currentIds === null; // null = not set yet → default all checked
+    const isAllSelected = currentIds === null;
 
-    $('#prodPlanLines').innerHTML = myLines.map(l => `
-      <label class="prod-plan-line-item">
-        <input type="checkbox" class="prod-plan-cb" value="${escapeAttr(l.LineID)}"
-               ${isAllSelected || (currentIds && currentIds.includes(l.LineID)) ? 'checked' : ''}>
-        <span class="prod-plan-line-name">${escapeHtml(l.LineName || l.LineID)}</span>
-      </label>`).join('');
+    const stationCounts = {};
+    (state.masterData.stations || []).forEach(s => {
+      stationCounts[s.LineID] = (stationCounts[s.LineID] || 0) + 1;
+    });
+    const lineIcons = ['🏭','⚙️','🔧','🏗️','⛏️','🔩','🛠️','🔨'];
 
-    let allChecked = true;
-    $('#prodPlanToggleAll').textContent = 'ยกเลิกทั้งหมด';
+    const renderLines = () => {
+      const cbs = $$('.prod-plan-cb');
+      const checkedCount = cbs.filter(c => c.checked).length;
+      $('#prodPlanLines').innerHTML =
+        `<div class="prod-plan-count">${checkedCount > 0 ? `เลือกแล้ว ${checkedCount} จาก ${myLines.length} Line` : 'ยังไม่ได้เลือก Line'}</div>` +
+        myLines.map((l, i) => {
+          const isChecked = isAllSelected || (currentIds && currentIds.includes(l.LineID));
+          const stCount = stationCounts[l.LineID] || 0;
+          return `<label class="prod-plan-line-item${isChecked ? ' pp-checked' : ''}">
+            <div class="prod-plan-cb-wrap"><input type="checkbox" class="prod-plan-cb" value="${escapeAttr(l.LineID)}" ${isChecked ? 'checked' : ''}></div>
+            <span class="prod-plan-line-icon">${lineIcons[i % lineIcons.length]}</span>
+            <div class="prod-plan-line-info">
+              <span class="prod-plan-line-name">${escapeHtml(l.LineName || l.LineID)}</span>
+              <span class="prod-plan-line-sub">${stCount > 0 ? `${stCount} Station` : ''}</span>
+            </div>
+            <span class="prod-plan-tick">✅</span>
+          </label>`;
+        }).join('');
+      // Rebind checkbox change events
+      $$('.prod-plan-cb').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const item = cb.closest('.prod-plan-line-item');
+          item.classList.toggle('pp-checked', cb.checked);
+          const total = $$('.prod-plan-cb').length;
+          const checked = $$('.prod-plan-cb:checked').length;
+          $('.prod-plan-count').textContent = checked > 0 ? `เลือกแล้ว ${checked} จาก ${total} Line` : 'ยังไม่ได้เลือก Line';
+          $('#prodPlanToggleAll').textContent = checked === total ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด';
+        });
+      });
+    };
+    renderLines();
+
+    let allChecked = isAllSelected || (currentIds && currentIds.length === myLines.length);
+    $('#prodPlanToggleAll').textContent = allChecked ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด';
     $('#prodPlanToggleAll').onclick = () => {
       allChecked = !allChecked;
-      $$('.prod-plan-cb').forEach(cb => { cb.checked = allChecked; });
+      $$('.prod-plan-cb').forEach(cb => { cb.checked = allChecked; cb.closest('.prod-plan-line-item').classList.toggle('pp-checked', allChecked); });
+      const total = myLines.length;
+      const checked = allChecked ? total : 0;
+      $('.prod-plan-count').textContent = checked > 0 ? `เลือกแล้ว ${checked} จาก ${total} Line` : 'ยังไม่ได้เลือก Line';
       $('#prodPlanToggleAll').textContent = allChecked ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด';
     };
 
