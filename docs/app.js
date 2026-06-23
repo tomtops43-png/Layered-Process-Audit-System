@@ -2740,7 +2740,20 @@ function applyAuditLayerPermissions() {
 
 function setDefaultDates() {
   const now = new Date();
-  $('#auditDate').value = localDateInput(now);
+  const today = localDateInput(now);
+  const dateEl = $('#auditDate');
+  dateEl.value = today;
+  // Leader / Supervisor: lock date to today only (no backdating across days)
+  const role = state.user?.Role || '';
+  if (role === 'Leader' || role === 'Supervisor') {
+    dateEl.min = today;
+    dateEl.max = today;
+    dateEl.readOnly = true;
+  } else {
+    dateEl.min = '';
+    dateEl.max = '';
+    dateEl.readOnly = false;
+  }
   $('#auditTime').value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   $('#findingMonth').value = '';

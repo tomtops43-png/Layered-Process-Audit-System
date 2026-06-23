@@ -166,7 +166,7 @@
             <label>Frequency<select id="auditRuleFrequency" required><option>Daily</option><option>Weekly</option><option>Monthly</option></select></label>
             <label>Day of Week<input id="auditRuleDayOfWeek" placeholder="Mon หรือ Mon,Wed,Fri"></label>
             <label>Day of Month<input id="auditRuleDayOfMonth" type="number" min="1" max="31" value="1"></label>
-            <label>Due Time<input id="auditRuleDueTime" type="time" value="17:00"></label>
+            <input id="auditRuleDueTime" type="hidden" value="17:00">
             <label>Active Status<select id="auditRuleActiveStatus"><option>Active</option><option>Inactive</option></select></label>
             <div class="button-row full-width"><button id="cancelAuditRuleButton" type="button" class="btn btn-outline">ยกเลิก</button><button type="submit" class="btn btn-primary">บันทึกกฎ</button></div>
           </form>
@@ -326,6 +326,6 @@
   </dialog>
 
   <script src="config.js" defer></script>
-  <script src="app.js?v=20260623-linelevel" defer></script>
+  <script src="app.js?v=20260623-noduetime" defer></script>
 </body>
 </html>
