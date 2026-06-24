@@ -616,29 +616,29 @@ function renderLeaderHeader(dashData) {
   const now = new Date();
   const thaiDate = now.toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-  // Show active lines from production plan
+  // Show active lines from production plan — always visible
   const allLines = state.masterData.lines || [];
-  let lineLabel, activeBadge = '';
-  if (plan && plan.activeLineIds) {
+  const lineAccess = JSON.parse(localStorage.getItem('lpa_line_access') || '[]');
+  const myLineIds = lineAccess.map(l => l.LineID);
+  let activeBadge, btnLabel;
+  if (plan && plan.activeLineIds && plan.activeLineIds.length > 0) {
     const activeNames = allLines.filter(l => plan.activeLineIds.includes(l.LineID)).map(l => l.LineName || l.LineID);
-    lineLabel = activeNames.join(', ') || '-';
-    if (activeNames.length > 0) {
-      activeBadge = `<span class="prod-active-badge">🟢 ${activeNames.length} Line ผลิตวันนี้</span>`;
-    } else {
-      activeBadge = `<span class="prod-active-badge" style="background:rgba(211,41,41,.35)">⚠️ ยังไม่ได้เลือก Line</span>`;
-    }
+    activeBadge = `<span class="prod-active-badge">🟢 ${activeNames.length} Line ผลิตวันนี้: ${activeNames.join(', ')}</span>`;
+    btnLabel = 'เปลี่ยน';
   } else {
-    const lineAccess = JSON.parse(localStorage.getItem('lpa_line_access') || '[]');
-    lineLabel = lineAccess.map(l => l.LineName || l.LineID).join(', ') || (user.LineDefault || '-');
+    activeBadge = `<span class="prod-active-badge" style="background:rgba(211,41,41,.45)">⚠️ ยังไม่ได้เลือก Line ที่ผลิต</span>`;
+    btnLabel = 'เลือก Line';
   }
 
   const todayTasks = (state.leaderDashData?.rules || []).filter(r => rulesMatchToday(r)).length;
   $('#ldHeader').innerHTML = `
     <div class="ld-header-left">
       <div class="ld-greeting">สวัสดี, ${escapeHtml(user.FullName || user.Username)} 👋</div>
-      <div class="ld-sub">${escapeHtml(user.Role)} · ${escapeHtml(lineLabel)}</div>
-      <div class="ld-sub">${escapeHtml(thaiDate)}</div>
-      ${activeBadge ? `<div style="margin-top:6px">${activeBadge} <button class="prod-change-btn" onclick="changeProdPlan()">เปลี่ยน</button></div>` : ''}
+      <div class="ld-sub">${escapeHtml(user.Role)} · ${escapeHtml(thaiDate)}</div>
+      <div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        ${activeBadge}
+        <button class="prod-change-btn" onclick="changeProdPlan()">${btnLabel}</button>
+      </div>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
       <button class="ld-refresh" onclick="loadLeaderDashboard()" title="รีเฟรช">↻</button>
