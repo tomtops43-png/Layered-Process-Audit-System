@@ -622,7 +622,11 @@ function renderLeaderHeader(dashData) {
   if (plan && plan.activeLineIds) {
     const activeNames = allLines.filter(l => plan.activeLineIds.includes(l.LineID)).map(l => l.LineName || l.LineID);
     lineLabel = activeNames.join(', ') || '-';
-    activeBadge = `<span class="prod-active-badge">🟢 ${activeNames.length} Line ผลิตวันนี้</span>`;
+    if (activeNames.length > 0) {
+      activeBadge = `<span class="prod-active-badge">🟢 ${activeNames.length} Line ผลิตวันนี้</span>`;
+    } else {
+      activeBadge = `<span class="prod-active-badge" style="background:rgba(211,41,41,.35)">⚠️ ยังไม่ได้เลือก Line</span>`;
+    }
   } else {
     const lineAccess = JSON.parse(localStorage.getItem('lpa_line_access') || '[]');
     lineLabel = lineAccess.map(l => l.LineName || l.LineID).join(', ') || (user.LineDefault || '-');
@@ -2365,7 +2369,8 @@ function populateAllMasterSelects() {
   const allLines = state.masterData.lines || [];
   // Audit Form: only show lines in today's production plan (interlock)
   const activeIds = state.productionPlan?.activeLineIds;
-  const auditLines = activeIds ? allLines.filter(l => activeIds.includes(l.LineID)) : allLines;
+  // treat empty array same as null — show all lines if no plan set
+  const auditLines = (activeIds && activeIds.length > 0) ? allLines.filter(l => activeIds.includes(l.LineID)) : allLines;
   populateSelect('#auditLine', auditLines, 'LineID', 'LineName', 'เลือก Line');
   // Other selects use all lines
   ['#findingLine', '#checklistLine', '#planLine'].forEach((selector, index) => populateSelect(selector, allLines, 'LineID', 'LineName', index === 1 ? 'ทั้งหมด' : 'เลือก Line'));
