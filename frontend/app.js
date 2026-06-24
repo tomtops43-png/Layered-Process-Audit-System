@@ -431,10 +431,19 @@ async function loadDashboard() {
 
 // ===== Production Plan Check-in =====
 async function ensureProductionPlan() {
-  if (state.productionPlan) return true; // already set this session
-  if (state.productionPlanSkipped) return true; // user dismissed modal — proceed without filter
+  if (state.productionPlan) return true;
+  if (state.productionPlanSkipped) return true;
+  // Check sessionStorage cache before hitting GAS
+  const planCacheKey = `prod_plan_${localDateInput(new Date())}`;
+  const planCached = GASCache.get(planCacheKey);
+  if (planCached) {
+    if (planCached.isSet) state.productionPlan = { activeLineIds: planCached.activeLineIds, date: planCached.date };
+    else state.productionPlanSkipped = true;
+    return true;
+  }
   try {
     const data = await apiCall('getProductionPlan', {});
+    GASCache.set(planCacheKey, data, 60); // cache 60 min — plan doesn't change during the day
     if (data.isSet) {
       state.productionPlan = { activeLineIds: data.activeLineIds, date: data.date };
       return true;
@@ -524,6 +533,7 @@ async function openProductionPlanModal(planData) {
       try {
         const saved = await apiCall('saveProductionPlan', { lineIds: selected });
         state.productionPlan = { activeLineIds: saved.activeLineIds, date: saved.date };
+        GASCache.invalidate(`prod_plan_${saved.date || localDateInput(new Date())}`);
         $('#prodPlanDialog').close();
         resolve();
       } catch (err) {
@@ -558,24 +568,28 @@ async function loadLeaderDashboard() {
   const rolesToFetch = role === 'Supervisor' ? ['Supervisor', 'Leader'] : ['Leader'];
   const ldKey = `leader_${state.user?.UserID}_${today}`;
 
-  // Ensure production plan is set before showing dashboard
-  const ready = await ensureProductionPlan();
-  if (!ready) return;
+  // Restore from sessionStorage cache first (survives page refresh — no loading flash)
+  if (!state.leaderDashData) {
+    const sessionCached = GASCache.get(ldKey);
+    if (sessionCached) state.leaderDashData = sessionCached;
+  }
 
-  // Render from in-memory state immediately — no skeleton flash on tab switch
+  // Render immediately if we have any data
   if (state.leaderDashData) {
     renderLeaderFromData(state.leaderDashData);
-    // If GASCache still valid, done. If expired, refresh quietly in background.
-    if (GASCache.get(ldKey)) return;
-    fetchLeaderDashData(ldKey, today, rolesToFetch, true); // background refresh
+    // Check production plan async AFTER render (no blocking)
+    ensureProductionPlan();
+    // Silent background refresh if cache expired
+    if (!GASCache.get(ldKey)) fetchLeaderDashData(ldKey, today, rolesToFetch, true);
     return;
   }
 
-  // First load — show skeleton then fetch
+  // True first load (no cache at all) — show skeleton, then check plan, then fetch
   $('#ldHeader').innerHTML = '<div class="ld-header-left"><div class="ld-greeting">กำลังโหลด Dashboard...</div></div>';
   $('#ldMetrics').innerHTML = Array.from({length: 4}, () => '<div class="ld-card skeleton-card" style="min-height:90px"></div>').join('');
   $('#ldTasks').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   $('#ldFindings').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
+  await ensureProductionPlan();
   await fetchLeaderDashData(ldKey, today, rolesToFetch, false);
 }
 
