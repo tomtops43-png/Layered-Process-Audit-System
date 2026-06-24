@@ -1358,7 +1358,7 @@ async function loadChecklist() {
   const stationId = $('#auditStation').value;
   const auditLayer = $('#auditLayer').value;
   const language = $('#checklistLanguage').value;
-  if (!lineId || !stationId || !auditLayer) return showToast('กรุณาเลือก Line, Station และ Audit Layer', 'warning');
+  if (!lineId || !auditLayer) return showToast('กรุณาเลือก Line และ Audit Layer', 'warning');
   showLoading('กำลังโหลด Checklist...');
   try {
     const data = await apiCall('getChecklist', { lineId, stationId, auditLayer, language });
@@ -2118,7 +2118,7 @@ async function loadMasterChecklist() {
   const lineId = $('#checklistLine').value;
   const stationId = $('#checklistStation').value;
   const auditLayer = $('#checklistLayer').value;
-  if (!lineId || !stationId || !auditLayer) return showToast('กรุณาเลือก Line, Station และ Audit Layer', 'warning');
+  if (!lineId || !auditLayer) return showToast('กรุณาเลือก Line และ Audit Layer', 'warning');
   showLoading('กำลังโหลด Checklist Master...');
   try {
     const data = await apiCall('getChecklist', { lineId, stationId, auditLayer, category: $('#checklistCategory').value.trim() });
@@ -2395,7 +2395,7 @@ function populateAllMasterSelects() {
   populateSelect('#auditLine', auditLines, 'LineID', 'LineName', 'เลือก Line');
   // Other selects use all lines
   ['#findingLine', '#checklistLine', '#planLine'].forEach((selector, index) => populateSelect(selector, allLines, 'LineID', 'LineName', index === 1 ? 'ทั้งหมด' : 'เลือก Line'));
-  populateStationSelect('#auditStation', '', false);
+  $('#auditStation').value = 'ALL'; // Line-level audit: always ALL
   populateStationSelect('#findingStation', '', true);
   populateStationSelect('#checklistStation', '', false);
   populateStationSelect('#planStation', '', true);
