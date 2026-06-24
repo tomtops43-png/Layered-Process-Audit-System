@@ -439,6 +439,8 @@ async function ensureProductionPlan() {
       state.productionPlan = { activeLineIds: data.activeLineIds, date: data.date };
       return true;
     }
+    // Ensure lines are loaded before showing modal
+    if (!(state.masterData.lines || []).length) await ensureMasterDataLoaded(false);
     // Not set today — show modal
     await openProductionPlanModal(data);
     if (!state.productionPlan) state.productionPlanSkipped = true; // dismissed → don't show again
@@ -538,11 +540,16 @@ async function openProductionPlanModal(planData) {
   });
 }
 
-function changeProdPlan() {
+async function changeProdPlan() {
   state.productionPlan = null;
   state.leaderDashData = null;
   GASCache.invalidatePrefix('leader_');
-  openProductionPlanModal(null).then(() => loadLeaderDashboard());
+  // Ensure lines are available for the modal
+  if (!(state.masterData.lines || []).length) {
+    await ensureMasterDataLoaded(false);
+  }
+  await openProductionPlanModal(null);
+  loadLeaderDashboard();
 }
 
 async function loadLeaderDashboard() {
