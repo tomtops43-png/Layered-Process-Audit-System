@@ -711,7 +711,7 @@ function renderLeaderTasks(rules, todayAudits) {
     const badge = done ? '<span class="ld-badge done">✅ ตรวจแล้ว</span>'
       : '<span class="ld-badge pending">🕐 รอตรวจ</span>';
     const timeLabel = '';
-    const startBtn = done ? '' : `<button class="btn btn-primary btn-compact" onclick="startAuditFromDashboard(${JSON.stringify(r.LineID)},${JSON.stringify(r.StationID)},${JSON.stringify(r.RequiredRole)})">เริ่มตรวจ</button>`;
+    const startBtn = done ? '' : `<button class="btn btn-primary btn-compact" onclick="startAuditFromDashboard('${escapeAttr(r.LineID)}','${escapeAttr(r.StationID)}','${escapeAttr(r.RequiredRole)}')">เริ่มตรวจ</button>`;
     return `<div class="ld-task-row">
       ${badge}
       <div class="ld-task-info"><div class="ld-task-name">${escapeHtml(r.LineName || r.LineID)}</div><div class="ld-task-meta">${escapeHtml(r.RequiredRole)} · ${escapeHtml(r.Frequency || '')}</div></div>
@@ -746,7 +746,7 @@ function renderLeaderFindings(findings) {
       ${badge}
       <div class="ld-finding-info"><div class="ld-finding-name">${escapeHtml(f.ProblemDetail || f.FindingID)}</div><div class="ld-finding-meta">${escapeHtml(f.LineName || f.LineID)} / ${escapeHtml(f.StationName || f.StationID)}</div></div>
       <div class="ld-due-label" style="${dueCls}">${escapeHtml(formatDate(dueDate))}<div class="ld-days">${escapeHtml(daysLabel)}</div></div>
-      <button class="btn btn-outline btn-compact" onclick="openFindingForEdit(${JSON.stringify(f.FindingID)})">อัปเดต</button>
+      <button class="btn btn-outline btn-compact" onclick="openFindingForEdit('${escapeAttr(f.FindingID)}')">อัปเดต</button>
     </div>`;
   }).join('');
 }
@@ -1176,7 +1176,7 @@ function renderMgrEscalation(findings) {
         <div class="mgr-esc-meta">${escapeHtml(f.LineName||f.LineID)} / ${escapeHtml(f.StationName||f.StationID)} · PIC: ${escapeHtml(pic)}</div>
       </div>
       <div class="mgr-esc-due" style="${dueCls}">${escapeHtml(formatDate(f.DueDate))}<div class="ld-days">${escapeHtml(dueLabel)}</div></div>
-      <button class="btn btn-outline btn-compact" onclick="openFindingForEdit(${JSON.stringify(f.FindingID)})">ติดตาม</button>
+      <button class="btn btn-outline btn-compact" onclick="openFindingForEdit('${escapeAttr(f.FindingID)}')">ติดตาม</button>
     </div>`;
   }).join('');
 }
