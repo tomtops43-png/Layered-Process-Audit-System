@@ -47,4 +47,4 @@ SHEET_HEADERS[SHEET_NAMES.USER_PERMISSIONS] = ['UserID', 'PermissionKey', 'Allow
 SHEET_HEADERS[SHEET_NAMES.USER_LINE_ACCESS] = ['UserID', 'LineID', 'LineName', 'AccessLevel', 'ActiveStatus', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'];
 
 var PUBLIC_ACTIONS = ['login'];
-var VALID_ROLES = ['Admin', 'Manager', 'Supervisor', 'Engineer', 'Leader', 'User'];
+var VALID_ROLES = ['Admin', 'Manager', 'Supervisor', 'Engineer', 'Leader', 'User', 'Viewer'];
