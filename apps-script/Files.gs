@@ -24,20 +24,30 @@ function uploadFile(payload, currentUser) {
     var maximumBytes = 10 * 1024 * 1024;
     if (bytes.length > maximumBytes) throw new Error('File exceeds the 10 MB upload limit.');
 
-    var safeName = sanitizeFileName_(payload.fileName);
+    // Build filename: {RelatedID}_{FileType}_{YYYYMMDD_HHMMSS}.{ext}
+    var now = new Date();
+    var dateTag = Utilities.formatDate(now, APP_TIMEZONE, 'yyyyMMdd_HHmmss');
+    var relatedId = cleanString_(payload.relatedId);
+    var origExt = sanitizeFileName_(payload.fileName).split('.').pop() || 'jpg';
+    var safeName = relatedId + '_' + fileType + '_' + dateTag + '.' + origExt;
+
+    // Upload into subfolder named after RelatedID (create if not exists)
+    var parentFolder = DriveApp.getFolderById(folderId);
+    var subFolder = getOrCreateDriveSubfolder_(parentFolder, relatedId);
+
     var blob = Utilities.newBlob(bytes, cleanString_(payload.mimeType), safeName);
-    var file = DriveApp.getFolderById(folderId).createFile(blob);
+    var file = subFolder.createFile(blob);
     try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); }
     catch (sharingError) { console.warn('Drive sharing could not be changed: ' + sharingError.message); }
 
-    var timestamp = formatDateTimeBangkok(new Date());
-    var periodMonth = getPeriodMonth(new Date());
+    var timestamp = formatDateTimeBangkok(now);
+    var periodMonth = getPeriodMonth(now);
     var attachmentId = generateId('ATT', SHEET_NAMES.ATTACHMENTS, 'AttachmentID', periodMonth);
     var fileUrl = file.getUrl();
     appendObject(SHEET_NAMES.ATTACHMENTS, {
-      AttachmentID: attachmentId, RelatedType: payload.relatedType, RelatedID: payload.relatedId,
+      AttachmentID: attachmentId, RelatedType: payload.relatedType, RelatedID: relatedId,
       FileType: fileType, FileName: safeName, MimeType: payload.mimeType,
-      DriveFileID: file.getId(), DriveFileURL: fileUrl, FolderID: folderId,
+      DriveFileID: file.getId(), DriveFileURL: fileUrl, FolderID: subFolder.getId(),
       UploadedBy: currentUser.UserID, UploadedAt: timestamp, Remark: payload.remark || ''
     });
     return jsonResponse(true, 'File uploaded successfully.', {
@@ -47,6 +57,13 @@ function uploadFile(payload, currentUser) {
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
+}
+
+function getOrCreateDriveSubfolder_(parentFolder, folderName) {
+  var safe = cleanString_(folderName).replace(/[\\/:*?"<>|\x00-\x1F]/g, '_').slice(0, 100) || 'misc';
+  var existing = parentFolder.getFoldersByName(safe);
+  if (existing.hasNext()) return existing.next();
+  return parentFolder.createFolder(safe);
 }
 
 function sanitizeFileName_(fileName) {
