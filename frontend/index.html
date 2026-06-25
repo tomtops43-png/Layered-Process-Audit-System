@@ -222,7 +222,7 @@
         <article class="panel filters-panel">
           <div class="form-grid filter-grid">
             <label>ค้นหา<input id="adminUserSearch" placeholder="Username / Full Name"></label>
-            <label>Role<select id="adminRoleFilter"><option value="">ทั้งหมด</option><option>Admin</option><option>Manager</option><option>Supervisor</option><option>Engineer</option><option>Leader</option><option>User</option></select></label>
+            <label>Role<select id="adminRoleFilter"><option value="">ทั้งหมด</option><option>Admin</option><option>Manager</option><option>Supervisor</option><option>Engineer</option><option>Leader</option><option>User</option><option>Viewer</option></select></label>
             <label>Status<select id="adminStatusFilter"><option value="">ทั้งหมด</option><option>Active</option><option>Inactive</option></select></label>
             <label>Line<select id="adminLineFilter"><option value="">ทั้งหมด</option></select></label>
           </div>
@@ -286,7 +286,7 @@
         <label>Username *<input id="adminUsername" required></label>
         <label>Full Name *<input id="adminFullName" required></label>
         <label>Nickname<input id="adminNickname"></label>
-        <label>Role *<select id="adminUserRole" required><option>Admin</option><option>Manager</option><option>Supervisor</option><option>Engineer</option><option>Leader</option><option>User</option></select><small class="field-help">Role จะกำหนดสิทธิ์หลักของผู้ใช้ เช่น Admin, Manager, Engineer, Leader, User</small></label>
+        <label>Role *<select id="adminUserRole" required><option>Admin</option><option>Manager</option><option>Supervisor</option><option>Engineer</option><option>Leader</option><option>User</option><option>Viewer</option></select><small class="field-help">Viewer = ดูข้อมูลได้อย่างเดียว ไม่สามารถแก้ไขหรือบันทึกใดๆ</small></label>
         <label>Department<input id="adminDepartment"></label>
         <label>Default Line<select id="adminLineDefault"><option value="">ไม่ระบุ</option></select></label>
         <label>Email<input id="adminEmail" type="email"></label>
