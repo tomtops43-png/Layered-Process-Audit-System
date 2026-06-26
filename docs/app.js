@@ -1120,7 +1120,7 @@ function renderMgrHeader(period) {
   const dateLabel = cd.startDate && cd.endDate ? `${formatDate(cd.startDate)} – ${formatDate(cd.endDate)}` : '';
   $('#mgrHeader').innerHTML = `
     <div class="mgr-header-left">
-      <div class="ld-greeting">👔 ${escapeHtml(user.FullName || user.Username)} · Manager</div>
+      <div class="ld-greeting">👔 ${escapeHtml(user.FullName || user.Username)} · ${escapeHtml(user.Role === 'Viewer' ? 'Customer' : 'Manager')}</div>
       <div class="ld-sub">Plant Overview Dashboard</div>
     </div>
     <div class="mgr-period-row">
