@@ -26,7 +26,7 @@ function getLeaderDashboardBatch(payload, currentUser) {
 
     // 3. Today's audit sessions (all lines this user can see)
     var todayAudits = allAuditSessions.filter(function(a) {
-      return cleanString_(a.AuditDate) === today &&
+      return dateOnly_(a.AuditDate) === today &&
         (canAccessLineFromRows_(currentUser, a.LineID, 'View', lineAccess) ||
          valuesEqual_(a.AuditorUserID, currentUser.UserID));
     }).map(sanitizeForClient_);

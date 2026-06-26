@@ -234,6 +234,13 @@ function jsonResponse(success, message, data) {
   })).setMimeType(ContentService.MimeType.JSON);
 }
 
+/** Return only YYYY-MM-DD from a date value that may include time or be a Date object. */
+function dateOnly_(value) {
+  if (!value) return '';
+  if (value instanceof Date) return formatDateBangkok_(value);
+  return cleanString_(value).slice(0, 10);
+}
+
 function getCachedData_(key, fetchFn, ttlSeconds) {
   var cached = safeCacheGetJson_(key);
   if (cached !== null) return cached;

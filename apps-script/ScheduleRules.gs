@@ -36,7 +36,7 @@ function getDirectorDashboardData(payload, currentUser) {
     auditRows.forEach(function(a) {
       var m = cleanString_(a.PeriodMonth), role = cleanString_(a.AuditLayer);
       if (!auditByMonth[m]) auditByMonth[m] = { keys: {} };
-      var key = [cleanString_(a.AuditDate), cleanString_(a.LineID), cleanString_(a.StationID), role.toLowerCase()].join('|');
+      var key = [dateOnly_(a.AuditDate), cleanString_(a.LineID), cleanString_(a.StationID), role.toLowerCase()].join('|');
       auditByMonth[m].keys[key] = true;
       if (!auditsByRole[role]) auditsByRole[role] = { done: 0, onTime: 0 };
       auditsByRole[role].done++;
@@ -267,11 +267,11 @@ function getManagerComplianceData(payload, currentUser) {
       return isActive_(r.ActiveStatus) && (!lineId || valuesEqual_(r.LineID, lineId));
     });
     var auditRows = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS).filter(function (a) {
-      return cleanString_(a.AuditDate) >= startDate && cleanString_(a.AuditDate) <= endDate;
+      return dateOnly_(a.AuditDate) >= startDate && dateOnly_(a.AuditDate) <= endDate;
     });
     var auditMap = {};
     auditRows.forEach(function (a) {
-      auditMap[[cleanString_(a.AuditDate), cleanString_(a.LineID), cleanString_(a.StationID), cleanString_(a.AuditLayer).toLowerCase()].join('|')] = true;
+      auditMap[[dateOnly_(a.AuditDate), cleanString_(a.LineID), cleanString_(a.StationID), cleanString_(a.AuditLayer).toLowerCase()].join('|')] = true;
     });
 
     var byLine = {}, byStationRole = {}, totalExpected = 0, totalDone = 0;
@@ -623,8 +623,8 @@ function auditSatisfiesRulePeriod_(audit, rule, expectedDate) {
   if (!valuesEqual_(audit.AuditLayer, rule.RequiredRole) && !valuesEqual_(audit.AuditorRole, rule.RequiredRole)) return false;
   if (cleanString_(rule.RequiredUserID) && !valuesEqual_(audit.AuditorUserID, rule.RequiredUserID)) return false;
   var frequency = cleanString_(rule.Frequency);
-  if (frequency === 'Daily') return valuesEqual_(audit.AuditDate, expectedDate);
-  if (frequency === 'Weekly') return isoWeekKey_(parseDate_(audit.AuditDate)) === isoWeekKey_(parseDate_(expectedDate));
+  if (frequency === 'Daily') return dateOnly_(audit.AuditDate) === expectedDate;
+  if (frequency === 'Weekly') return isoWeekKey_(parseDate_(dateOnly_(audit.AuditDate))) === isoWeekKey_(parseDate_(expectedDate));
   return cleanString_(audit.AuditDate).slice(0, 7) === cleanString_(expectedDate).slice(0, 7);
 }
 
