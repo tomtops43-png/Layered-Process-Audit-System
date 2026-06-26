@@ -420,10 +420,9 @@ async function loadDashboard() {
   if (cachedDash) { state.dashboard = cachedDash; renderDashboard(cachedDash); refreshButton.disabled = false; return; }
   showDashboardSkeleton();
   try {
-    const todayStr = localDateInput(new Date());
     const [dashData, todayAudits] = await Promise.all([
       cachedApiCall('getDashboard', {}, 'dashboard', 1),
-      apiCall('getAuditList', { auditDate: todayStr, limit: 200 }).catch(() => ({ audits: [] }))
+      apiCall('getAuditList', { limit: 200 }).catch(() => ({ audits: [] }))
     ]);
     state.dashboard = dashData;
     renderDashboard(dashData);
@@ -1047,7 +1046,7 @@ async function loadManagerDashboard(period) {
       cachedApiCall('getManagerComplianceData', { period: p }, mgrKey, 3),
       cachedApiCall('getDashboard', {}, 'dashboard', 1),
       apiCall('getFindings', { limit: 500 }).catch(() => ({ findings: [] })),
-      apiCall('getAuditList', { auditDate: today, limit: 200 }).catch(() => ({ audits: [] }))
+      apiCall('getAuditList', { limit: 200 }).catch(() => ({ audits: [] }))
     ]);
     state.mgrData.complianceData = complianceData;
     state.mgrData.dashData = dashData;
@@ -1169,27 +1168,77 @@ function onMgrLineChange() {
   }
 }
 
+function parseAuditTime_(t) {
+  if (!t) return '-';
+  const s = String(t);
+  // "HH:mm" or "HH:mm:ss"
+  const m = s.match(/(\d{1,2}):(\d{2})/);
+  if (m) return m[1].padStart(2,'0') + ':' + m[2];
+  return '-';
+}
+
 function renderTodayAudits(audits, selector) {
   const el = $(selector);
   if (!el) return;
-  if (!audits.length) { el.innerHTML = '<div class="empty-state">ยังไม่มีการตรวจวันนี้</div>'; return; }
-  const sorted = [...audits].sort((a, b) => (a.AuditTime || '').localeCompare(b.AuditTime || ''));
-  el.innerHTML = `<table class="data-table" style="font-size:.83rem">
-    <thead><tr><th>Line</th><th>ผู้ตรวจ</th><th>Layer</th><th>Shift</th><th>เวลา</th><th>OK</th><th>NG</th></tr></thead>
-    <tbody>${sorted.map(a => {
-      const ngCls = Number(a.TotalNG) > 0 ? 'color:var(--red);font-weight:800' : '';
-      const time = String(a.AuditTime || '').slice(0,5);
-      return `<tr>
-        <td><strong>${escapeHtml(a.LineName || a.LineID)}</strong></td>
-        <td>${escapeHtml(a.AuditorName || '-')}</td>
-        <td>${escapeHtml(a.AuditLayer || '-')}</td>
-        <td>${escapeHtml(a.Shift || '-')}</td>
-        <td>${escapeHtml(time)}</td>
-        <td style="color:var(--green);font-weight:700">${a.TotalOK ?? '-'}</td>
-        <td style="${ngCls}">${a.TotalNG ?? '-'}</td>
-      </tr>`;
-    }).join('')}</tbody>
-  </table>`;
+  if (!audits.length) { el.innerHTML = '<div class="empty-state">ยังไม่มีการตรวจ</div>'; return; }
+
+  let sortCol = 'datetime', sortDir = -1; // default: newest first
+
+  function doRender() {
+    const rows = [...audits].sort((a, b) => {
+      let va, vb;
+      if (sortCol === 'datetime') {
+        va = (a.AuditDate || '') + ' ' + parseAuditTime_(a.AuditTime);
+        vb = (b.AuditDate || '') + ' ' + parseAuditTime_(b.AuditTime);
+      } else if (sortCol === 'line') {
+        va = a.LineName || a.LineID || '';
+        vb = b.LineName || b.LineID || '';
+      } else if (sortCol === 'auditor') {
+        va = a.AuditorName || '';
+        vb = b.AuditorName || '';
+      } else if (sortCol === 'ng') {
+        return (Number(b.TotalNG) - Number(a.TotalNG)) * sortDir;
+      }
+      return va < vb ? -sortDir : va > vb ? sortDir : 0;
+    });
+
+    const arrow = dir => dir === -1 ? ' ▼' : ' ▲';
+    const th = (col, label) => `<th style="cursor:pointer;user-select:none" onclick="sortTodayAudits_('${selector}','${col}')">${label}${sortCol===col ? arrow(sortDir) : ''}</th>`;
+
+    el.innerHTML = `<div style="overflow-x:auto"><table class="data-table" style="font-size:.82rem;min-width:560px">
+      <thead><tr>
+        ${th('datetime','วันที่ / เวลา')}
+        ${th('line','Line')}
+        ${th('auditor','ผู้ตรวจ')}
+        <th>Layer</th><th>Shift</th>
+        <th class="num">OK</th>
+        ${th('ng','NG')}
+      </tr></thead>
+      <tbody>${rows.map(a => {
+        const ngNum = Number(a.TotalNG) || 0;
+        const ngCls = ngNum > 0 ? 'color:var(--red);font-weight:800' : '';
+        const date = formatDate(a.AuditDate);
+        const time = parseAuditTime_(a.AuditTime);
+        return `<tr>
+          <td style="white-space:nowrap">${escapeHtml(date)} <span style="color:var(--muted)">${escapeHtml(time)}</span></td>
+          <td><strong>${escapeHtml(a.LineName || a.LineID)}</strong></td>
+          <td>${escapeHtml(a.AuditorName || '-')}</td>
+          <td>${escapeHtml(a.AuditLayer || '-')}</td>
+          <td>${escapeHtml(a.Shift || '-')}</td>
+          <td class="num" style="color:var(--green);font-weight:700">${a.TotalOK ?? '-'}</td>
+          <td class="num" style="${ngCls}">${ngNum > 0 ? ngNum : '-'}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+  }
+
+  // Expose sort function globally for onclick
+  window.sortTodayAudits_ = (sel, col) => {
+    if (sortCol === col) sortDir *= -1; else { sortCol = col; sortDir = -1; }
+    renderTodayAudits(audits, sel);
+  };
+
+  doRender();
 }
 
 function renderMgrEscalation(findings) {
