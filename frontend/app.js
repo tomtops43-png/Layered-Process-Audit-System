@@ -435,36 +435,49 @@ async function loadDashboard() {
 }
 
 // ===== Production Plan Check-in =====
+// ===== Shift helpers =====
+function detectCurrentShift() {
+  const h = new Date().getHours();
+  return (h >= 8 && h < 20) ? 'กะเช้า' : 'กะดึก';
+}
+function getShiftDate(shiftName) {
+  const now = new Date();
+  if (shiftName === 'กะดึก' && now.getHours() < 8) {
+    const y = new Date(now); y.setDate(y.getDate() - 1); return localDateInput(y);
+  }
+  return localDateInput(now);
+}
+
 async function ensureProductionPlan() {
   if (state.productionPlan) return true;
   if (state.productionPlanSkipped) return true;
-  // Check sessionStorage cache before hitting GAS
-  const planCacheKey = `prod_plan_${localDateInput(new Date())}`;
+  // Detect shift + shift date
+  const autoShift = detectCurrentShift();
+  const autoShiftDate = getShiftDate(autoShift);
+  const planCacheKey = `prod_plan_${autoShiftDate}_${autoShift}_${state.user?.UserID}`;
   const planCached = GASCache.get(planCacheKey);
   if (planCached) {
-    if (planCached.isSet) state.productionPlan = { activeLineIds: planCached.activeLineIds, date: planCached.date };
+    if (planCached.isSet) state.productionPlan = { activeLineIds: planCached.activeLineIds, date: planCached.date, shiftName: planCached.shiftName || autoShift };
     else state.productionPlanSkipped = true;
     return true;
   }
   try {
-    const data = await apiCall('getProductionPlan', {});
-    GASCache.set(planCacheKey, data, 60); // cache 60 min — plan doesn't change during the day
+    const data = await apiCall('getProductionPlan', { shiftName: autoShift, shiftDate: autoShiftDate });
+    GASCache.set(planCacheKey, data, 60);
     if (data.isSet) {
-      state.productionPlan = { activeLineIds: data.activeLineIds, date: data.date };
+      state.productionPlan = { activeLineIds: data.activeLineIds, date: data.date, shiftName: data.shiftName || autoShift };
       return true;
     }
-    // Ensure lines are loaded before showing modal
     if (!(state.masterData.lines || []).length) await ensureMasterDataLoaded(false);
-    // Not set today — show modal
-    await openProductionPlanModal(data);
-    if (!state.productionPlan) state.productionPlanSkipped = true; // dismissed → don't show again
+    await openProductionPlanModal(data, autoShift, autoShiftDate);
+    if (!state.productionPlan) state.productionPlanSkipped = true;
     return true;
   } catch (_) {
     return true; // on error, don't block dashboard
   }
 }
 
-async function openProductionPlanModal(planData) {
+async function openProductionPlanModal(planData, autoShift, autoShiftDate) {
   return new Promise(resolve => {
     // Always reset button state when opening modal
     const saveBtn = $('#prodPlanSave');
@@ -478,8 +491,35 @@ async function openProductionPlanModal(planData) {
     );
     if (!myLines.length) { resolve(); return; }
 
+    // Shift selector
+    let selectedShift = autoShift || detectCurrentShift();
+    let selectedShiftDate = autoShiftDate || getShiftDate(selectedShift);
+    const SHIFTS = [
+      { key: 'กะเช้า', label: 'กะเช้า', sub: '08:00 – 20:00' },
+      { key: 'กะดึก', label: 'กะดึก',  sub: '20:00 – 08:00' }
+    ];
+    $('#prodPlanLines').innerHTML = `
+      <div style="margin-bottom:14px">
+        <div style="font-size:.8rem;font-weight:800;color:var(--muted);margin-bottom:8px">คุณทำงานกะอะไร?</div>
+        <div style="display:flex;gap:10px">
+          ${SHIFTS.map(s => `
+            <label class="prod-plan-shift-opt${s.key === selectedShift ? ' active' : ''}" id="shiftOpt_${s.key}">
+              <input type="radio" name="prodPlanShift" value="${escapeAttr(s.key)}" ${s.key === selectedShift ? 'checked' : ''} style="display:none">
+              <div class="prod-plan-shift-label">${escapeHtml(s.label)}</div>
+              <div class="prod-plan-shift-sub">${escapeHtml(s.sub)}</div>
+            </label>`).join('')}
+        </div>
+      </div>
+      <div id="prodPlanLinesInner"></div>`;
+    $$('input[name="prodPlanShift"]').forEach(r => r.addEventListener('change', () => {
+      selectedShift = r.value;
+      selectedShiftDate = getShiftDate(selectedShift);
+      $$('.prod-plan-shift-opt').forEach(el => el.classList.remove('active'));
+      document.getElementById('shiftOpt_' + selectedShift)?.classList.add('active');
+    }));
+
     const currentIds = planData?.activeLineIds || null;
-    const isAllSelected = currentIds === null; // null = not set yet → default all checked
+    const isAllSelected = currentIds === null;
 
     const stationCounts = {};
     (state.masterData.stations || []).forEach(s => {
@@ -495,12 +535,12 @@ async function openProductionPlanModal(planData) {
     const updateCount = () => {
       const total = $$('.prod-plan-cb').length;
       const checked = $$('.prod-plan-cb:checked').length;
-      const countEl = $('.prod-plan-count');
+      const countEl = $('#prodPlanLinesInner')?.querySelector('.prod-plan-count');
       if (countEl) countEl.textContent = checked > 0 ? `เลือกแล้ว ${checked} จาก ${total} Line` : 'ยังไม่ได้เลือก Line';
       $('#prodPlanToggleAll').textContent = checked === total ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด';
     };
 
-    $('#prodPlanLines').innerHTML =
+    $('#prodPlanLinesInner').innerHTML =
       `<div class="prod-plan-count">${initialChecked > 0 ? `เลือกแล้ว ${initialChecked} จาก ${myLines.length} Line` : 'ยังไม่ได้เลือก Line'}</div>` +
       myLines.map((l, i) => {
         const isChecked = isAllSelected || (currentIds && currentIds.includes(l.LineID));
@@ -536,9 +576,9 @@ async function openProductionPlanModal(planData) {
       saveBtn.disabled = true;
       saveBtn.textContent = 'กำลังบันทึก...';
       try {
-        const saved = await apiCall('saveProductionPlan', { lineIds: selected });
-        state.productionPlan = { activeLineIds: saved.activeLineIds, date: saved.date };
-        GASCache.invalidate(`prod_plan_${saved.date || localDateInput(new Date())}`);
+        const saved = await apiCall('saveProductionPlan', { lineIds: selected, shiftName: selectedShift, shiftDate: selectedShiftDate });
+        state.productionPlan = { activeLineIds: saved.activeLineIds, date: saved.date, shiftName: saved.shiftName || selectedShift };
+        GASCache.invalidate(`prod_plan_${saved.date}_${saved.shiftName || selectedShift}_${state.user?.UserID}`);
         $('#prodPlanDialog').close();
         resolve();
       } catch (err) {
@@ -557,13 +597,12 @@ async function openProductionPlanModal(planData) {
 
 async function changeProdPlan() {
   state.productionPlan = null;
+  state.productionPlanSkipped = false;
   state.leaderDashData = null;
   GASCache.invalidatePrefix('leader_');
-  // Ensure lines are available for the modal
-  if (!(state.masterData.lines || []).length) {
-    await ensureMasterDataLoaded(false);
-  }
-  await openProductionPlanModal(null);
+  if (!(state.masterData.lines || []).length) await ensureMasterDataLoaded(false);
+  const sh = detectCurrentShift();
+  await openProductionPlanModal(null, sh, getShiftDate(sh));
   loadLeaderDashboard();
 }
 
@@ -646,14 +685,15 @@ function renderLeaderHeader(dashData) {
   const allLines = state.masterData.lines || [];
   const lineAccess = JSON.parse(localStorage.getItem('lpa_line_access') || '[]');
   const myLineIds = lineAccess.map(l => l.LineID);
+  const shiftLabel = plan?.shiftName || detectCurrentShift();
   let activeBadge, btnLabel;
   if (plan && plan.activeLineIds && plan.activeLineIds.length > 0) {
     const activeNames = allLines.filter(l => plan.activeLineIds.includes(l.LineID)).map(l => l.LineName || l.LineID);
-    activeBadge = `<span class="prod-active-badge">🟢 ${activeNames.length} Line ผลิตวันนี้: ${activeNames.join(', ')}</span>`;
-    btnLabel = 'เปลี่ยน';
+    activeBadge = `<span class="prod-active-badge">🟢 ${escapeHtml(shiftLabel)} · ${escapeHtml(activeNames.join(', '))}</span>`;
+    btnLabel = 'เปลี่ยนกะ/Line';
   } else {
-    activeBadge = `<span class="prod-active-badge" style="background:rgba(211,41,41,.45)">⚠️ ยังไม่ได้เลือก Line ที่ผลิต</span>`;
-    btnLabel = 'เลือก Line';
+    activeBadge = `<span class="prod-active-badge" style="background:rgba(211,41,41,.45)">⚠️ ยังไม่ได้เลือกกะและ Line</span>`;
+    btnLabel = 'เลือกกะ / Line';
   }
 
   const todayTasks = (state.leaderDashData?.rules || []).filter(r => rulesMatchToday(r)).length;

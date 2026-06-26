@@ -518,3 +518,10 @@ textarea{line-height:1.45}
 .prod-plan-line-item.pp-checked .prod-plan-tick{opacity:1}
 .prod-active-badge{display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,.18);border-radius:99px;padding:3px 10px;font-size:.75rem;font-weight:700}
 .prod-change-btn{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:7px;padding:2px 10px;font-size:.72rem;font-weight:700;cursor:pointer;margin-left:4px}
+
+/* ===== Shift Selector in Production Plan Modal ===== */
+.prod-plan-shift-opt{display:flex;flex-direction:column;align-items:center;gap:4px;border:2px solid var(--border);border-radius:12px;padding:10px 20px;cursor:pointer;transition:.15s;min-width:120px;text-align:center}
+.prod-plan-shift-opt:hover{border-color:var(--blue)}
+.prod-plan-shift-opt.active{border-color:var(--blue);background:var(--cyan)}
+.prod-plan-shift-label{font-size:.95rem;font-weight:800;color:var(--text)}
+.prod-plan-shift-sub{font-size:.72rem;color:var(--muted)}
