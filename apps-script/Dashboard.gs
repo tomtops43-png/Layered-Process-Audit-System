@@ -1,3 +1,55 @@
+/** Single-call batch for Leader/Supervisor dashboard — replaces 4 separate API calls. */
+function getLeaderDashboardBatch(payload, currentUser) {
+  try {
+    requirePermission_(currentUser, 'dashboard.view');
+    var batchCacheKey = 'LPA_LEADER_BATCH_' + cleanString_(currentUser.UserID);
+    var cached = safeCacheGetJson_(batchCacheKey);
+    if (cached) return jsonResponse(true, 'Leader batch loaded from cache.', cached);
+
+    var now = new Date();
+    var today = formatDateBangkok_(now);
+    var lineAccess = getUserLineAccess_(currentUser);
+
+    // Shared data reads — each sheet is read once
+    var allAuditSessions = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
+    var allFindingRows = getCachedFindingRows_().map(refreshOverdueForRead_);
+
+    // 1. Dashboard summary (AuditRuleSummary)
+    var ruleSummary = { DueToday: 0, Overdue: 0, Missed: 0, ThisWeek: 0, CompletedThisMonth: 0, RuleCount: 0 };
+    try { ruleSummary = getRuleBasedAuditSummary_(currentUser, now, lineAccess, allAuditSessions); } catch (_) {}
+
+    // 2. Schedule rules for this user's role
+    var rules = getAuditPlanRuleRows_().filter(function(r) {
+      return isActive_(r.ActiveStatus) &&
+        canAccessLineFromRows_(currentUser, r.LineID, 'View', lineAccess);
+    }).map(sanitizeAuditRuleForClient_);
+
+    // 3. Today's audit sessions (all lines this user can see)
+    var todayAudits = allAuditSessions.filter(function(a) {
+      return cleanString_(a.AuditDate) === today &&
+        (canAccessLineFromRows_(currentUser, a.LineID, 'View', lineAccess) ||
+         valuesEqual_(a.AuditorUserID, currentUser.UserID));
+    }).map(sanitizeForClient_);
+
+    // 4. My open findings
+    var myFindings = allFindingRows.filter(function(f) {
+      return isAssignedToUser_(f, currentUser) && !isClosedStatus_(f.Status);
+    }).map(sanitizeFindingForClient_);
+
+    var result = {
+      ruleSummary: ruleSummary, rules: rules,
+      todayAudits: todayAudits, myFindings: myFindings,
+      MyOpenFindings: myFindings.length,
+      MyOverdueFindings: myFindings.filter(function(f){ return valuesEqual_(f.OverdueFlag,'Yes'); }).length,
+      serverDate: today
+    };
+    safeCachePutJson_(batchCacheKey, result, 90); // 90 sec server cache
+    return jsonResponse(true, 'Leader batch loaded.', result);
+  } catch(error) {
+    return jsonResponse(false, safeErrorMessage_(error), {});
+  }
+}
+
 /** Dashboard KPI and grouped-summary API. */
 function getDashboard(payload, currentUser) {
   try {

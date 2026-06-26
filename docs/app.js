@@ -646,24 +646,20 @@ function renderLeaderFromData(d) {
 
 async function fetchLeaderDashData(ldKey, today, rolesToFetch, silent) {
   try {
-    const [dashData, rulesData] = await Promise.all([
-      cachedApiCall('getDashboard', {}, 'dashboard', 5),
-      apiCall('getAuditPlanRules', { activeStatus: 'Active', limit: 300 })
-    ]);
-    const [auditsData, findingsData] = await Promise.all([
-      apiCall('getAuditList', { auditDate: today, limit: 500 }).catch(() => ({ audits: [] })),
-      apiCall('getFindings', { myFindings: 'assigned', limit: 200 }).catch(() => ({ findings: [] }))
-    ]);
-    state.dashboard = dashData;
+    // Single batch call — replaces 4 separate API calls (major speed improvement)
+    const batch = await apiCall('getLeaderDashboardBatch', {});
     const activeLineIds = state.productionPlan?.activeLineIds || null;
-    const rules = (rulesData.rules || [])
+    const rules = (batch.rules || [])
       .filter(r => rolesToFetch.includes(r.RequiredRole))
       .filter(r => !activeLineIds || activeLineIds.includes(r.LineID));
-    const todayAudits = auditsData.audits || [];
-    const myFindings = (findingsData.findings || []).filter(f => (f.Status || '').toLowerCase() !== 'closed');
+    // Build a minimal dashData object from batch result
+    const dashData = { AuditRuleSummary: batch.ruleSummary || {}, MyOpenFindings: batch.MyOpenFindings || 0, MyOverdueFindings: batch.MyOverdueFindings || 0 };
+    state.dashboard = dashData;
+    const todayAudits = batch.todayAudits || [];
+    const myFindings = (batch.myFindings || []).filter(f => (f.Status || '').toLowerCase() !== 'closed');
     const d = { dashData, rules, todayAudits, myFindings };
     state.leaderDashData = d;
-    GASCache.set(ldKey, d, 10); // 10-minute cache — today's data rarely changes
+    GASCache.set(ldKey, d, 20); // 20-minute cache
     renderLeaderFromData(d);
   } catch (error) {
     if (silent) return; // Background refresh failure — keep showing old data silently

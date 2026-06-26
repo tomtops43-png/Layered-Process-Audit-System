@@ -393,6 +393,7 @@ function invalidateDashboardCachesForUser_(user) {
   ]);
   invalidateFindingsCache_();
   invalidateAuditRulesCache_();
+  safeCacheRemove_(['LPA_LEADER_BATCH_' + (user ? cleanString_(user.UserID) : '')]);
 }
 
 function dateBelongsToPlan_(auditDate, plan) {

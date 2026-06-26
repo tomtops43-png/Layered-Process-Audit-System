@@ -101,6 +101,7 @@ function hasApiAccess_(user, action) {
     verifyFinding: ['findings.verify'],
     closeFinding: ['findings.close.minor', 'findings.close.major', 'findings.close.critical'],
     getDashboard: ['dashboard.view', 'dashboard.view.all'],
+    getLeaderDashboardBatch: ['dashboard.view'],
     getManagerComplianceData: ['dashboard.view', 'dashboard.view.all'],
     migrateRulesToLineLevel: ['audit.plan.manage'],
     deduplicateLineRules: ['audit.plan.manage'],
