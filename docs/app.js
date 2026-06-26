@@ -1056,18 +1056,29 @@ function renderDirLayer(data) {
 }
 
 // ===== Manager Dashboard =====
-if (!state.mgrData) state.mgrData = { complianceData: null, dashData: null, findings: [], period: 'month', selectedLine: '' };
+if (!state.mgrData) state.mgrData = { complianceData: null, dashData: null, findings: [], period: 'month', selectedLine: '', startDate: '', endDate: '' };
 
-async function loadManagerDashboard(period) {
-  if (period) state.mgrData.period = period;
-  const p = state.mgrData.period;
-  const mgrKey = `mgr_comp_${p}`;
+async function loadManagerDashboard(startDate, endDate) {
+  const today = localDateInput(new Date());
+  // Set or compute date range
+  if (startDate && endDate) {
+    state.mgrData.startDate = startDate;
+    state.mgrData.endDate = endDate;
+    state.mgrData.period = 'custom';
+  } else if (!state.mgrData.startDate) {
+    // Default: this month
+    state.mgrData.startDate = today.slice(0, 7) + '-01';
+    state.mgrData.endDate = today;
+    state.mgrData.period = 'month';
+  }
+  const sd = state.mgrData.startDate, ed = state.mgrData.endDate;
+  const mgrKey = `mgr_comp_${sd}_${ed}`;
   const mgrCached = GASCache.get(mgrKey);
-  if (mgrCached && !period) {
+  if (mgrCached && !startDate) {
     try {
       const { complianceData, dashData, findings } = mgrCached;
       state.mgrData.complianceData = complianceData; state.mgrData.dashData = dashData; state.mgrData.findings = findings;
-      renderMgrHeader(p); renderMgrMetrics(complianceData, dashData); renderMgrBarChart(complianceData.byLine || []);
+      renderMgrHeader(); renderMgrMetrics(complianceData, dashData); renderMgrBarChart(complianceData.byLine || []);
       renderMgrHeatmap(complianceData.byStationRole || [], state.mgrData.selectedLine); renderMgrEscalation(findings); return;
     } catch (_) { GASCache.invalidate(mgrKey); }
   }
@@ -1077,9 +1088,8 @@ async function loadManagerDashboard(period) {
   $('#mgrHeatmap').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   $('#mgrEscalation').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   try {
-    const today = localDateInput(new Date());
     const [complianceData, dashData, findingsData, todayAuditsData] = await Promise.all([
-      cachedApiCall('getManagerComplianceData', { period: p }, mgrKey, 3),
+      cachedApiCall('getManagerComplianceData', { startDate: sd, endDate: ed }, mgrKey, 3),
       cachedApiCall('getDashboard', {}, 'dashboard', 1),
       apiCall('getFindings', { limit: 500 }).catch(() => ({ findings: [] })),
       apiCall('getAuditList', { limit: 200 }).catch(() => ({ audits: [] }))
@@ -1100,7 +1110,7 @@ async function loadManagerDashboard(period) {
       }
       heatmapSel.value = state.mgrData.selectedLine;
     }
-    renderMgrHeader(p);
+    renderMgrHeader();
     renderMgrMetrics(complianceData, dashData);
     renderMgrBarChart(complianceData.byLine || []);
     renderMgrHeatmap(complianceData.byStationRole || [], state.mgrData.selectedLine);
@@ -1114,21 +1124,56 @@ async function loadManagerDashboard(period) {
   }
 }
 
-function renderMgrHeader(period) {
+function renderMgrHeader() {
   const user = state.user;
-  const cd = state.mgrData.complianceData || {};
-  const dateLabel = cd.startDate && cd.endDate ? `${formatDate(cd.startDate)} – ${formatDate(cd.endDate)}` : '';
+  const today = localDateInput(new Date());
+  const sd = state.mgrData.startDate || today.slice(0,7) + '-01';
+  const ed = state.mgrData.endDate || today;
+  const thisMonthStart = today.slice(0,7) + '-01';
+  const thisWeekStart = (() => { const d = new Date(); d.setDate(d.getDate() - (d.getDay() === 0 ? 6 : d.getDay()-1)); return localDateInput(d); })();
+  const isMonth = sd === thisMonthStart && ed === today;
+  const isWeek = sd === thisWeekStart && ed === today;
   $('#mgrHeader').innerHTML = `
     <div class="mgr-header-left">
       <div class="ld-greeting">👔 ${escapeHtml(user.FullName || user.Username)} · ${escapeHtml(user.Role === 'Viewer' ? 'Customer' : 'Manager')}</div>
       <div class="ld-sub">Plant Overview Dashboard</div>
     </div>
     <div class="mgr-period-row">
-      <button class="mgr-period-btn ${period==='month'?'active':''}" onclick="loadManagerDashboard('month')">เดือนนี้</button>
-      <button class="mgr-period-btn ${period==='week'?'active':''}" onclick="loadManagerDashboard('week')">สัปดาห์นี้</button>
-      <span style="font-size:.78rem;opacity:.75">${escapeHtml(dateLabel)}</span>
+      <button class="mgr-period-btn ${isMonth?'active':''}" onclick="mgrSetPreset('month')">เดือนนี้</button>
+      <button class="mgr-period-btn ${isWeek?'active':''}" onclick="mgrSetPreset('week')">สัปดาห์นี้</button>
+      <span style="display:flex;align-items:center;gap:6px;font-size:.8rem">
+        <input type="date" id="mgrDateStart" value="${escapeAttr(sd)}" max="${escapeAttr(today)}"
+               style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:7px;padding:4px 8px;font-size:.78rem;min-height:auto;width:130px"
+               onchange="mgrApplyDateRange()">
+        <span style="opacity:.7">–</span>
+        <input type="date" id="mgrDateEnd" value="${escapeAttr(ed)}" max="${escapeAttr(today)}"
+               style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:7px;padding:4px 8px;font-size:.78rem;min-height:auto;width:130px"
+               onchange="mgrApplyDateRange()">
+      </span>
       <button class="mgr-export-btn" onclick="window.print()">⬇ Export PDF</button>
     </div>`;
+}
+
+function mgrSetPreset(preset) {
+  const today = localDateInput(new Date());
+  let sd;
+  if (preset === 'week') {
+    const d = new Date(); d.setDate(d.getDate() - (d.getDay() === 0 ? 6 : d.getDay()-1));
+    sd = localDateInput(d);
+  } else {
+    sd = today.slice(0,7) + '-01';
+  }
+  GASCache.invalidatePrefix('mgr_comp_');
+  loadManagerDashboard(sd, today);
+}
+
+function mgrApplyDateRange() {
+  const sd = $('#mgrDateStart')?.value;
+  const ed = $('#mgrDateEnd')?.value;
+  if (sd && ed && sd <= ed) {
+    GASCache.invalidatePrefix('mgr_comp_');
+    loadManagerDashboard(sd, ed);
+  }
 }
 
 function renderMgrMetrics(cd, dashData) {

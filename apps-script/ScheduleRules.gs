@@ -245,23 +245,29 @@ function getManagerComplianceData(payload, currentUser) {
     if (!hasPermission_(currentUser, 'dashboard.view') && !hasPermission_(currentUser, 'dashboard.view.all')) {
       throw new Error('Permission denied: dashboard.view');
     }
-    var mgrCacheKey = 'MGR_COMP_' + cleanString_(payload.period || 'month') + '_' + cleanString_(payload.lineId || 'ALL');
-    var mgrCached = safeCacheGetJson_(mgrCacheKey);
-    if (mgrCached) return jsonResponse(true, 'Manager compliance loaded from cache.', mgrCached);
     var now = new Date();
-    var period = cleanString_(payload.period) || 'month';
     var lineId = cleanString_(payload.lineId) || '';
     var startDate, endDate;
-    if (period === 'week') {
-      var dow = now.getDay() === 0 ? 7 : now.getDay();
-      var monday = new Date(now); monday.setDate(now.getDate() - (dow - 1)); monday.setHours(0, 0, 0, 0);
-      startDate = formatDateBangkok_(monday);
+    // Support custom date range OR preset period
+    if (cleanString_(payload.startDate) && cleanString_(payload.endDate)) {
+      startDate = cleanString_(payload.startDate);
+      endDate = cleanString_(payload.endDate);
     } else {
-      var y = Number(formatDateBangkok_(now).slice(0, 4));
-      var m = Number(formatDateBangkok_(now).slice(5, 7));
-      startDate = y + '-' + ('0' + m).slice(-2) + '-01';
+      var period = cleanString_(payload.period) || 'month';
+      if (period === 'week') {
+        var dow = now.getDay() === 0 ? 7 : now.getDay();
+        var monday = new Date(now); monday.setDate(now.getDate() - (dow - 1)); monday.setHours(0, 0, 0, 0);
+        startDate = formatDateBangkok_(monday);
+      } else {
+        var y = Number(formatDateBangkok_(now).slice(0, 4));
+        var m = Number(formatDateBangkok_(now).slice(5, 7));
+        startDate = y + '-' + ('0' + m).slice(-2) + '-01';
+      }
+      endDate = formatDateBangkok_(now);
     }
-    endDate = formatDateBangkok_(now);
+    var mgrCacheKey = 'MGR_COMP_' + startDate + '_' + endDate + '_' + (lineId || 'ALL');
+    var mgrCached = safeCacheGetJson_(mgrCacheKey);
+    if (mgrCached) return jsonResponse(true, 'Manager compliance loaded from cache.', mgrCached);
 
     var rules = getAuditPlanRuleRows_().filter(function (r) {
       return isActive_(r.ActiveStatus) && (!lineId || valuesEqual_(r.LineID, lineId));
