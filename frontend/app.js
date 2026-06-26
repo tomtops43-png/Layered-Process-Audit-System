@@ -405,7 +405,7 @@ async function ensureMasterDataLoaded(withLoading = true) {
 async function loadDashboard() {
   const role = state.user?.Role || '';
   const isLeaderRole = role === 'Leader' || role === 'Supervisor';
-  const isMgrRole = role === 'Manager';
+  const isMgrRole = role === 'Manager' || role === 'Viewer'; // Viewer sees Manager dashboard
   const isDirRole = role === 'Admin';
   $('#leaderDashboard').classList.toggle('hidden', !isLeaderRole);
   $('#mgrDashboard').classList.toggle('hidden', !isMgrRole);
