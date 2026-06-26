@@ -420,8 +420,14 @@ async function loadDashboard() {
   if (cachedDash) { state.dashboard = cachedDash; renderDashboard(cachedDash); refreshButton.disabled = false; return; }
   showDashboardSkeleton();
   try {
-    state.dashboard = await cachedApiCall('getDashboard', {}, 'dashboard', 1);
-    renderDashboard(state.dashboard);
+    const todayStr = localDateInput(new Date());
+    const [dashData, todayAudits] = await Promise.all([
+      cachedApiCall('getDashboard', {}, 'dashboard', 1),
+      apiCall('getAuditList', { auditDate: todayStr, limit: 200 }).catch(() => ({ audits: [] }))
+    ]);
+    state.dashboard = dashData;
+    renderDashboard(dashData);
+    renderTodayAudits(todayAudits.audits || [], '#todayAuditsList');
   } catch (error) {
     showToast(error.message, 'error');
   } finally {
@@ -1036,10 +1042,12 @@ async function loadManagerDashboard(period) {
   $('#mgrHeatmap').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   $('#mgrEscalation').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   try {
-    const [complianceData, dashData, findingsData] = await Promise.all([
+    const today = localDateInput(new Date());
+    const [complianceData, dashData, findingsData, todayAuditsData] = await Promise.all([
       cachedApiCall('getManagerComplianceData', { period: p }, mgrKey, 3),
       cachedApiCall('getDashboard', {}, 'dashboard', 1),
-      apiCall('getFindings', { limit: 500 }).catch(() => ({ findings: [] }))
+      apiCall('getFindings', { limit: 500 }).catch(() => ({ findings: [] })),
+      apiCall('getAuditList', { auditDate: today, limit: 200 }).catch(() => ({ audits: [] }))
     ]);
     state.mgrData.complianceData = complianceData;
     state.mgrData.dashData = dashData;
@@ -1062,6 +1070,7 @@ async function loadManagerDashboard(period) {
     renderMgrBarChart(complianceData.byLine || []);
     renderMgrHeatmap(complianceData.byStationRole || [], state.mgrData.selectedLine);
     renderMgrEscalation(state.mgrData.findings);
+    renderTodayAudits(todayAuditsData.audits || [], '#mgrTodayAudits');
     GASCache.set(mgrKey, { complianceData, dashData, findings: state.mgrData.findings }, 3);
   } catch (error) {
     $('#mgrHeader').innerHTML = `<div class="mgr-header-left"><div class="ld-greeting">❌ โหลดไม่สำเร็จ</div><div class="ld-sub">${escapeHtml(error.message)}</div></div><button class="mgr-export-btn" onclick="loadManagerDashboard()">↻ ลองใหม่</button>`;
@@ -1158,6 +1167,29 @@ function onMgrLineChange() {
   if (state.mgrData.complianceData) {
     renderMgrHeatmap(state.mgrData.complianceData.byStationRole || [], lineId);
   }
+}
+
+function renderTodayAudits(audits, selector) {
+  const el = $(selector);
+  if (!el) return;
+  if (!audits.length) { el.innerHTML = '<div class="empty-state">ยังไม่มีการตรวจวันนี้</div>'; return; }
+  const sorted = [...audits].sort((a, b) => (a.AuditTime || '').localeCompare(b.AuditTime || ''));
+  el.innerHTML = `<table class="data-table" style="font-size:.83rem">
+    <thead><tr><th>Line</th><th>ผู้ตรวจ</th><th>Layer</th><th>Shift</th><th>เวลา</th><th>OK</th><th>NG</th></tr></thead>
+    <tbody>${sorted.map(a => {
+      const ngCls = Number(a.TotalNG) > 0 ? 'color:var(--red);font-weight:800' : '';
+      const time = String(a.AuditTime || '').slice(0,5);
+      return `<tr>
+        <td><strong>${escapeHtml(a.LineName || a.LineID)}</strong></td>
+        <td>${escapeHtml(a.AuditorName || '-')}</td>
+        <td>${escapeHtml(a.AuditLayer || '-')}</td>
+        <td>${escapeHtml(a.Shift || '-')}</td>
+        <td>${escapeHtml(time)}</td>
+        <td style="color:var(--green);font-weight:700">${a.TotalOK ?? '-'}</td>
+        <td style="${ngCls}">${a.TotalNG ?? '-'}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
 }
 
 function renderMgrEscalation(findings) {
