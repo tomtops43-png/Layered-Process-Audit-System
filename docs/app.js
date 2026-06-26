@@ -1935,7 +1935,7 @@ async function loadAuditPlan() {
         activeStatus: optionalFilterValue($('#planRuleStatus').value),
         limit: 300
       }),
-      apiCall('getAuditList', { auditDate: today, limit: 500 }).catch(() => ({ audits: [] }))
+      apiCall('getAuditList', { periodMonth: today.slice(0,7).replace('-',''), limit: 500 }).catch(() => ({ audits: [] }))
     ]);
     state.auditRules = rulesData.rules || [];
     state.todayAudits = auditsData.audits || [];
@@ -1945,6 +1945,50 @@ async function loadAuditPlan() {
   } finally {
     hideLoading();
   }
+}
+
+function auditStatusForRule(rule, allAudits) {
+  const freq = rule.Frequency || 'Daily';
+  const lid = rule.LineID, sid = rule.StationID, role = (rule.RequiredRole || '').toLowerCase();
+  const now = new Date();
+  const today = localDateInput(now);
+
+  const matches = allAudits.filter(a =>
+    String(a.LineID) === lid &&
+    String(a.StationID) === sid &&
+    String(a.AuditLayer || '').toLowerCase() === role
+  );
+
+  if (freq === 'Daily') {
+    const done = matches.some(a => String(a.AuditDate || '').slice(0, 10) === today);
+    if (done) return 'done';
+    return 'pending'; // pending all day, overdue after midnight
+  }
+
+  if (freq === 'Weekly') {
+    const weekStart = (() => { const d = new Date(now); d.setDate(d.getDate() - (d.getDay() === 0 ? 6 : d.getDay() - 1)); return localDateInput(d); })();
+    const done = matches.some(a => String(a.AuditDate || '').slice(0, 10) >= weekStart && String(a.AuditDate || '').slice(0, 10) <= today);
+    if (done) return 'done';
+    // Overdue only if we're past the last expected day this week
+    const dayOfWeek = rule.DayOfWeek || '';
+    const names = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    if (dayOfWeek) {
+      const allowedDays = dayOfWeek.split(',').map(d => { const t = d.trim(); return names.findIndex(n => n === t.slice(0,3) || String(names.indexOf(t)) === t); });
+      const maxDay = Math.max(...allowedDays);
+      if (now.getDay() > maxDay) return 'overdue';
+    }
+    return 'pending';
+  }
+
+  if (freq === 'Monthly') {
+    const dayOfMonth = Number(rule.DayOfMonth || 1);
+    const monthStr = today.slice(0, 7);
+    const done = matches.some(a => String(a.AuditDate || '').slice(0, 7) === monthStr);
+    if (done) return 'done';
+    if (now.getDate() > dayOfMonth) return 'overdue'; // due date passed
+    return 'pending'; // due date not yet
+  }
+  return 'pending';
 }
 
 function renderAuditRules() {
@@ -1969,9 +2013,7 @@ function renderAuditRules() {
       const sub = freq === 'Daily' ? (rule.DayOfWeek || 'Working days') : freq === 'Weekly' ? (rule.DayOfWeek || 'ทุกวัน') : `วันที่ ${rule.DayOfMonth || '1'}`;
       roleFreq[role] = { freq, sub };
     }
-    const todayKey = `${lid}|${sid}|${role.toLowerCase()}`;
-    const [h, m] = (rule.DueTime || '17:00').split(':').map(Number);
-    const status = todayMap[todayKey] ? 'done' : nowMin > (h * 60 + m) ? 'overdue' : 'pending';
+    const status = auditStatusForRule(rule, state.todayAudits || []);
     lineMap[lid].stMap[sid].cells[role] = { rule, status };
   });
   const roles = Array.from(roleSet).sort((a, b) => (ROLE_ORDER[a] || 9) - (ROLE_ORDER[b] || 9));
