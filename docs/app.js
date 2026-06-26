@@ -2508,7 +2508,7 @@ function populateAllMasterSelects() {
   // Audit Form: only show lines in today's production plan (interlock)
   const activeIds = state.productionPlan?.activeLineIds;
   // treat empty array same as null — show all lines if no plan set
-  const auditLines = (activeIds && activeIds.length > 0) ? allLines.filter(l => activeIds.includes(l.LineID)) : allLines;
+  const auditLines = allLines; // No line interlock — Leader can audit any line
   populateSelect('#auditLine', auditLines, 'LineID', 'LineName', 'เลือก Line');
   // Other selects use all lines
   ['#findingLine', '#checklistLine', '#planLine'].forEach((selector, index) => populateSelect(selector, allLines, 'LineID', 'LineName', index === 1 ? 'ทั้งหมด' : 'เลือก Line'));
@@ -2897,17 +2897,10 @@ function setDefaultDates() {
   const today = localDateInput(now);
   const dateEl = $('#auditDate');
   dateEl.value = today;
-  // Leader / Supervisor: lock date to today only (no backdating across days)
-  const role = state.user?.Role || '';
-  if (role === 'Leader' || role === 'Supervisor') {
-    dateEl.min = today;
-    dateEl.max = today;
-    dateEl.readOnly = true;
-  } else {
-    dateEl.min = '';
-    dateEl.max = '';
-    dateEl.readOnly = false;
-  }
+  // No date lock — all roles can backdate (needed for shift work / missed entries)
+  dateEl.min = '';
+  dateEl.max = today; // Cannot audit future dates
+  dateEl.readOnly = false;
   $('#auditTime').value = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   $('#findingMonth').value = '';
