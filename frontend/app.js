@@ -1969,15 +1969,7 @@ function auditStatusForRule(rule, allAudits) {
     const weekStart = (() => { const d = new Date(now); d.setDate(d.getDate() - (d.getDay() === 0 ? 6 : d.getDay() - 1)); return localDateInput(d); })();
     const done = matches.some(a => String(a.AuditDate || '').slice(0, 10) >= weekStart && String(a.AuditDate || '').slice(0, 10) <= today);
     if (done) return 'done';
-    // Overdue only if we're past the last expected day this week
-    const dayOfWeek = rule.DayOfWeek || '';
-    const names = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-    if (dayOfWeek) {
-      const allowedDays = dayOfWeek.split(',').map(d => { const t = d.trim(); return names.findIndex(n => n === t.slice(0,3) || String(names.indexOf(t)) === t); });
-      const maxDay = Math.max(...allowedDays);
-      if (now.getDay() > maxDay) return 'overdue';
-    }
-    return 'pending';
+    return 'pending'; // during the week, never overdue — overdue only if whole week passed
   }
 
   if (freq === 'Monthly') {
