@@ -649,16 +649,43 @@ async function fetchLeaderDashData(ldKey, today, rolesToFetch, silent) {
   try {
     // Single batch call — replaces 4 separate API calls (major speed improvement)
     const batch = await apiCall('getLeaderDashboardBatch', {});
-    // Leader: filter by production plan. Supervisor/Manager: show ALL lines
-    const activeLineIds = (rolesToFetch.includes('Leader') && !rolesToFetch.includes('Supervisor'))
+    const allAudits = batch.todayAudits || []; // this month's audits
+    const today = localDateInput(new Date());
+
+    // Week start (Monday)
+    const wd = new Date().getDay();
+    const weekStartD = new Date(); weekStartD.setDate(weekStartD.getDate() - (wd === 0 ? 6 : wd - 1));
+    const weekStart = localDateInput(weekStartD);
+
+    // Active lines derived from audit history (proxy for "line had production")
+    const weeklyActiveLines = new Set(
+      allAudits.filter(a => (a.AuditDate||'').slice(0,10) >= weekStart).map(a => a.LineID)
+    );
+    const monthlyActiveLines = new Set(allAudits.map(a => a.LineID));
+
+    // Leader: filter by production plan. Supervisor/Manager: filter by audit history
+    const leaderPlanIds = (rolesToFetch.includes('Leader') && !rolesToFetch.includes('Supervisor'))
       ? (state.productionPlan?.activeLineIds || null) : null;
+
     const rules = (batch.rules || [])
       .filter(r => rolesToFetch.includes(r.RequiredRole))
-      .filter(r => !activeLineIds || activeLineIds.includes(r.LineID));
+      .filter(r => {
+        const freq = r.Frequency || 'Daily';
+        if (freq === 'Weekly') {
+          // Supervisor: only lines with Leader audit this week
+          return weeklyActiveLines.size === 0 || weeklyActiveLines.has(r.LineID);
+        }
+        if (freq === 'Monthly') {
+          // Manager: only lines with any audit this month
+          return monthlyActiveLines.size === 0 || monthlyActiveLines.has(r.LineID);
+        }
+        // Daily (Leader): filter by production plan
+        return !leaderPlanIds || leaderPlanIds.includes(r.LineID);
+      });
     // Build a minimal dashData object from batch result
     const dashData = { AuditRuleSummary: batch.ruleSummary || {}, MyOpenFindings: batch.MyOpenFindings || 0, MyOverdueFindings: batch.MyOverdueFindings || 0 };
     state.dashboard = dashData;
-    const todayAudits = batch.todayAudits || [];
+    const todayAudits = batch.todayAudits || []; // contains this month's audits
     const myFindings = (batch.myFindings || []).filter(f => (f.Status || '').toLowerCase() !== 'closed');
     const d = { dashData, rules, todayAudits, myFindings };
     state.leaderDashData = d;
