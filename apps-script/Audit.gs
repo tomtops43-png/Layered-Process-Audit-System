@@ -24,11 +24,15 @@ function saveAudit(payload, currentUser) {
     }
     if (!Array.isArray(payload.records) || !payload.records.length) throw new Error('At least one audit record is required.');
     var shift = cleanString_(payload.shift);
-    if (!shift) throw new Error('กรุณาเลือก Shift');
-    var activeShift = getCachedListRows_().some(function (row) {
-      return valuesEqual_(row.ListType, 'Shift') && valuesEqual_(row.ListValue, shift) && isActive_(row.ActiveStatus);
-    });
-    if (!activeShift) throw new Error('Shift ที่เลือกไม่ได้เปิดใช้งาน กรุณาเลือก Shift ใหม่');
+    // Supervisor/Manager do not use Shift — skip validation for them
+    var roleRequiresShift = ['Leader', 'Engineer', 'User'].indexOf(cleanString_(currentUser.Role)) !== -1;
+    if (roleRequiresShift) {
+      if (!shift) throw new Error('กรุณาเลือก Shift');
+      var activeShift = getCachedListRows_().some(function (row) {
+        return valuesEqual_(row.ListType, 'Shift') && valuesEqual_(row.ListValue, shift) && isActive_(row.ActiveStatus);
+      });
+      if (!activeShift) throw new Error('Shift ที่เลือกไม่ได้เปิดใช้งาน กรุณาเลือก Shift ใหม่');
+    }
     var checklistIds = {};
     payload.records.forEach(function (record, index) {
       try { requireFields_(record, ['checklistId', 'result']); } catch (error) { throw new Error('Record ' + (index + 1) + ': ' + error.message); }
