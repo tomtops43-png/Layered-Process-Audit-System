@@ -2687,16 +2687,12 @@ function populateAllMasterSelects() {
     .filter(row => String(row.ListType || '').toLowerCase() === 'shift')
     .sort((a, b) => Number(a.SortOrder || 0) - Number(b.SortOrder || 0));
   populateSelect('#auditShift', shifts, 'ListValue', 'DisplayText', 'เลือก Shift');
-  // Supervisor/Manager: auto-select shift by time, hide the field
+  // Supervisor/Manager: no shift — hide and clear the field
   const role = state.user?.Role || '';
   const shiftLabel = $('#auditShiftLabel');
   const shiftSel = $('#auditShift');
   if (role === 'Supervisor' || role === 'Manager') {
-    // Auto-select: first shift = กะเช้า (A), second shift = กะดึก (B)
-    const hour = new Date().getHours();
-    const isDayShift = hour >= 8 && hour < 20;
-    const autoShift = isDayShift ? shifts[0] : shifts[shifts.length - 1];
-    if (autoShift) shiftSel.value = autoShift.ListValue || autoShift.value || '';
+    shiftSel.value = '';
     shiftSel.required = false;
     if (shiftLabel) shiftLabel.classList.add('hidden');
   } else {
