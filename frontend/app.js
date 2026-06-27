@@ -784,6 +784,16 @@ function renderLeaderTasks(rules, todayAudits) {
 }
 
 function renderLeaderFindings(findings) {
+  // Update section title based on role
+  const role = state.user?.Role || '';
+  const titleEl = $('#ldFindingTitle');
+  if (titleEl) {
+    if (role === 'Supervisor' || role === 'Manager') {
+      titleEl.textContent = '⚠️ Finding รอ Verify + ที่ฉันรับผิดชอบ';
+    } else {
+      titleEl.textContent = '⚠️ Finding ที่ฉันรับผิดชอบ';
+    }
+  }
   if (!findings.length) {
     $('#ldFindings').innerHTML = '<div class="empty-state">✅ ไม่มี Finding ค้างอยู่</div>';
     return;

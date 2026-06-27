@@ -33,7 +33,12 @@ function getLeaderDashboardBatch(payload, currentUser) {
 
     // 4. My open findings
     var myFindings = allFindingRows.filter(function(f) {
-      return isAssignedToUser_(f, currentUser) && !isClosedStatus_(f.Status);
+      if (isClosedStatus_(f.Status)) return false;
+      // Assigned to me (Leader: corrective action owner)
+      if (isAssignedToUser_(f, currentUser)) return true;
+      // Pending Verification that I can verify (Supervisor/Manager)
+      if (valuesEqual_(f.Status, 'Pending Verification') && canHandlePendingVerification_(currentUser, f)) return true;
+      return false;
     }).map(sanitizeFindingForClient_);
 
     var result = {
