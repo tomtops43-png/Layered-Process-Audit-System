@@ -618,22 +618,23 @@ async function loadLeaderDashboard() {
     if (sessionCached) state.leaderDashData = sessionCached;
   }
 
+  // Supervisor/Manager: skip production plan — they audit ALL lines every week
+  const needsProdPlan = role === 'Leader';
+
   // Render immediately if we have any data
   if (state.leaderDashData) {
     renderLeaderFromData(state.leaderDashData);
-    // Check production plan async AFTER render (no blocking)
-    ensureProductionPlan();
-    // Silent background refresh if cache expired
+    if (needsProdPlan) ensureProductionPlan(); // async, no blocking
     if (!GASCache.get(ldKey)) fetchLeaderDashData(ldKey, today, rolesToFetch, true);
     return;
   }
 
-  // True first load (no cache at all) — show skeleton, then check plan, then fetch
+  // True first load
   $('#ldHeader').innerHTML = '<div class="ld-header-left"><div class="ld-greeting">กำลังโหลด Dashboard...</div></div>';
   $('#ldMetrics').innerHTML = Array.from({length: 4}, () => '<div class="ld-card skeleton-card" style="min-height:90px"></div>').join('');
   $('#ldTasks').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   $('#ldFindings').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
-  await ensureProductionPlan();
+  if (needsProdPlan) await ensureProductionPlan();
   await fetchLeaderDashData(ldKey, today, rolesToFetch, false);
 }
 
@@ -648,7 +649,9 @@ async function fetchLeaderDashData(ldKey, today, rolesToFetch, silent) {
   try {
     // Single batch call — replaces 4 separate API calls (major speed improvement)
     const batch = await apiCall('getLeaderDashboardBatch', {});
-    const activeLineIds = state.productionPlan?.activeLineIds || null;
+    // Leader: filter by production plan. Supervisor/Manager: show ALL lines
+    const activeLineIds = (rolesToFetch.includes('Leader') && !rolesToFetch.includes('Supervisor'))
+      ? (state.productionPlan?.activeLineIds || null) : null;
     const rules = (batch.rules || [])
       .filter(r => rolesToFetch.includes(r.RequiredRole))
       .filter(r => !activeLineIds || activeLineIds.includes(r.LineID));
@@ -681,9 +684,15 @@ function renderLeaderHeader(dashData) {
   const allLines = state.masterData.lines || [];
   const lineAccess = JSON.parse(localStorage.getItem('lpa_line_access') || '[]');
   const myLineIds = lineAccess.map(l => l.LineID);
+  const role = user.Role || '';
+  const isSupervisorOrMgr = role === 'Supervisor' || role === 'Manager';
   const shiftLabel = plan?.shiftName || detectCurrentShift();
   let activeBadge, btnLabel;
-  if (plan && plan.activeLineIds && plan.activeLineIds.length > 0) {
+  if (isSupervisorOrMgr) {
+    // No production plan for Supervisor/Manager — they audit all lines
+    activeBadge = `<span class="prod-active-badge">🔄 ตรวจทุก Line รายสัปดาห์</span>`;
+    btnLabel = null;
+  } else if (plan && plan.activeLineIds && plan.activeLineIds.length > 0) {
     const activeNames = allLines.filter(l => plan.activeLineIds.includes(l.LineID)).map(l => l.LineName || l.LineID);
     activeBadge = `<span class="prod-active-badge">🟢 ${escapeHtml(shiftLabel)} · ${escapeHtml(activeNames.join(', '))}</span>`;
     btnLabel = 'เปลี่ยนกะ/Line';
@@ -699,7 +708,7 @@ function renderLeaderHeader(dashData) {
       <div class="ld-sub">${escapeHtml(user.Role)} · ${escapeHtml(thaiDate)}</div>
       <div style="margin-top:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         ${activeBadge}
-        <button class="prod-change-btn" onclick="changeProdPlan()">${btnLabel}</button>
+        ${btnLabel ? `<button class="prod-change-btn" onclick="changeProdPlan()">${btnLabel}</button>` : ''}
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
@@ -758,26 +767,63 @@ function rulesMatchToday(rule) {
 
 function renderLeaderTasks(rules, todayAudits) {
   const now = new Date();
-  const nowMin = now.getHours() * 60 + now.getMinutes();
-  const todayMap = {};
-  todayAudits.forEach(a => { todayMap[`${a.LineID}|${a.StationID}|${String(a.AuditLayer||'').toLowerCase()}`] = true; });
-  const todayRules = rules.filter(rulesMatchToday).sort((a, b) => (a.DueTime||'17:00').localeCompare(b.DueTime||'17:00'));
-  if (!todayRules.length) {
-    $('#ldTasks').innerHTML = '<div class="empty-state">ไม่มีงานตรวจวันนี้</div>';
+  const today = localDateInput(now);
+  const dayOfWeek = now.getDay(); // 0=Sun,1=Mon,...,6=Sat
+  // Week Mon-Sat: Mon=1…Sat=6, Sun treated as week end
+  const daysToSat = dayOfWeek === 0 ? 0 : (6 - dayOfWeek); // days remaining until Saturday
+  const isSaturday = dayOfWeek === 6;
+
+  // Build audit lookup key
+  const auditKey = (a) => `${a.LineID}|${a.StationID}|${String(a.AuditLayer||'').toLowerCase()}`;
+  const auditMap = {};
+  todayAudits.forEach(a => { auditMap[auditKey(a)] = (auditMap[auditKey(a)] || []).concat(a.AuditDate?.slice(0,10) || today); });
+
+  // Filter rules: for Daily show today's, for Weekly show all active weekly rules
+  const relevantRules = rules.filter(r => {
+    const freq = r.Frequency || 'Daily';
+    if (freq === 'Daily') return rulesMatchToday(r);
+    if (freq === 'Weekly') return String(r.ActiveStatus || '').toLowerCase() === 'active';
+    return false;
+  }).sort((a, b) => (a.LineName || a.LineID).localeCompare(b.LineName || b.LineID));
+
+  if (!relevantRules.length) {
+    $('#ldTasks').innerHTML = '<div class="empty-state">ไม่มีงานตรวจสัปดาห์นี้</div>';
     return;
   }
-  $('#ldTasks').innerHTML = todayRules.map(r => {
+
+  // Week start (Monday)
+  const weekStartDate = new Date(now); weekStartDate.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
+  const weekStart = localDateInput(weekStartDate);
+
+  $('#ldTasks').innerHTML = relevantRules.map(r => {
+    const freq = r.Frequency || 'Daily';
     const key = `${r.LineID}|${r.StationID}|${r.RequiredRole.toLowerCase()}`;
-    const done = !!todayMap[key];
-    // เกินกำหนด = ข้ามวันเท่านั้น (หลังเที่ยงคืน) — ระหว่างวันยังเป็น "รอตรวจ"
-    const badge = done ? '<span class="ld-badge done">✅ ตรวจแล้ว</span>'
-      : '<span class="ld-badge pending">🕐 รอตรวจ</span>';
-    const timeLabel = '';
+    const auditDates = auditMap[key] || [];
+
+    let done, badge, note;
+    if (freq === 'Daily') {
+      done = auditDates.includes(today);
+      badge = done ? '<span class="ld-badge done">✅ ตรวจแล้ว</span>' : '<span class="ld-badge pending">🕐 รอตรวจ</span>';
+      note = `${r.RequiredRole} · รายวัน`;
+    } else {
+      // Weekly: done if any audit this week (Mon-Sat)
+      done = auditDates.some(d => d >= weekStart && d <= today);
+      if (done) {
+        badge = '<span class="ld-badge done">✅ ตรวจแล้วสัปดาห์นี้</span>';
+        note = `${r.RequiredRole} · รายสัปดาห์`;
+      } else if (isSaturday) {
+        badge = '<span class="ld-badge overdue">⚠️ วันสุดท้าย! ต้องตรวจวันนี้</span>';
+        note = `${r.RequiredRole} · รายสัปดาห์`;
+      } else {
+        badge = `<span class="ld-badge pending">📅 เหลือ ${daysToSat} วัน (ถึงเสาร์)</span>`;
+        note = `${r.RequiredRole} · รายสัปดาห์`;
+      }
+    }
+
     const startBtn = done ? '' : `<button class="btn btn-primary btn-compact" onclick="startAuditFromDashboard('${escapeAttr(r.LineID)}','${escapeAttr(r.StationID)}','${escapeAttr(r.RequiredRole)}')">เริ่มตรวจ</button>`;
     return `<div class="ld-task-row">
       ${badge}
-      <div class="ld-task-info"><div class="ld-task-name">${escapeHtml(r.LineName || r.LineID)}</div><div class="ld-task-meta">${escapeHtml(r.RequiredRole)} · ${escapeHtml(r.Frequency || '')}</div></div>
-      <div class="ld-task-time">${escapeHtml(timeLabel)}</div>
+      <div class="ld-task-info"><div class="ld-task-name">${escapeHtml(r.LineName || r.LineID)}</div><div class="ld-task-meta">${escapeHtml(note)}</div></div>
       ${startBtn}
     </div>`;
   }).join('');

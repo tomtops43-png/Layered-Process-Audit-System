@@ -24,9 +24,14 @@ function getLeaderDashboardBatch(payload, currentUser) {
         canAccessLineFromRows_(currentUser, r.LineID, 'View', lineAccess);
     }).map(sanitizeAuditRuleForClient_);
 
-    // 3. Today's audit sessions (all lines this user can see)
+    // 3. Audit sessions: this week Mon–Sat (covers both daily and weekly rule checks)
+    var dayOfWeek = now.getDay(); // 0=Sun
+    var daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    var monday = new Date(now); monday.setDate(now.getDate() - daysToMonday); monday.setHours(0,0,0,0);
+    var weekStart = formatDateBangkok_(monday);
     var todayAudits = allAuditSessions.filter(function(a) {
-      return dateOnly_(a.AuditDate) === today &&
+      var d = dateOnly_(a.AuditDate);
+      return d >= weekStart && d <= today &&
         (canAccessLineFromRows_(currentUser, a.LineID, 'View', lineAccess) ||
          valuesEqual_(a.AuditorUserID, currentUser.UserID));
     }).map(sanitizeForClient_);
