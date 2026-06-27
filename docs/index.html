@@ -134,7 +134,7 @@
               <label>Line<select id="auditLine" required><option value="">เลือก Line</option></select></label>
               <select id="auditStation" class="hidden"><option value="ALL">ALL</option></select>
               <label>Area<input id="auditArea" readonly placeholder="เลือก Line"></label>
-              <label>Shift<select id="auditShift" required><option value="">เลือก Shift</option></select></label>
+              <label id="auditShiftLabel">Shift<select id="auditShift" required><option value="">เลือก Shift</option></select></label>
               <label>Audit Layer<select id="auditLayer" required><option value="">กำลังโหลดสิทธิ์...</option></select></label>
               <label>Checklist Language<select id="checklistLanguage"><option value="TH" selected>ไทย</option><option value="EN">English</option></select></label>
               <label>Remark<input id="auditRemark" placeholder="หมายเหตุ (ถ้ามี)"></label>
@@ -331,6 +331,6 @@
   </dialog>
 
   <script src="config.js" defer></script>
-  <script src="app.js?v=20260627-linescope" defer></script>
+  <script src="app.js?v=20260627-noshift" defer></script>
 </body>
 </html>
