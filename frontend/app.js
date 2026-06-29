@@ -2933,8 +2933,11 @@ function assignableRoles() {
 }
 
 function usersForRole(role) {
+  const currentUserId = state.user && state.user.UserID;
   return (state.masterData.users || []).filter(user =>
-    user.Role === role && (!user.ActiveStatus || String(user.ActiveStatus).toLowerCase() === 'active')
+    user.Role === role &&
+    (!user.ActiveStatus || String(user.ActiveStatus).toLowerCase() === 'active') &&
+    String(user.UserID) !== String(currentUserId)
   );
 }
 
