@@ -1629,7 +1629,7 @@ function renderAuditChecklist() {
   }
   const roleOptions = assignableRoleOptions();
   const assignmentFields = `<label>มอบหมายให้ตำแหน่ง<select data-field="assignedRole"><option value="">เลือกตำแหน่งรับผิดชอบ</option>${roleOptions}</select></label><label>ตำแหน่งรับผิดชอบ<input data-field="responsiblePerson" readonly></label><input data-field="assignmentMode" type="hidden" value="ROLE"><input data-field="findingStatus" type="hidden" value="Assigned">`;
-  container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>เกณฑ์มาตรฐาน</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>ตัวอย่าง OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>ตัวอย่าง NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="N/A">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid"><label>รายละเอียดปัญหา *<textarea data-field="findingDetail" rows="2"></textarea></label>${assignmentFields}<label>กำหนดวันแก้ไข *<input data-field="dueDate" type="date"></label><label>รูปก่อนแก้ไข *<input data-field="beforePhoto" type="file" accept="image/*"><span class="photo-preview" data-field="beforePhotoPreview"></span></label><label>หมายเหตุ<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
+  container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>เกณฑ์มาตรฐาน</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>ตัวอย่าง OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>ตัวอย่าง NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="N/A">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid"><label>รายละเอียดปัญหา *<textarea data-field="findingDetail" rows="2"></textarea></label>${assignmentFields}<label>กำหนดวันแก้ไข *<input data-field="dueDate" type="date"></label><label>รูปก่อนแก้ไข *<input data-field="beforePhoto" type="file" accept="image/*" multiple><span class="photo-preview" data-field="beforePhotoPreview"></span></label><label>หมายเหตุ<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
   $$('.checklist-card', container).forEach(card => {
     $$('.result-button', card).forEach(button => button.addEventListener('click', () => selectAuditResult(card, button.dataset.result)));
     $$('input, select, textarea', card).forEach(field => {
@@ -1734,8 +1734,8 @@ async function saveAudit() {
         setAuditSavingState(false);
         return showToast(`กรุณากรอก รายละเอียดปัญหา, ตำแหน่งรับผิดชอบ และ กำหนดวันแก้ไข ของ ${item.ChecklistID} ให้ครบ`, 'warning');
       }
-      const photo = fieldFile(card, 'beforePhoto');
-      if (photo) record._photo = photo;
+      const photos = fieldFiles(card, 'beforePhoto');
+      if (photos.length) record._photos = photos;
     }
     records.push(record);
   }
@@ -1744,16 +1744,19 @@ async function saveAudit() {
     return;
   }
   if (!state.auditClientSubmissionId) state.auditClientSubmissionId = createClientSubmissionId();
-  const photoRecords = records.filter(r => r._photo);
-  const totalPhotos = photoRecords.length;
+  const photoRecords = records.filter(r => r._photos && r._photos.length);
+  const totalPhotos = photoRecords.reduce((sum, r) => sum + r._photos.length, 0);
   try {
     // Step 1: upload all photos in parallel
     if (totalPhotos > 0) {
       showLoading(`กำลังอัปโหลดรูปภาพ ${totalPhotos} รูป... กรุณารอสักครู่`);
       await Promise.all(photoRecords.map(async record => {
-        const upload = await uploadFile(record._photo, 'AuditDraft', `DRAFT-${Date.now()}`, 'BeforePhoto', false);
-        record.beforePhotoUrl = upload.DriveFileURL;
-        delete record._photo;
+        const urls = await Promise.all(record._photos.map(async (file, i) => {
+          const upload = await uploadFile(file, 'AuditDraft', `DRAFT-${Date.now()}-${i}`, 'BeforePhoto', false);
+          return upload.DriveFileURL;
+        }));
+        record.beforePhotoUrl = urls.join(',');
+        delete record._photos;
       }));
       hideLoading();
     }
@@ -1809,19 +1812,26 @@ function isAuditDuplicateMessage(message) {
 function renderPhotoPreview(input, targetSelector, existingUrl = '', scope = document) {
   const target = typeof targetSelector === 'string' ? $(targetSelector, scope) : targetSelector;
   if (!target) return;
-  const file = input && input.files ? input.files[0] : null;
-  if (!file) {
-    target.innerHTML = existingUrl ? `<a href="${escapeAttr(existingUrl)}" target="_blank" rel="noopener">ดูรูปปัจจุบัน</a>` : '';
+  const files = input && input.files ? Array.from(input.files) : [];
+  if (!files.length) {
+    if (existingUrl) {
+      const urls = existingUrl.split(',').map(u => u.trim()).filter(Boolean);
+      target.innerHTML = urls.map((u, i) => `<a href="${escapeAttr(u)}" target="_blank" rel="noopener">รูปที่ ${i + 1}</a>`).join(' · ');
+    } else {
+      target.innerHTML = '';
+    }
     return;
   }
-  if (!String(file.type || '').startsWith('image/')) {
+  const nonImages = files.filter(f => !String(f.type || '').startsWith('image/'));
+  if (nonImages.length) {
     target.innerHTML = '<span class="required-note">กรุณาเลือกไฟล์รูปภาพเท่านั้น</span>';
     return;
   }
-  const url = URL.createObjectURL(file);
-  target.innerHTML = `<img src="${escapeAttr(url)}" alt="Photo preview"><span>${escapeHtml(file.name)} · ${Math.ceil(file.size / 1024)} KB</span>`;
-  const img = $('img', target);
-  if (img) img.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
+  target.innerHTML = files.map(file => {
+    const url = URL.createObjectURL(file);
+    return `<span class="photo-preview-item"><img src="${escapeAttr(url)}" alt="preview" data-revoke="${escapeAttr(url)}"><span>${escapeHtml(file.name)} · ${Math.ceil(file.size / 1024)} KB</span></span>`;
+  }).join('');
+  $$('img[data-revoke]', target).forEach(img => img.addEventListener('load', () => URL.revokeObjectURL(img.dataset.revoke), { once: true }));
 }
 
 async function compressImage(file, maxPx = 800, quality = 0.6) {
@@ -1894,7 +1904,7 @@ async function loadFindings(force = false) {
 function renderFindings() {
   const container = $('#findingsList');
   if (!state.findings.length) return container.innerHTML = emptyHtml('ไม่พบ Finding ตามเงื่อนไข');
-  container.innerHTML = state.findings.map(row => `<article class="finding-card ${String(row.OverdueFlag).toLowerCase() === 'yes' ? 'overdue' : ''}"><div class="finding-summary"><div><span class="finding-id">${escapeHtml(row.FindingID)}</span><span class="data-label">${formatDate(row.FoundDate)} · ${escapeHtml(row.Category || '-')} · ${escapeHtml(row.Severity || row.Priority || '-')}</span></div><div><span class="data-label">Line</span>${escapeHtml(row.LineName || row.LineID || '-')}</div><div><span class="data-label">Station</span>${escapeHtml(row.StationName || row.StationID || '-')}</div><div><span class="data-label">รับผิดชอบโดย</span>${escapeHtml(formatFindingAssignment(row))}<span class="table-subtext">${escapeHtml(formatFindingAssignmentMode(row))}</span></div><div><span class="data-label">Due Date</span>${formatDate(row.DueDate)}</div><div><span class="status-badge ${String(row.OverdueFlag).toLowerCase() === 'yes' ? 'status-overdue' : statusClass(row.Status)}">${String(row.OverdueFlag).toLowerCase() === 'yes' ? `Overdue ${number(row.DaysOverdue)}d` : escapeHtml(row.Status || '-')}</span></div></div><div class="finding-detail"><div><span class="data-label">Problem Detail</span>${escapeHtml(row.ProblemDetail || '-')}</div><div><span class="data-label">Corrective Action</span>${escapeHtml(row.CorrectiveAction || '-')}</div><div class="photo-link"><span class="data-label">Photo</span>${photoLinks(row)}</div></div><div class="finding-actions"><button class="btn btn-outline" data-edit-finding="${escapeAttr(row.FindingID)}">เปิด Finding</button></div></article>`).join('');
+  container.innerHTML = state.findings.map(row => `<article class="finding-card ${String(row.OverdueFlag).toLowerCase() === 'yes' ? 'overdue' : ''}"><div class="finding-summary"><div><span class="finding-id">${escapeHtml(row.FindingID)}</span><span class="data-label">${formatDate(row.FoundDate)} · ${escapeHtml(row.Category || '-')} · ${escapeHtml(row.Severity || row.Priority || '-')}</span></div><div><span class="data-label">Line</span>${escapeHtml(row.LineName || row.LineID || '-')}</div><div><span class="data-label">Station</span>${escapeHtml(row.StationName || row.StationID || '-')}</div><div><span class="data-label">เปิดโดย</span>${escapeHtml(row.AuditorName || row.CreatedByName || '-')}<span class="table-subtext">${escapeHtml(row.AuditorRole || '')}</span></div><div><span class="data-label">รับผิดชอบโดย</span>${escapeHtml(formatFindingAssignment(row))}<span class="table-subtext">${escapeHtml(formatFindingAssignmentMode(row))}</span></div><div><span class="data-label">Due Date</span>${formatDate(row.DueDate)}</div><div><span class="status-badge ${String(row.OverdueFlag).toLowerCase() === 'yes' ? 'status-overdue' : statusClass(row.Status)}">${String(row.OverdueFlag).toLowerCase() === 'yes' ? `Overdue ${number(row.DaysOverdue)}d` : escapeHtml(row.Status || '-')}</span></div></div><div class="finding-detail"><div><span class="data-label">Problem Detail</span>${escapeHtml(row.ProblemDetail || '-')}</div><div><span class="data-label">Corrective Action</span>${escapeHtml(row.CorrectiveAction || '-')}</div><div class="photo-link"><span class="data-label">Photo</span>${photoLinks(row)}</div></div><div class="finding-actions"><button class="btn btn-outline" data-edit-finding="${escapeAttr(row.FindingID)}">เปิด Finding</button></div></article>`).join('');
   $$('[data-edit-finding]', container).forEach(button => button.addEventListener('click', () => openFindingEditor(button.dataset.editFinding)));
 }
 
@@ -2972,7 +2982,12 @@ function tableHtml(headers, rows, extraClass = '') {
 
 function photoLinks(row) {
   const links = [];
-  if (row.BeforePhotoURL) links.push(`<a href="${escapeAttr(row.BeforePhotoURL)}" target="_blank" rel="noopener">Before</a>`);
+  if (row.BeforePhotoURL) {
+    row.BeforePhotoURL.split(',').map(u => u.trim()).filter(Boolean).forEach((u, i, arr) => {
+      const label = arr.length > 1 ? `Before ${i + 1}` : 'Before';
+      links.push(`<a href="${escapeAttr(u)}" target="_blank" rel="noopener">${label}</a>`);
+    });
+  }
   if (row.AfterPhotoURL) links.push(`<a href="${escapeAttr(row.AfterPhotoURL)}" target="_blank" rel="noopener">After</a>`);
   return links.length ? links.join(' · ') : '-';
 }
@@ -3169,6 +3184,7 @@ async function restoreAuditDraft(draft) {
   showToast('กู้คืนร่าง Audit ที่บันทึกไว้อัตโนมัติ', 'info', 5000);
 }
 function fieldFile(root, field) { const element = $(`[data-field="${field}"]`, root); return element && element.files ? element.files[0] : null; }
+function fieldFiles(root, field) { const element = $(`[data-field="${field}"]`, root); return element && element.files ? Array.from(element.files) : []; }
 function selectedText(selector) { const select = $(selector); return select.selectedIndex >= 0 ? select.options[select.selectedIndex].text : ''; }
 function monthToPeriod(value) { return value || ''; }
 function optionalFilterValue(value) {
