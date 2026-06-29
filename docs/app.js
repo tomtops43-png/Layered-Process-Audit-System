@@ -1695,7 +1695,7 @@ function onRoleChange(card, role) {
   } else {
     // Show picker
     userSelect.innerHTML = `<option value="">-- เลือกชื่อ --</option>` +
-      users.map(u => `<option value="${escapeAttr(u.UserID)}">${escapeHtml(u.FullName || u.Username)}</option>`).join('');
+      users.map(u => `<option value="${escapeAttr(u.UserID)}">${escapeHtml((u.FullName || u.Username) + (u.Username ? ' (' + u.Username + ')' : ''))}</option>`).join('');
     pickerLabel.classList.remove('hidden');
     responsibleInput.value = role;
     modeInput.value = 'ROLE';
@@ -2086,7 +2086,7 @@ function onReassignRoleChange() {
   } else {
     const sel = $('#reassignUserSelect');
     sel.innerHTML = `<option value="">-- เลือกชื่อ --</option>` +
-      users.map(u => `<option value="${escapeAttr(u.UserID)}">${escapeHtml(u.FullName || u.Username)}</option>`).join('');
+      users.map(u => `<option value="${escapeAttr(u.UserID)}">${escapeHtml((u.FullName || u.Username) + (u.Username ? ' (' + u.Username + ')' : ''))}</option>`).join('');
     sel.value = '';
     userField.classList.remove('hidden');
     displayField.classList.remove('hidden');
