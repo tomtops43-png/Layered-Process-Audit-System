@@ -2030,7 +2030,88 @@ function openFindingEditor(findingId) {
   $('#editRejectReason').disabled = !canVerify;
   $('#editAfterPhotoField').classList.toggle('hidden', !canEditFollowUp);
   $('#editAfterPhoto').disabled = !canEditFollowUp;
+
+  // Reassign section — Supervisor, Manager, Engineer, Admin only
+  const canReassign = ['Supervisor', 'Manager', 'Engineer', 'Admin'].includes(state.user.Role) && status !== 'closed';
+  const reassignRoleField = $('#reassignRoleField');
+  const reassignUserField = $('#reassignUserField');
+  const reassignDisplayField = $('#reassignDisplayField');
+  reassignRoleField.classList.toggle('hidden', !canReassign);
+  reassignUserField.classList.add('hidden');
+  reassignDisplayField.classList.add('hidden');
+  $('#reassignUserId').value = '';
+  $('#reassignUserName').value = '';
+  $('#reassignMode').value = '';
+  if (canReassign) {
+    const roleSelect = $('#reassignRole');
+    roleSelect.innerHTML = `<option value="">-- ไม่เปลี่ยน --</option>` +
+      assignableRoles().map(r => `<option value="${escapeAttr(r)}">${escapeHtml(r)}</option>`).join('');
+    roleSelect.value = '';
+    roleSelect.onchange = () => onReassignRoleChange();
+    $('#reassignUserSelect').onchange = () => onReassignUserChange();
+  }
+
   $('#findingDialog').showModal();
+}
+
+function onReassignRoleChange() {
+  const role = $('#reassignRole').value;
+  const userField = $('#reassignUserField');
+  const displayField = $('#reassignDisplayField');
+  $('#reassignUserId').value = '';
+  $('#reassignUserName').value = '';
+  $('#reassignMode').value = '';
+  $('#reassignDisplay').value = '';
+
+  if (!role) {
+    userField.classList.add('hidden');
+    displayField.classList.add('hidden');
+    return;
+  }
+
+  const users = usersForRole(role);
+  if (users.length === 0) {
+    userField.classList.add('hidden');
+    displayField.classList.remove('hidden');
+    $('#reassignDisplay').value = role;
+    $('#reassignMode').value = 'ROLE';
+  } else if (users.length === 1) {
+    userField.classList.add('hidden');
+    displayField.classList.remove('hidden');
+    const u = users[0];
+    $('#reassignUserId').value = u.UserID;
+    $('#reassignUserName').value = u.FullName || u.Username;
+    $('#reassignDisplay').value = `${u.FullName || u.Username} (${role})`;
+    $('#reassignMode').value = 'USER';
+  } else {
+    const sel = $('#reassignUserSelect');
+    sel.innerHTML = `<option value="">-- เลือกชื่อ --</option>` +
+      users.map(u => `<option value="${escapeAttr(u.UserID)}">${escapeHtml(u.FullName || u.Username)}</option>`).join('');
+    sel.value = '';
+    userField.classList.remove('hidden');
+    displayField.classList.remove('hidden');
+    $('#reassignDisplay').value = role;
+    $('#reassignMode').value = 'ROLE';
+  }
+}
+
+function onReassignUserChange() {
+  const role = $('#reassignRole').value;
+  const userId = $('#reassignUserSelect').value;
+  if (!userId) {
+    $('#reassignUserId').value = '';
+    $('#reassignUserName').value = '';
+    $('#reassignDisplay').value = role;
+    $('#reassignMode').value = 'ROLE';
+    return;
+  }
+  const u = (state.masterData.users || []).find(user => String(user.UserID) === String(userId));
+  if (u) {
+    $('#reassignUserId').value = u.UserID;
+    $('#reassignUserName').value = u.FullName || u.Username;
+    $('#reassignDisplay').value = `${u.FullName || u.Username} (${role})`;
+    $('#reassignMode').value = 'USER';
+  }
 }
 
 async function submitFindingForVerification() {
@@ -2094,6 +2175,16 @@ async function runFindingWorkflow(action, payload, options) {
       payload.afterPhotoUrl = upload.DriveFileURL;
     } else if (state.editingFinding) {
       payload.afterPhotoUrl = state.editingFinding.AfterPhotoURL || '';
+    }
+    // Attach reassign fields if set
+    const reassignRole = $('#reassignRole') ? $('#reassignRole').value : '';
+    const reassignMode = $('#reassignMode') ? $('#reassignMode').value : '';
+    if (reassignRole) {
+      if (reassignMode === 'USER') {
+        payload.assignedToUserId = $('#reassignUserId').value;
+      } else {
+        payload.reassignRole = reassignRole;
+      }
     }
     await apiCall(action, payload);
     $('#findingDialog').close();

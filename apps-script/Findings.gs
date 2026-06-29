@@ -123,6 +123,7 @@ function updateFinding(payload, currentUser) {
     allowed.forEach(function (field) { if (Object.prototype.hasOwnProperty.call(payload, field)) updates[field] = payload[field]; });
     Object.keys(aliases).forEach(function (key) { if (Object.prototype.hasOwnProperty.call(payload, key)) updates[aliases[key]] = payload[key]; });
 
+    var isReassign = Object.prototype.hasOwnProperty.call(payload, 'assignedToUserId') || Object.prototype.hasOwnProperty.call(payload, 'reassignRole');
     if (Object.prototype.hasOwnProperty.call(payload, 'assignedToUserId')) {
       requirePermission_(currentUser, 'findings.assign');
       var assignedUserId = cleanString_(payload.assignedToUserId);
@@ -130,11 +131,32 @@ function updateFinding(payload, currentUser) {
       if (assignedUserId && (!assignee || !isActive_(assignee.ActiveStatus))) {
         throw new Error('Assigned user was not found or is inactive.');
       }
+      updates.AssignmentMode = 'USER';
+      updates.AssignedUserID = assignedUserId;
+      updates.AssignedUserName = assignee ? assignee.FullName : '';
       updates.AssignedToUserID = assignedUserId;
       updates.AssignedToName = assignee ? assignee.FullName : '';
       updates.AssignedToRole = assignee ? assignee.Role : '';
+      updates.AssignedRole = assignee ? assignee.Role : '';
+      updates.AssignedRoleName = assignee ? assignee.Role : '';
       updates.PICUserID = assignedUserId;
       updates.PICName = assignee ? assignee.FullName : '';
+      updates.ResponsiblePerson = assignee ? assignee.FullName : '';
+    } else if (Object.prototype.hasOwnProperty.call(payload, 'reassignRole')) {
+      requirePermission_(currentUser, 'findings.assign');
+      var newRole = cleanString_(payload.reassignRole);
+      if (!newRole) throw new Error('reassignRole cannot be empty.');
+      updates.AssignmentMode = 'ROLE';
+      updates.AssignedRole = newRole;
+      updates.AssignedRoleName = newRole;
+      updates.AssignedToRole = newRole;
+      updates.AssignedToName = newRole;
+      updates.AssignedUserID = '';
+      updates.AssignedUserName = '';
+      updates.AssignedToUserID = '';
+      updates.PICUserID = '';
+      updates.PICName = newRole;
+      updates.ResponsiblePerson = newRole;
     }
     if (!Object.keys(updates).length) throw new Error('No supported finding fields were provided to update.');
     if (updates.DueDate) updates.DueDate = formatDateBangkok_(updates.DueDate);
@@ -152,9 +174,8 @@ function updateFinding(payload, currentUser) {
     } else {
       delete updates.Status;
     }
-    if (Object.prototype.hasOwnProperty.call(payload, 'assignedToUserId') &&
-        (valuesEqual_(oldStatus, 'Open') || valuesEqual_(oldStatus, 'Assigned'))) {
-      newStatus = updates.AssignedToUserID ? 'Assigned' : 'Open';
+    if (isReassign && (valuesEqual_(oldStatus, 'Open') || valuesEqual_(oldStatus, 'Assigned'))) {
+      newStatus = 'Assigned';
       updates.Status = newStatus;
     }
     var overdue = calculateOverdue(updates.DueDate || finding.DueDate, newStatus);
