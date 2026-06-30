@@ -21,6 +21,8 @@ function getLeaderDashboardBatch(payload, currentUser) {
     // 2. Schedule rules for this user's role
     var rules = getAuditPlanRuleRows_().filter(function(r) {
       return isActive_(r.ActiveStatus) &&
+        valuesEqual_(r.RequiredRole, currentUser.Role) &&
+        (!cleanString_(r.RequiredUserID) || valuesEqual_(r.RequiredUserID, currentUser.UserID)) &&
         canAccessLineFromRows_(currentUser, r.LineID, 'View', lineAccess);
     }).map(sanitizeAuditRuleForClient_);
 
