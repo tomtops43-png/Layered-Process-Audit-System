@@ -84,6 +84,7 @@ function getDashboard(payload, currentUser) {
     } catch (ruleError) {
       console.warn('Rule-based schedule summary skipped: ' + safeErrorMessage_(ruleError));
     }
+    var managerAuditReminder = buildManagerAuditReminder_(currentUser, now, currentPeriod, audits);
     if (payload.lineId) {
       if (!canViewAll && !canAccessLineFromRows_(currentUser, payload.lineId, 'View', lineAccess)) {
         throw new Error('Line access denied: ' + cleanString_(payload.lineId));
@@ -158,13 +159,37 @@ function getDashboard(payload, currentUser) {
       TopNGCategory: topCategory ? { Category: topCategory, Count: categoryNg[topCategory] } : {},
       MonthlyAuditResult: Object.keys(monthly).sort().slice(-12).map(function (key) { return monthly[key]; }),
       SummaryByLine: Object.keys(byLine).sort().map(function (key) { return byLine[key]; }),
-      ActionsNearDueDate: nearDue
+      ActionsNearDueDate: nearDue,
+      ManagerAuditReminder: managerAuditReminder
     };
     safeCachePutJson_(cacheKey, result, 60);
     return jsonResponse(true, 'Dashboard loaded.', result);
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
+}
+
+/** Manager must complete at least 1 LPA audit per month, deadline day 30 (or last day if month is shorter). */
+function buildManagerAuditReminder_(currentUser, now, currentPeriod, allAudits) {
+  if (cleanString_(currentUser.Role) !== 'Manager') return null;
+  var completed = allAudits.some(function (row) {
+    return valuesEqual_(row.PeriodMonth, currentPeriod) &&
+      valuesEqual_(row.AuditorUserID, currentUser.UserID) &&
+      valuesEqual_(row.AuditorRole, 'Manager');
+  });
+  var year = now.getFullYear();
+  var month = now.getMonth();
+  var daysInMonth = new Date(year, month + 1, 0).getDate();
+  var deadlineDay = Math.min(30, daysInMonth);
+  var deadlineDate = new Date(year, month, deadlineDay);
+  var todayOnly = new Date(year, month, now.getDate());
+  var daysLeft = Math.ceil((deadlineDate.getTime() - todayOnly.getTime()) / 86400000);
+  return {
+    Completed: completed,
+    DaysLeft: daysLeft,
+    DeadlineDate: formatDateBangkok_(deadlineDate),
+    Overdue: !completed && daysLeft < 0
+  };
 }
 
 function dashboardCacheKey_(user, period, lineAccess, lineId) {

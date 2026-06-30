@@ -1584,6 +1584,22 @@ function renderDashboard(data) {
     auditBadge.textContent = '0';
     auditBadge.classList.add('hidden');
   }
+  // Manager monthly audit reminder banner
+  const mgrAlertEl = $('#managerAuditReminderAlert');
+  const mgrReminder = data.ManagerAuditReminder;
+  if (mgrAlertEl) {
+    if (mgrReminder && !mgrReminder.Completed) {
+      mgrAlertEl.classList.remove('hidden');
+      mgrAlertEl.classList.toggle('danger', mgrReminder.Overdue || mgrReminder.DaysLeft <= 3);
+      const msg = mgrReminder.Overdue
+        ? `🚨 <strong>เลยกำหนดแล้ว!</strong> ยังไม่ได้ตรวจ LPA ประจำเดือนนี้ (กำหนดภายใน ${formatDate(mgrReminder.DeadlineDate)})`
+        : `⏰ เหลืออีก <strong>${mgrReminder.DaysLeft} วัน</strong> ต้องตรวจ LPA ให้ครบ 1 ครั้งภายในเดือนนี้ (กำหนดภายใน ${formatDate(mgrReminder.DeadlineDate)})`;
+      mgrAlertEl.innerHTML = `<span>${msg}</span><button class="btn btn-sm btn-primary" onclick="navigateTo('audit')">ไปตรวจเลย →</button>`;
+    } else {
+      mgrAlertEl.classList.add('hidden');
+      mgrAlertEl.innerHTML = '';
+    }
+  }
   // Audit alert banner
   const alertEl = $('#auditPlanAlert');
   if (dueToday > 0) {
