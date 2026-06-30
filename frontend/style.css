@@ -70,9 +70,12 @@ label{display:flex;flex-direction:column;gap:7px;font-size:.88rem;font-weight:70
 .two-columns{grid-template-columns:1.2fr 1fr}
 .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
 .form-field{display:flex;flex-direction:column;gap:6px}
-.checkbox-group{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
-.checkbox-item{display:flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:.9rem;cursor:pointer;background:#f8fafb}
-.checkbox-item input{width:auto;margin:0}
+.checkbox-group{display:flex;flex-wrap:wrap;gap:10px;margin-top:6px}
+.checkbox-item{position:relative;display:inline-flex;align-items:center;gap:6px;border:2px solid var(--border);border-radius:999px;padding:10px 20px;font-size:.9rem;font-weight:700;cursor:pointer;background:var(--surface);color:var(--gray);transition:all .15s ease;user-select:none}
+.checkbox-item input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+.checkbox-item:hover{border-color:var(--blue)}
+.checkbox-item.checked{background:var(--cyan);border-color:var(--blue);color:var(--blue)}
+.checkbox-item.checked::before{content:'✓';font-weight:900;color:var(--blue)}
 .audit-meta-grid{grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:18px}
 .filter-grid{grid-template-columns:repeat(4,minmax(130px,1fr));align-items:end}
 .filters-panel .btn{margin-top:16px}

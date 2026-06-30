@@ -84,6 +84,15 @@ const PERMISSION_CATALOG = [
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+function wireCheckboxChips(scope) {
+  $$('.checkbox-item', scope).forEach(item => {
+    const input = item.querySelector('input[type="checkbox"]');
+    if (!input) return;
+    const sync = () => item.classList.toggle('checked', input.checked);
+    sync();
+    input.addEventListener('change', sync);
+  });
+}
 let busyDepth = 0;
 const busyMessages = [];
 const busyDisabledState = new Map();
@@ -1646,6 +1655,7 @@ function renderAuditChecklist() {
       });
     });
     if (isManager) {
+      wireCheckboxChips(card);
       $$('[data-role-checkbox]', card).forEach(cb => cb.addEventListener('change', () => {
         const checked = $$('[data-role-checkbox]:checked', card).map(c => c.value);
         renderMultiUserPicker(card, checked);
@@ -1789,6 +1799,7 @@ function renderMultiUserPicker(card, roles) {
 
   wrap.classList.remove('hidden');
   group.innerHTML = users.map(u => `<label class="checkbox-item"><input type="checkbox" value="${escapeAttr(u.UserID)}" data-user-checkbox checked> ${escapeHtml((u.FullName || u.Username) + (u.Username ? ' (' + u.Username + ')' : ''))}</label>`).join('');
+  wireCheckboxChips(group);
   $$('[data-user-checkbox]', group).forEach(cb => cb.addEventListener('change', () => {
     updateMultiUserSelection(card);
     updateAuditSaveButtonState();
@@ -2156,6 +2167,7 @@ function openFindingEditor(findingId) {
       reassignRoleCheckboxField.classList.remove('hidden');
       const group = $('#reassignRoleCheckboxGroup');
       group.innerHTML = assignableRoles().map(r => `<label class="checkbox-item"><input type="checkbox" value="${escapeAttr(r)}" data-reassign-role-checkbox> ${escapeHtml(r)}</label>`).join('');
+      wireCheckboxChips(group);
       $$('[data-reassign-role-checkbox]', group).forEach(cb => cb.addEventListener('change', () => {
         const checked = $$('[data-reassign-role-checkbox]:checked', group).map(c => c.value);
         renderReassignUserPicker(checked);
@@ -2223,6 +2235,7 @@ function renderReassignUserPicker(roles) {
   wrap.classList.remove('hidden');
   displayField.classList.remove('hidden');
   group.innerHTML = users.map(u => `<label class="checkbox-item"><input type="checkbox" value="${escapeAttr(u.UserID)}" data-reassign-user-checkbox checked> ${escapeHtml((u.FullName || u.Username) + (u.Username ? ' (' + u.Username + ')' : ''))}</label>`).join('');
+  wireCheckboxChips(group);
   $$('[data-reassign-user-checkbox]', group).forEach(cb => cb.addEventListener('change', updateReassignMultiUserSelection));
   updateReassignMultiUserSelection();
 }
