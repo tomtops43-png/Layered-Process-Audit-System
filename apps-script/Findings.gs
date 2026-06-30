@@ -33,8 +33,8 @@ function getFindings(payload, currentUser) {
         (!stationId || valuesEqual_(row.StationID, stationId)) &&
         (!category || valuesEqual_(row.Category, category)) &&
         (!status || (status.toLowerCase() === 'overdue' ? valuesEqual_(row.OverdueFlag, 'Yes') : valuesEqual_(row.Status, status))) &&
-        (!picName || valuesEqual_(row.AssignedToName || row.PICName, picName)) &&
-        (!picUserId || valuesEqual_(row.AssignedToUserID || row.PICUserID, picUserId)) &&
+        (!picName || csvContains_(row.AssignedToName || row.PICName, picName)) &&
+        (!picUserId || csvContains_(row.AssignedToUserID || row.PICUserID, picUserId)) &&
         (!periodMonth || rowPeriodMonth === periodMonth) &&
         (!overdueOnly || valuesEqual_(row.OverdueFlag, 'Yes')) &&
         (!myFindings || matchesMyFindingFilter_(row, currentUser, myFindings));
@@ -126,37 +126,42 @@ function updateFinding(payload, currentUser) {
     var isReassign = Object.prototype.hasOwnProperty.call(payload, 'assignedToUserId') || Object.prototype.hasOwnProperty.call(payload, 'reassignRole');
     if (Object.prototype.hasOwnProperty.call(payload, 'assignedToUserId')) {
       requirePermission_(currentUser, 'findings.assign');
-      var assignedUserId = cleanString_(payload.assignedToUserId);
-      var assignee = assignedUserId ? findById_(SHEET_NAMES.USERS, 'UserID', assignedUserId) : null;
-      if (assignedUserId && (!assignee || !isActive_(assignee.ActiveStatus))) {
-        throw new Error('Assigned user was not found or is inactive.');
-      }
-      updates.AssignmentMode = 'USER';
-      updates.AssignedUserID = assignedUserId;
-      updates.AssignedUserName = assignee ? assignee.FullName : '';
-      updates.AssignedToUserID = assignedUserId;
-      updates.AssignedToName = assignee ? assignee.FullName : '';
-      updates.AssignedToRole = assignee ? assignee.Role : '';
-      updates.AssignedRole = assignee ? assignee.Role : '';
-      updates.AssignedRoleName = assignee ? assignee.Role : '';
-      updates.PICUserID = assignedUserId;
-      updates.PICName = assignee ? assignee.FullName : '';
-      updates.ResponsiblePerson = assignee ? assignee.FullName : '';
+      var assignedUserIds = csvList_(payload.assignedToUserId);
+      var assignees = assignedUserIds.map(function (id) {
+        var u = findById_(SHEET_NAMES.USERS, 'UserID', id);
+        if (!u || !isActive_(u.ActiveStatus)) throw new Error('Assigned user was not found or is inactive: ' + id);
+        return u;
+      });
+      var assignedUserIdCsv = assignedUserIds.join(',');
+      var assignedNameCsv = assignees.map(function (u) { return u.FullName; }).join(',');
+      var assignedRoleCsv = Array.from(new Set(assignees.map(function (u) { return u.Role; }))).join(',');
+      updates.AssignmentMode = assignedUserIds.length ? 'USER' : 'ROLE';
+      updates.AssignedUserID = assignedUserIdCsv;
+      updates.AssignedUserName = assignedNameCsv;
+      updates.AssignedToUserID = assignedUserIdCsv;
+      updates.AssignedToName = assignedNameCsv;
+      updates.AssignedToRole = assignedRoleCsv;
+      updates.AssignedRole = assignedRoleCsv;
+      updates.AssignedRoleName = assignedRoleCsv;
+      updates.PICUserID = assignedUserIdCsv;
+      updates.PICName = assignedNameCsv;
+      updates.ResponsiblePerson = assignedNameCsv;
     } else if (Object.prototype.hasOwnProperty.call(payload, 'reassignRole')) {
       requirePermission_(currentUser, 'findings.assign');
-      var newRole = cleanString_(payload.reassignRole);
-      if (!newRole) throw new Error('reassignRole cannot be empty.');
+      var newRoles = csvList_(payload.reassignRole);
+      if (!newRoles.length) throw new Error('reassignRole cannot be empty.');
+      var roleCsv = newRoles.join(',');
       updates.AssignmentMode = 'ROLE';
-      updates.AssignedRole = newRole;
-      updates.AssignedRoleName = newRole;
-      updates.AssignedToRole = newRole;
-      updates.AssignedToName = newRole;
+      updates.AssignedRole = roleCsv;
+      updates.AssignedRoleName = roleCsv;
+      updates.AssignedToRole = roleCsv;
+      updates.AssignedToName = roleCsv;
       updates.AssignedUserID = '';
       updates.AssignedUserName = '';
       updates.AssignedToUserID = '';
       updates.PICUserID = '';
-      updates.PICName = newRole;
-      updates.ResponsiblePerson = newRole;
+      updates.PICName = roleCsv;
+      updates.ResponsiblePerson = roleCsv;
     }
     if (!Object.keys(updates).length) throw new Error('No supported finding fields were provided to update.');
     if (updates.DueDate) updates.DueDate = formatDateBangkok_(updates.DueDate);
@@ -331,13 +336,13 @@ function isAssignedToUser_(finding, currentUser) {
   var mode = normalizeFindingAssignmentMode_(finding.AssignmentMode, finding);
   if (mode === 'ROLE') {
     var assignedRole = cleanString_(finding.AssignedRole || finding.AssignedRoleName || finding.AssignedToRole || finding.AssignedToName || finding.ResponsiblePerson || finding.PICName);
-    return assignedRole && (valuesEqual_(assignedRole, currentUser.Role) || valuesEqual_(assignedRole, currentUser.FullName)) && canAccessLine_(currentUser, finding.LineID, 'View');
+    return assignedRole && (csvContains_(assignedRole, currentUser.Role) || csvContains_(assignedRole, currentUser.FullName)) && canAccessLine_(currentUser, finding.LineID, 'View');
   }
 
   var assignedUserId = cleanString_(finding.AssignedUserID || finding.AssignedToUserID || finding.ResponsibleUserID || finding.PICUserID);
-  if (assignedUserId) return valuesEqual_(assignedUserId, currentUser.UserID);
+  if (assignedUserId) return csvContains_(assignedUserId, currentUser.UserID);
 
-  return valuesEqual_(finding.AssignedUserName || finding.AssignedToName || finding.PICName, currentUser.FullName);
+  return csvContains_(finding.AssignedUserName || finding.AssignedToName || finding.PICName, currentUser.FullName);
 }
 
 function isCreatedByUser_(finding, currentUser) {

@@ -1628,7 +1628,13 @@ function renderAuditChecklist() {
     return;
   }
   const roleOptions = assignableRoleOptions();
-  const assignmentFields = `<label>มอบหมายให้ตำแหน่ง<select data-field="assignedRole"><option value="">เลือกตำแหน่งรับผิดชอบ</option>${roleOptions}</select></label><label data-field="userPickerLabel" class="hidden">เลือกผู้รับผิดชอบ<select data-field="assignedUserSelect"><option value="">-- เลือกชื่อ --</option></select></label><label>ผู้รับผิดชอบ<input data-field="responsiblePerson" readonly></label><input data-field="assignmentMode" type="hidden" value="ROLE"><input data-field="assignedUserId" type="hidden"><input data-field="assignedUserName" type="hidden"><input data-field="findingStatus" type="hidden" value="Assigned">`;
+  const isManager = state.user.Role === 'Manager';
+  const isMultiUserCapable = isManager || state.user.Role === 'Supervisor';
+  const roleFieldHtml = isManager
+    ? `<div class="form-field full-width"><span class="data-label">มอบหมายให้ตำแหน่ง (เลือกได้หลายตำแหน่ง)</span><div class="checkbox-group" data-field="roleCheckboxGroup">${assignableRoles().map(r => `<label class="checkbox-item"><input type="checkbox" value="${escapeAttr(r)}" data-role-checkbox> ${escapeHtml(r)}</label>`).join('')}</div></div>`
+    : `<label>มอบหมายให้ตำแหน่ง<select data-field="assignedRole"><option value="">เลือกตำแหน่งรับผิดชอบ</option>${roleOptions}</select></label>`;
+  const userFieldHtml = `<div class="form-field full-width hidden" data-field="userCheckboxWrap"><span class="data-label">เลือกผู้รับผิดชอบ (เลือกได้หลายคน)</span><div class="checkbox-group" data-field="userCheckboxGroup"></div></div><label data-field="userPickerLabel" class="hidden">เลือกผู้รับผิดชอบ<select data-field="assignedUserSelect"><option value="">-- เลือกชื่อ --</option></select></label>`;
+  const assignmentFields = `${roleFieldHtml}${userFieldHtml}<label>ผู้รับผิดชอบ<input data-field="responsiblePerson" readonly></label><input data-field="assignmentMode" type="hidden" value="ROLE"><input data-field="assignedUserId" type="hidden"><input data-field="assignedUserName" type="hidden"><input data-field="findingStatus" type="hidden" value="Assigned">`;
   container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>เกณฑ์มาตรฐาน</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>ตัวอย่าง OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>ตัวอย่าง NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="N/A">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid"><label>รายละเอียดปัญหา *<textarea data-field="findingDetail" rows="2"></textarea></label>${assignmentFields}<label>กำหนดวันแก้ไข *<input data-field="dueDate" type="date"></label><label>รูปก่อนแก้ไข *<input data-field="beforePhoto" type="file" accept="image/*" multiple><span class="photo-preview" data-field="beforePhotoPreview"></span></label><label>หมายเหตุ<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
   $$('.checklist-card', container).forEach(card => {
     $$('.result-button', card).forEach(button => button.addEventListener('click', () => selectAuditResult(card, button.dataset.result)));
@@ -1639,11 +1645,23 @@ function renderAuditChecklist() {
         updateAuditSaveButtonState();
       });
     });
-    const roleSelect = $('select[data-field="assignedRole"]', card);
-    if (roleSelect) roleSelect.addEventListener('change', event => {
-      onRoleChange(card, event.target.value);
-      updateAuditSaveButtonState();
-    });
+    if (isManager) {
+      $$('[data-role-checkbox]', card).forEach(cb => cb.addEventListener('change', () => {
+        const checked = $$('[data-role-checkbox]:checked', card).map(c => c.value);
+        renderMultiUserPicker(card, checked);
+        updateAuditSaveButtonState();
+      }));
+    } else {
+      const roleSelect = $('select[data-field="assignedRole"]', card);
+      if (roleSelect) roleSelect.addEventListener('change', event => {
+        if (isMultiUserCapable) {
+          renderMultiUserPicker(card, event.target.value ? [event.target.value] : []);
+        } else {
+          onRoleChange(card, event.target.value);
+        }
+        updateAuditSaveButtonState();
+      });
+    }
     const userSelect = $('select[data-field="assignedUserSelect"]', card);
     if (userSelect) userSelect.addEventListener('change', event => {
       onUserSelectChange(card, event.target.value);
@@ -1725,6 +1743,83 @@ function onUserSelectChange(card, userId) {
   }
 }
 
+function getSelectedRoles(card) {
+  const checkboxes = $$('[data-role-checkbox]:checked', card);
+  if (checkboxes.length) return checkboxes.map(cb => cb.value);
+  const select = $('select[data-field="assignedRole"]', card);
+  return select && select.value ? [select.value] : [];
+}
+
+// Multi-role / multi-user picker — used by Manager (multi-role) and Supervisor (multi-user within one role)
+function renderMultiUserPicker(card, roles) {
+  const wrap = $('[data-field="userCheckboxWrap"]', card);
+  const group = $('[data-field="userCheckboxGroup"]', card);
+  const responsibleInput = $('[data-field="responsiblePerson"]', card);
+  const modeInput = $('[data-field="assignmentMode"]', card);
+  const userIdInput = $('[data-field="assignedUserId"]', card);
+  const userNameInput = $('[data-field="assignedUserName"]', card);
+
+  if (!roles.length) {
+    wrap.classList.add('hidden');
+    group.innerHTML = '';
+    responsibleInput.value = '';
+    modeInput.value = 'ROLE';
+    userIdInput.value = '';
+    userNameInput.value = '';
+    return;
+  }
+
+  const seen = new Set();
+  const users = [];
+  roles.forEach(role => {
+    usersForRole(role).forEach(u => {
+      if (!seen.has(u.UserID)) { seen.add(u.UserID); users.push(u); }
+    });
+  });
+
+  if (!users.length) {
+    wrap.classList.add('hidden');
+    group.innerHTML = '';
+    responsibleInput.value = roles.join(', ');
+    modeInput.value = 'ROLE';
+    userIdInput.value = '';
+    userNameInput.value = '';
+    return;
+  }
+
+  wrap.classList.remove('hidden');
+  group.innerHTML = users.map(u => `<label class="checkbox-item"><input type="checkbox" value="${escapeAttr(u.UserID)}" data-user-checkbox checked> ${escapeHtml((u.FullName || u.Username) + (u.Username ? ' (' + u.Username + ')' : ''))}</label>`).join('');
+  $$('[data-user-checkbox]', group).forEach(cb => cb.addEventListener('change', () => {
+    updateMultiUserSelection(card);
+    updateAuditSaveButtonState();
+  }));
+  updateMultiUserSelection(card);
+}
+
+function updateMultiUserSelection(card) {
+  const checkedBoxes = $$('[data-user-checkbox]:checked', card);
+  const responsibleInput = $('[data-field="responsiblePerson"]', card);
+  const modeInput = $('[data-field="assignmentMode"]', card);
+  const userIdInput = $('[data-field="assignedUserId"]', card);
+  const userNameInput = $('[data-field="assignedUserName"]', card);
+  if (!checkedBoxes.length) {
+    responsibleInput.value = '';
+    modeInput.value = 'ROLE';
+    userIdInput.value = '';
+    userNameInput.value = '';
+    return;
+  }
+  const ids = checkedBoxes.map(cb => cb.value);
+  const names = ids.map(id => {
+    const u = (state.masterData.users || []).find(user => String(user.UserID) === String(id));
+    return u ? (u.FullName || u.Username) : id;
+  });
+  userIdInput.value = ids.join(',');
+  userNameInput.value = names.join(', ');
+  responsibleInput.value = names.join(', ');
+  modeInput.value = 'USER';
+}
+
 function selectAuditResult(card, result) {
   const checklistId = card.dataset.checklistId;
   state.auditAnswers[checklistId] = { ...(state.auditAnswers[checklistId] || {}), result };
@@ -1746,8 +1841,9 @@ function auditNgDetailsComplete() {
     if (!answer || answer.result !== 'NG') return true;
     const card = $(`.checklist-card[data-checklist-id="${cssEscape(item.ChecklistID)}"]`);
     // Before Photo is optional — only require core finding fields
+    const hasAssignment = getSelectedRoles(card).length > 0 || Boolean(fieldValue(card, 'assignedUserId'));
     return Boolean(card && fieldValue(card, 'findingDetail') &&
-      fieldValue(card, 'assignedRole') && fieldValue(card, 'dueDate'));
+      hasAssignment && fieldValue(card, 'dueDate'));
   });
 }
 
@@ -1788,22 +1884,29 @@ async function saveAudit() {
       record.findingDetail = fieldValue(card, 'findingDetail');
       record.correctiveAction = '';
       record.assignmentMode = fieldValue(card, 'assignmentMode') || 'ROLE';
-      record.assignedRole = fieldValue(card, 'assignedRole');
-      record.assignedRoleName = record.assignedRole;
-      record.assignmentMode = fieldValue(card, 'assignmentMode') || 'ROLE';
       record.assignedUserId = fieldValue(card, 'assignedUserId') || '';
+      const assignedUserName = fieldValue(card, 'assignedUserName') || '';
+      const selectedRoles = getSelectedRoles(card);
+      if (record.assignmentMode === 'USER' && assignedUserName) {
+        record.assignedRole = '';
+        record.assignedRoleName = '';
+        record.assignedToName = assignedUserName;
+        record.responsiblePerson = assignedUserName;
+      } else {
+        record.assignedRole = selectedRoles.join(',');
+        record.assignedRoleName = record.assignedRole;
+        record.assignedToName = record.assignedRole;
+        record.responsiblePerson = record.assignedRole;
+      }
       record.assignedToUserId = record.assignedUserId;
       record.picUserId = record.assignedUserId;
-      const assignedUserName = fieldValue(card, 'assignedUserName') || '';
-      record.assignedToName = assignedUserName || record.assignedRole;
-      record.responsiblePerson = assignedUserName ? `${assignedUserName} (${record.assignedRole})` : record.assignedRole;
       record.picName = record.responsiblePerson;
       record.assignedToRole = record.assignedRole;
       record.severity = item.Severity || 'Minor';
       record.dueDate = fieldValue(card, 'dueDate');
-      record.status = record.assignedRole ? 'Assigned' : 'Open';
+      record.status = (record.assignedRole || record.assignedUserId) ? 'Assigned' : 'Open';
       record.findingStatus = record.status;
-      if (!record.findingDetail || !record.assignedRole || !record.dueDate) {
+      if (!record.findingDetail || (!record.assignedRole && !record.assignedUserId) || !record.dueDate) {
         setAuditSavingState(false);
         return showToast(`กรุณากรอก รายละเอียดปัญหา, ตำแหน่งรับผิดชอบ และ กำหนดวันแก้ไข ของ ${item.ChecklistID} ให้ครบ`, 'warning');
       }
@@ -2033,25 +2136,115 @@ function openFindingEditor(findingId) {
 
   // Reassign section — Supervisor, Manager, Engineer, Admin only
   const canReassign = ['Supervisor', 'Manager', 'Engineer', 'Admin'].includes(state.user.Role) && status !== 'closed';
+  const isReassignManager = state.user.Role === 'Manager';
+  const isReassignMultiUser = isReassignManager || state.user.Role === 'Supervisor';
   const reassignRoleField = $('#reassignRoleField');
+  const reassignRoleCheckboxField = $('#reassignRoleCheckboxField');
   const reassignUserField = $('#reassignUserField');
+  const reassignUserCheckboxField = $('#reassignUserCheckboxField');
   const reassignDisplayField = $('#reassignDisplayField');
-  reassignRoleField.classList.toggle('hidden', !canReassign);
+  reassignRoleField.classList.add('hidden');
+  reassignRoleCheckboxField.classList.add('hidden');
   reassignUserField.classList.add('hidden');
+  reassignUserCheckboxField.classList.add('hidden');
   reassignDisplayField.classList.add('hidden');
   $('#reassignUserId').value = '';
   $('#reassignUserName').value = '';
   $('#reassignMode').value = '';
   if (canReassign) {
-    const roleSelect = $('#reassignRole');
-    roleSelect.innerHTML = `<option value="">-- ไม่เปลี่ยน --</option>` +
-      assignableRoles().map(r => `<option value="${escapeAttr(r)}">${escapeHtml(r)}</option>`).join('');
-    roleSelect.value = '';
-    roleSelect.onchange = () => onReassignRoleChange();
+    if (isReassignManager) {
+      reassignRoleCheckboxField.classList.remove('hidden');
+      const group = $('#reassignRoleCheckboxGroup');
+      group.innerHTML = assignableRoles().map(r => `<label class="checkbox-item"><input type="checkbox" value="${escapeAttr(r)}" data-reassign-role-checkbox> ${escapeHtml(r)}</label>`).join('');
+      $$('[data-reassign-role-checkbox]', group).forEach(cb => cb.addEventListener('change', () => {
+        const checked = $$('[data-reassign-role-checkbox]:checked', group).map(c => c.value);
+        renderReassignUserPicker(checked);
+      }));
+    } else {
+      reassignRoleField.classList.remove('hidden');
+      const roleSelect = $('#reassignRole');
+      roleSelect.innerHTML = `<option value="">-- ไม่เปลี่ยน --</option>` +
+        assignableRoles().map(r => `<option value="${escapeAttr(r)}">${escapeHtml(r)}</option>`).join('');
+      roleSelect.value = '';
+      roleSelect.onchange = () => {
+        if (isReassignMultiUser) {
+          renderReassignUserPicker(roleSelect.value ? [roleSelect.value] : []);
+        } else {
+          onReassignRoleChange();
+        }
+      };
+    }
     $('#reassignUserSelect').onchange = () => onReassignUserChange();
   }
 
   $('#findingDialog').showModal();
+}
+
+function getReassignSelectedRoles() {
+  const checkboxes = $$('[data-reassign-role-checkbox]:checked');
+  if (checkboxes.length) return checkboxes.map(cb => cb.value);
+  const select = $('#reassignRole');
+  return select && select.value ? [select.value] : [];
+}
+
+function renderReassignUserPicker(roles) {
+  const wrap = $('#reassignUserCheckboxField');
+  const group = $('#reassignUserCheckboxGroup');
+  const displayField = $('#reassignDisplayField');
+
+  if (!roles.length) {
+    wrap.classList.add('hidden');
+    displayField.classList.add('hidden');
+    group.innerHTML = '';
+    $('#reassignUserId').value = '';
+    $('#reassignUserName').value = '';
+    $('#reassignMode').value = '';
+    return;
+  }
+
+  const seen = new Set();
+  const users = [];
+  roles.forEach(role => {
+    usersForRole(role).forEach(u => {
+      if (!seen.has(u.UserID)) { seen.add(u.UserID); users.push(u); }
+    });
+  });
+
+  if (!users.length) {
+    wrap.classList.add('hidden');
+    displayField.classList.remove('hidden');
+    $('#reassignDisplay').value = roles.join(', ');
+    $('#reassignUserId').value = '';
+    $('#reassignUserName').value = '';
+    $('#reassignMode').value = 'ROLE';
+    return;
+  }
+
+  wrap.classList.remove('hidden');
+  displayField.classList.remove('hidden');
+  group.innerHTML = users.map(u => `<label class="checkbox-item"><input type="checkbox" value="${escapeAttr(u.UserID)}" data-reassign-user-checkbox checked> ${escapeHtml((u.FullName || u.Username) + (u.Username ? ' (' + u.Username + ')' : ''))}</label>`).join('');
+  $$('[data-reassign-user-checkbox]', group).forEach(cb => cb.addEventListener('change', updateReassignMultiUserSelection));
+  updateReassignMultiUserSelection();
+}
+
+function updateReassignMultiUserSelection() {
+  const checkedBoxes = $$('[data-reassign-user-checkbox]:checked');
+  if (!checkedBoxes.length) {
+    $('#reassignDisplay').value = '';
+    $('#reassignUserId').value = '';
+    $('#reassignUserName').value = '';
+    $('#reassignMode').value = 'ROLE';
+    return;
+  }
+  const ids = checkedBoxes.map(cb => cb.value);
+  const names = ids.map(id => {
+    const u = (state.masterData.users || []).find(user => String(user.UserID) === String(id));
+    return u ? (u.FullName || u.Username) : id;
+  });
+  $('#reassignUserId').value = ids.join(',');
+  $('#reassignUserName').value = names.join(', ');
+  $('#reassignDisplay').value = names.join(', ');
+  $('#reassignMode').value = 'USER';
 }
 
 function onReassignRoleChange() {
@@ -2177,13 +2370,13 @@ async function runFindingWorkflow(action, payload, options) {
       payload.afterPhotoUrl = state.editingFinding.AfterPhotoURL || '';
     }
     // Attach reassign fields if set
-    const reassignRole = $('#reassignRole') ? $('#reassignRole').value : '';
+    const reassignRoles = getReassignSelectedRoles();
     const reassignMode = $('#reassignMode') ? $('#reassignMode').value : '';
-    if (reassignRole) {
+    if (reassignRoles.length) {
       if (reassignMode === 'USER') {
         payload.assignedToUserId = $('#reassignUserId').value;
       } else {
-        payload.reassignRole = reassignRole;
+        payload.reassignRole = reassignRoles.join(',');
       }
     }
     await apiCall(action, payload);
@@ -3289,7 +3482,7 @@ function saveAuditDraft() {
       ngData[id] = {
         findingDetail: fieldValue(card, 'findingDetail'),
         correctiveAction: fieldValue(card, 'correctiveAction'),
-        assignedRole: fieldValue(card, 'assignedRole'),
+        assignedRole: getSelectedRoles(card).join(','),
         dueDate: fieldValue(card, 'dueDate'),
         remark: fieldValue(card, 'remark')
       };

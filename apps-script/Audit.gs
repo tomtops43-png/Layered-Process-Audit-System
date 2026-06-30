@@ -44,16 +44,19 @@ function saveAudit(payload, currentUser) {
       if (validatedResult === 'NG') {
         var assignmentMode = normalizeFindingAssignmentMode_(record.assignmentMode, record);
         if (assignmentMode === 'ROLE') {
-          var selectedRole = cleanString_(record.assignedRole || record.assignedRoleName || record.responsiblePerson || record.picName);
-          if (!selectedRole) throw new Error('Record ' + (index + 1) + ': AssignedRole is required for role-based Finding assignment.');
-          validateAssignableFindingRole_(selectedRole);
+          var selectedRoles = csvList_(record.assignedRole || record.assignedRoleName || record.responsiblePerson || record.picName);
+          if (!selectedRoles.length) throw new Error('Record ' + (index + 1) + ': AssignedRole is required for role-based Finding assignment.');
+          selectedRoles.forEach(function (r) { validateAssignableFindingRole_(r); });
         } else {
-          var selectedUserId = cleanString_(record.assignedUserId || record.assignedToUserId || record.picUserId);
+          var selectedUserIds = csvList_(record.assignedUserId || record.assignedToUserId || record.picUserId);
+          if (!selectedUserIds.length) throw new Error('Record ' + (index + 1) + ': assigned user was not found or is inactive.');
           var _uRows = getCachedUserRows_();
-          var selectedUser = selectedUserId ? _uRows.filter(function(u){ return valuesEqual_(u.UserID, selectedUserId); })[0] : null;
-          if (!selectedUserId || !selectedUser || !isActive_(selectedUser.ActiveStatus)) {
-            throw new Error('Record ' + (index + 1) + ': assigned user was not found or is inactive.');
-          }
+          selectedUserIds.forEach(function (uid) {
+            var selectedUser = _uRows.filter(function (u) { return valuesEqual_(u.UserID, uid); })[0];
+            if (!selectedUser || !isActive_(selectedUser.ActiveStatus)) {
+              throw new Error('Record ' + (index + 1) + ': assigned user was not found or is inactive.');
+            }
+          });
         }
       }
     });
@@ -177,16 +180,20 @@ function saveAudit(payload, currentUser) {
       var assignedRole = '';
       var assignedRoleName = '';
       if (result === 'NG' && assignmentMode === 'ROLE') {
-        assignedRole = validateAssignableFindingRole_(record.assignedRole || record.assignedRoleName || record.responsiblePerson || record.picName);
+        var ngRoles = csvList_(record.assignedRole || record.assignedRoleName || record.responsiblePerson || record.picName)
+          .map(function (r) { return validateAssignableFindingRole_(r); });
+        assignedRole = ngRoles.join(', ');
         assignedRoleName = assignedRole;
       } else if (result === 'NG' && assignmentMode === 'USER') {
-        assignedUserId = cleanString_(record.assignedUserId || record.assignedToUserId || record.picUserId);
-        var assignedUser = usersMap[assignedUserId] || null;
-        if (!assignedUserId || !assignedUser || !isActive_(assignedUser.ActiveStatus)) {
-          throw new Error('Assigned user was not found or is inactive: ' + assignedUserId);
-        }
-        assignedName = cleanString_(assignedUser.FullName);
-        assignedRole = cleanString_(assignedUser.Role);
+        var ngUserIds = csvList_(record.assignedUserId || record.assignedToUserId || record.picUserId);
+        var ngAssignedUsers = ngUserIds.map(function (uid) {
+          var u = usersMap[uid] || null;
+          if (!uid || !u || !isActive_(u.ActiveStatus)) throw new Error('Assigned user was not found or is inactive: ' + uid);
+          return u;
+        });
+        assignedUserId = ngUserIds.join(', ');
+        assignedName = ngAssignedUsers.map(function (u) { return cleanString_(u.FullName); }).join(', ');
+        assignedRole = Array.from(new Set(ngAssignedUsers.map(function (u) { return cleanString_(u.Role); }))).join(', ');
       }
       var responsibleDisplay = assignmentMode === 'ROLE' ? assignedRoleName : assignedName;
       var initialFindingStatus = result === 'NG' ? 'Assigned' : 'Completed';

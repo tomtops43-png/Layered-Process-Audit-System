@@ -329,6 +329,14 @@ function parseDate_(value) {
 function isActive_(value) { return ['active', 'yes', 'true', '1'].indexOf(cleanString_(value).toLowerCase()) !== -1; }
 function isClosedStatus_(status) { return cleanString_(status).toLowerCase() === 'closed'; }
 function valuesEqual_(left, right) { return cleanString_(left).toLowerCase() === cleanString_(right).toLowerCase(); }
+function csvList_(value) {
+  return cleanString_(value).split(',').map(function (item) { return cleanString_(item); }).filter(Boolean);
+}
+function csvContains_(csv, value) {
+  var target = cleanString_(value).toLowerCase();
+  if (!target) return false;
+  return csvList_(csv).some(function (item) { return item.toLowerCase() === target; });
+}
 function safeErrorMessage_(error) { return error && error.message ? error.message : 'Unexpected server error.'; }
 function toNumber_(value) { var number = Number(value); return isNaN(number) ? 0 : number; }
 function uniqueValues_(values) { var seen = {}; return values.filter(function (value) { var key = cleanString_(value); if (!key || seen[key]) return false; seen[key] = true; return true; }); }
