@@ -201,7 +201,10 @@ function buildManagerAuditReminder_(currentUser, now, currentPeriod, allAudits) 
     Overdue: !completed && daysLeft < 0,
     TotalLines: lines.length,
     DoneLines: lines.length - missingLines.length,
-    MissingLines: missingLines.map(function (l) { return l.LineName || l.LineID; })
+    MissingLines: missingLines.map(function (l) { return l.LineName || l.LineID; }),
+    Lines: lines.map(function (l) {
+      return { LineID: l.LineID, LineName: l.LineName || l.LineID, Done: Boolean(doneLineIds[l.LineID]) };
+    })
   };
 }
 

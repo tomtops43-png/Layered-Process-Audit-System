@@ -115,6 +115,11 @@ label{display:flex;flex-direction:column;gap:7px;font-size:.88rem;font-weight:70
 .plan-alert{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 18px;background:linear-gradient(90deg,#fff4e0,#fff8ed);border:1.5px solid var(--orange);border-radius:12px;margin-bottom:18px;font-size:.95rem;color:var(--orange)}
 .plan-alert.hidden{display:none}
 .plan-alert.danger{background:linear-gradient(90deg,var(--red-bg),#fff5f5);border-color:var(--red);color:var(--red-dark)}
+.mgr-reminder-body{display:flex;flex-direction:column;gap:8px;flex:1;min-width:0}
+.mgr-reminder-lines{display:flex;flex-wrap:wrap;gap:8px}
+.line-status{display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:999px;font-size:.82rem;font-weight:700;white-space:nowrap}
+.line-status.done{background:var(--green-bg);color:var(--green)}
+.line-status.missing{background:var(--red-bg);color:var(--red-dark)}
 /* Matrix View */
 .mx-bar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:18px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:12px}
 .mx-filters{display:flex;gap:8px;flex-wrap:wrap}

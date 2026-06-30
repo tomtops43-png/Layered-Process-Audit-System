@@ -1280,12 +1280,14 @@ function renderMgrAuditReminder(dashData, selector = '#mgrAuditReminderAlert') {
   }
   el.classList.remove('hidden');
   el.classList.toggle('danger', reminder.Overdue || reminder.DaysLeft <= 3);
-  const missingLines = (reminder.MissingLines || []).map(escapeHtml).join(', ') || '-';
-  const progress = `(ตรวจแล้ว ${reminder.DoneLines || 0}/${reminder.TotalLines || 0} Line)`;
-  const msg = reminder.Overdue
-    ? `🚨 <strong>เลยกำหนดแล้ว!</strong> ยังไม่ได้ตรวจ LPA ให้ครบทุก Line ${progress} — เหลือ <strong>${missingLines}</strong> (กำหนดภายใน ${formatDate(reminder.DeadlineDate)})`
-    : `⏰ เหลืออีก <strong>${reminder.DaysLeft} วัน</strong> ต้องตรวจ LPA ให้ครบทุก Line ${progress} — ยังไม่ได้ตรวจ: <strong>${missingLines}</strong> (กำหนดภายใน ${formatDate(reminder.DeadlineDate)})`;
-  el.innerHTML = `<span>${msg}</span><button class="btn btn-sm btn-primary" onclick="navigateTo('audit')">ไปตรวจเลย →</button>`;
+  const progress = `ตรวจแล้ว ${reminder.DoneLines || 0}/${reminder.TotalLines || 0} Line`;
+  const headline = reminder.Overdue
+    ? `🚨 <strong>เลยกำหนดแล้ว!</strong> ต้องตรวจ LPA ให้ครบทุก Line (${progress}, กำหนดภายใน ${formatDate(reminder.DeadlineDate)})`
+    : `⏰ เหลืออีก <strong>${reminder.DaysLeft} วัน</strong> ต้องตรวจ LPA ให้ครบทุก Line (${progress}, กำหนดภายใน ${formatDate(reminder.DeadlineDate)})`;
+  const lineChips = (reminder.Lines || []).map(l =>
+    `<span class="line-status ${l.Done ? 'done' : 'missing'}">${l.Done ? '✅' : '⏳'} ${escapeHtml(l.LineName)}</span>`
+  ).join('');
+  el.innerHTML = `<div class="mgr-reminder-body"><span>${headline}</span><div class="mgr-reminder-lines">${lineChips}</div></div><button class="btn btn-sm btn-primary" onclick="navigateTo('audit')">ไปตรวจเลย →</button>`;
 }
 
 function renderMgrMetrics(cd, dashData) {
