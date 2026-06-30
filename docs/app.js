@@ -956,10 +956,27 @@ async function loadDirectorDashboard(months) {
   }
 }
 
+function monthsAgoToYYYYMM(monthsBack) {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() - (monthsBack - 1));
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function dirSetStartMonth() {
+  const val = $('#dirStartMonth').value; // YYYY-MM
+  if (!val) return;
+  const [y, mo] = val.split('-').map(Number);
+  const now = new Date();
+  const diffMonths = (now.getFullYear() - y) * 12 + (now.getMonth() - (mo - 1)) + 1;
+  loadDirectorDashboard(Math.min(Math.max(diffMonths, 1), 12));
+}
+
 function renderDirHeader(data) {
   const user = state.user;
   const ts = new Date().toLocaleString('th-TH', { year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
   const m = data.months;
+  const currentYYYYMM = monthsAgoToYYYYMM(1);
   $('#dirHeader').innerHTML = `
     <div>
       <div class="dir-title">LPA Overview Dashboard</div>
@@ -969,6 +986,12 @@ function renderDirHeader(data) {
       <button class="dir-period-btn ${m===1?'active':''}" onclick="loadDirectorDashboard(1)">1 เดือน</button>
       <button class="dir-period-btn ${m===3?'active':''}" onclick="loadDirectorDashboard(3)">3 เดือน</button>
       <button class="dir-period-btn ${m===6?'active':''}" onclick="loadDirectorDashboard(6)">6 เดือน</button>
+      <span style="display:flex;align-items:center;gap:6px;font-size:.78rem">
+        เดือนเริ่มต้น
+        <input type="month" id="dirStartMonth" value="${escapeAttr(monthsAgoToYYYYMM(m))}" max="${escapeAttr(currentYYYYMM)}"
+               style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:7px;padding:4px 8px;font-size:.78rem;min-height:auto;width:130px"
+               onchange="dirSetStartMonth()">
+      </span>
       <span class="dir-ts">อัปเดต ${escapeHtml(ts)}</span>
     </div>`;
 }
