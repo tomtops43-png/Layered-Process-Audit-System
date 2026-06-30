@@ -114,9 +114,9 @@ function updateFinding(payload, currentUser) {
       throw new Error('This finding cannot be edited in its current status.');
     }
 
-    var allowed = ['CorrectiveAction', 'RootCause', 'ActionRemark', 'DueDate', 'Status', 'AfterPhotoURL'];
+    var allowed = ['CorrectiveAction', 'RootCause', 'RootCauseCategory', 'ActionRemark', 'DueDate', 'Status', 'AfterPhotoURL'];
     var aliases = {
-      correctiveAction: 'CorrectiveAction', rootCause: 'RootCause', dueDate: 'DueDate', status: 'Status',
+      correctiveAction: 'CorrectiveAction', rootCause: 'RootCause', rootCauseCategory: 'RootCauseCategory', dueDate: 'DueDate', status: 'Status',
       actionRemark: 'ActionRemark', afterPhotoUrl: 'AfterPhotoURL'
     };
     var updates = {};
@@ -218,9 +218,10 @@ function submitFinding(payload, currentUser) {
     if (!rootCause) throw new Error('RootCause is required before submission.');
     if (!correctiveAction) throw new Error('CorrectiveAction is required before submission.');
     if (!afterPhoto) throw new Error('AfterPhotoURL is required before submission.');
+    var rootCauseCategory = cleanString_(payload.rootCauseCategory || payload.RootCauseCategory || finding.RootCauseCategory);
     var timestamp = formatDateTimeBangkok(new Date());
     var updates = {
-      CorrectiveAction: correctiveAction, RootCause: rootCause, AfterPhotoURL: afterPhoto,
+      CorrectiveAction: correctiveAction, RootCause: rootCause, RootCauseCategory: rootCauseCategory, AfterPhotoURL: afterPhoto,
       Status: 'Pending Verification', VerificationStatus: 'Pending',
       SubmittedAt: timestamp, SubmittedBy: currentUser.UserID, SubmittedByName: currentUser.FullName,
       ActionBy: currentUser.UserID, ActionByName: currentUser.FullName,

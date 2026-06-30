@@ -109,6 +109,18 @@
             <div id="mgrEscalation"></div>
           </div>
           <div class="ld-section">
+            <div class="ld-section-title">📌 สรุป Finding (เทียบช่วงก่อนหน้า)</div>
+            <div id="mgrFindingSummary" class="ld-metrics"></div>
+          </div>
+          <div class="ld-section">
+            <div class="ld-section-title">🧩 วิเคราะห์สาเหตุ 5M1E</div>
+            <div id="mgr5m1eChart"></div>
+          </div>
+          <div class="ld-section">
+            <div class="ld-section-title">📋 Finding ที่เปิดอยู่ (ช่วงที่เลือก)</div>
+            <div id="mgrOpenFindingsTable" class="table-wrap"></div>
+          </div>
+          <div class="ld-section">
             <div class="ld-section-title">📝 ผลการตรวจล่าสุด</div>
             <div id="mgrTodayAudits"></div>
           </div>
@@ -266,6 +278,15 @@
       <p id="verifierFindingHelp" class="required-note hidden">ตรวจสอบ สาเหตุที่แท้จริง, แนวทางแก้ไข และรูปหลังแก้ไข หากถูกต้องให้ปิด Finding หากไม่ถูกต้องให้ใส่เหตุผลแล้วกด Reject</p>
       <div class="form-grid">
         <label>สาเหตุที่แท้จริง (Root Cause)<textarea id="editRootCause" rows="3"></textarea></label>
+        <label>หมวดหมู่สาเหตุ (5M1E)<select id="editRootCauseCategory">
+          <option value="">-- เลือกหมวดหมู่ --</option>
+          <option value="Man">Man (คน)</option>
+          <option value="Machine">Machine (เครื่องจักร)</option>
+          <option value="Material">Material (วัตถุดิบ)</option>
+          <option value="Method">Method (วิธีการ)</option>
+          <option value="Measurement">Measurement (การวัด)</option>
+          <option value="Environment">Environment (สิ่งแวดล้อม)</option>
+        </select></label>
         <label>แนวทางแก้ไข (Corrective Action)<textarea id="editCorrectiveAction" rows="3"></textarea></label>
         <label>สถานะ<input id="editStatus" readonly></label>
         <label id="reassignRoleField" class="hidden">มอบหมายให้ตำแหน่ง<select id="reassignRole"><option value="">-- ไม่เปลี่ยน --</option></select></label>

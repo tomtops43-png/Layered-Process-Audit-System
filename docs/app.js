@@ -1194,7 +1194,9 @@ async function loadManagerDashboard(startDate, endDate) {
       const { complianceData, dashData, findings } = mgrCached;
       state.mgrData.complianceData = complianceData; state.mgrData.dashData = dashData; state.mgrData.findings = findings;
       renderMgrHeader(); renderMgrAuditReminder(dashData); renderMgrMetrics(complianceData, dashData); renderMgrBarChart(complianceData.byLine || []);
-      renderMgrHeatmap(complianceData.byStationRole || [], state.mgrData.selectedLine); renderMgrEscalation(findings); return;
+      renderMgrHeatmap(complianceData.byStationRole || [], state.mgrData.selectedLine); renderMgrEscalation(findings);
+      renderMgrFindingSummary(findings, sd, ed); renderMgr5m1eChart(findings, sd, ed); renderMgrOpenFindingsTable(findings, sd, ed);
+      return;
     } catch (_) { GASCache.invalidate(mgrKey); }
   }
   $('#mgrHeader').innerHTML = '<div class="mgr-header-left"><div class="ld-greeting">กำลังโหลด Dashboard...</div></div>';
@@ -1231,6 +1233,9 @@ async function loadManagerDashboard(startDate, endDate) {
     renderMgrBarChart(complianceData.byLine || []);
     renderMgrHeatmap(complianceData.byStationRole || [], state.mgrData.selectedLine);
     renderMgrEscalation(state.mgrData.findings);
+    renderMgrFindingSummary(state.mgrData.findings, sd, ed);
+    renderMgr5m1eChart(state.mgrData.findings, sd, ed);
+    renderMgrOpenFindingsTable(state.mgrData.findings, sd, ed);
     renderTodayAudits(todayAuditsData.audits || [], '#mgrTodayAudits');
     GASCache.set(mgrKey, { complianceData, dashData, findings: state.mgrData.findings }, 3);
   } catch (error) {
@@ -1321,6 +1326,89 @@ function renderMgrAuditReminder(dashData) {
       ${startBtn}
     </div>`;
   }).join('');
+}
+
+function findingInDateRange(f, sd, ed) {
+  const d = String(f.FoundDate || '').slice(0, 10);
+  return d && d >= sd && d <= ed;
+}
+
+function renderMgrFindingSummary(findings, sd, ed) {
+  const el = $('#mgrFindingSummary');
+  if (!el) return;
+  const periodDays = Math.round((new Date(ed) - new Date(sd)) / 86400000) + 1;
+  const prevEnd = new Date(sd); prevEnd.setDate(prevEnd.getDate() - 1);
+  const prevStart = new Date(prevEnd); prevStart.setDate(prevStart.getDate() - periodDays + 1);
+  const prevSd = localDateInput(prevStart), prevEd = localDateInput(prevEnd);
+
+  const curr = (findings || []).filter(f => findingInDateRange(f, sd, ed));
+  const prev = (findings || []).filter(f => findingInDateRange(f, prevSd, prevEd));
+
+  const isClosed = f => String(f.Status || '').toLowerCase() === 'closed';
+  const isInProgress = f => ['in progress', 'on going', 'ongoing', 'assigned'].includes(String(f.Status || '').toLowerCase());
+  const isOverdue = f => String(f.OverdueFlag || '').toLowerCase() === 'yes';
+
+  const metrics = [
+    { label: 'Finding เปิดใหม่', curr: curr.length, prev: prev.length, goodWhenUp: false },
+    { label: 'กำลังดำเนินการ', curr: curr.filter(isInProgress).length, prev: prev.filter(isInProgress).length, goodWhenUp: false },
+    { label: 'เกิน Due Date', curr: curr.filter(isOverdue).length, prev: prev.filter(isOverdue).length, goodWhenUp: false },
+    { label: 'ปิดแล้ว', curr: curr.filter(isClosed).length, prev: prev.filter(isClosed).length, goodWhenUp: true }
+  ];
+
+  el.innerHTML = metrics.map(m => {
+    const diff = m.curr - m.prev;
+    const pct = m.prev > 0 ? Math.round((diff / m.prev) * 100) : (m.curr > 0 ? 100 : 0);
+    const isGood = diff === 0 ? null : (diff > 0) === m.goodWhenUp;
+    const cls = diff === 0 ? '' : (isGood ? 'ok' : 'danger');
+    const arrow = diff === 0 ? '→' : (diff > 0 ? '▲' : '▼');
+    return `<div class="ld-card ${cls}">
+      <div class="ld-card-label">${escapeHtml(m.label)}</div>
+      <div class="ld-card-value">${m.curr}</div>
+      <div class="ld-card-note">${arrow} ${Math.abs(diff)} (${Math.abs(pct)}%) เทียบช่วงก่อนหน้า</div>
+    </div>`;
+  }).join('');
+}
+
+const M1E_CATEGORIES = [
+  { key: 'Man', label: 'Man (คน)', color: '#1769aa' },
+  { key: 'Machine', label: 'Machine (เครื่องจักร)', color: '#d56a00' },
+  { key: 'Material', label: 'Material (วัตถุดิบ)', color: '#16824b' },
+  { key: 'Method', label: 'Method (วิธีการ)', color: '#8e44ad' },
+  { key: 'Measurement', label: 'Measurement (การวัด)', color: '#d32929' },
+  { key: 'Environment', label: 'Environment (สิ่งแวดล้อม)', color: '#0b8793' }
+];
+
+function renderMgr5m1eChart(findings, sd, ed) {
+  const el = $('#mgr5m1eChart');
+  if (!el) return;
+  const curr = (findings || []).filter(f => findingInDateRange(f, sd, ed));
+  if (!curr.length) { el.innerHTML = emptyHtml('ไม่มี Finding ในช่วงที่เลือก'); return; }
+  const counts = {};
+  M1E_CATEGORIES.forEach(c => { counts[c.key] = 0; });
+  let unclassified = 0;
+  curr.forEach(f => {
+    const cat = String(f.RootCauseCategory || '').trim();
+    if (cat && Object.prototype.hasOwnProperty.call(counts, cat)) counts[cat]++;
+    else unclassified++;
+  });
+  const max = Math.max(1, ...Object.values(counts), unclassified);
+  const rows = M1E_CATEGORIES.map(c => `<div class="mgr-5m1e-row"><span class="mgr-5m1e-label">${escapeHtml(c.label)}</span><div class="mgr-5m1e-bar-wrap"><div class="mgr-5m1e-bar" style="width:${Math.max(2, counts[c.key] / max * 100)}%;background:${c.color}"></div></div><span class="mgr-5m1e-count">${counts[c.key]}</span></div>`).join('') +
+    (unclassified ? `<div class="mgr-5m1e-row"><span class="mgr-5m1e-label">ยังไม่ระบุ</span><div class="mgr-5m1e-bar-wrap"><div class="mgr-5m1e-bar" style="width:${Math.max(2, unclassified / max * 100)}%;background:#9aa5af"></div></div><span class="mgr-5m1e-count">${unclassified}</span></div>` : '');
+  el.innerHTML = rows;
+}
+
+function renderMgrOpenFindingsTable(findings, sd, ed) {
+  const el = $('#mgrOpenFindingsTable');
+  if (!el) return;
+  const rows = (findings || [])
+    .filter(f => findingInDateRange(f, sd, ed) && String(f.Status || '').toLowerCase() !== 'closed')
+    .sort((a, b) => String(b.FoundDate || '').localeCompare(String(a.FoundDate || '')))
+    .slice(0, 20);
+  if (!rows.length) { el.innerHTML = emptyHtml('ไม่มี Finding ค้างอยู่ในช่วงที่เลือก'); return; }
+  el.innerHTML = tableHtml(
+    ['วันที่', 'Line', 'Problem Detail', 'ผู้รับผิดชอบ', 'หมวด 5M1E', 'Status', 'Due Date'],
+    rows.map(f => [formatDate(f.FoundDate), f.LineName || f.LineID, f.ProblemDetail || '-', formatFindingAssignment(f), f.RootCauseCategory || '-', f.Status || '-', formatDate(f.DueDate)])
+  );
 }
 
 function renderMgrMetrics(cd, dashData) {
@@ -2157,6 +2245,7 @@ function openFindingEditor(findingId) {
   $('#findingDialogTitle').textContent = `${row.FindingID} · ${row.ProblemDetail || ''}`;
   $('#editFindingId').value = row.FindingID;
   $('#editRootCause').value = row.RootCause || '';
+  $('#editRootCauseCategory').value = row.RootCauseCategory || '';
   $('#editCorrectiveAction').value = row.CorrectiveAction || '';
   $('#editStatus').value = row.Status || 'Open';
   $('#editStatus').closest('label').classList.toggle('hidden', ['Leader', 'User'].includes(state.user.Role));
@@ -2193,6 +2282,7 @@ function openFindingEditor(findingId) {
   $('#rejectFindingButton').classList.toggle('hidden', isLeaderOrUser || !canVerify);
   $('#submitVerificationButton').classList.toggle('hidden', !canSubmit);
   $('#editRootCause').disabled = !canEditFollowUp;
+  $('#editRootCauseCategory').disabled = !canEditFollowUp;
   $('#editCorrectiveAction').disabled = !canEditFollowUp;
   $('#editActionRemark').disabled = !canEditFollowUp;
   $('#editCloseRemark').disabled = !canVerify;
@@ -2387,6 +2477,7 @@ async function submitFindingForVerification() {
   if (!window.confirm(`ส่ง Finding ${findingId} เพื่อตรวจสอบ?`)) return;
   await runFindingWorkflow('submitFinding', {
     findingId, rootCause, correctiveAction,
+    rootCauseCategory: $('#editRootCauseCategory').value,
     actionRemark: $('#editActionRemark').value.trim(),
     remark: $('#editActionRemark').value.trim() || 'Submitted for verification'
   }, {
