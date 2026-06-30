@@ -1170,7 +1170,7 @@ async function loadManagerDashboard(startDate, endDate) {
     try {
       const { complianceData, dashData, findings } = mgrCached;
       state.mgrData.complianceData = complianceData; state.mgrData.dashData = dashData; state.mgrData.findings = findings;
-      renderMgrHeader(); renderMgrMetrics(complianceData, dashData); renderMgrBarChart(complianceData.byLine || []);
+      renderMgrHeader(); renderMgrAuditReminder(dashData); renderMgrMetrics(complianceData, dashData); renderMgrBarChart(complianceData.byLine || []);
       renderMgrHeatmap(complianceData.byStationRole || [], state.mgrData.selectedLine); renderMgrEscalation(findings); return;
     } catch (_) { GASCache.invalidate(mgrKey); }
   }
@@ -1203,6 +1203,7 @@ async function loadManagerDashboard(startDate, endDate) {
       heatmapSel.value = state.mgrData.selectedLine;
     }
     renderMgrHeader();
+    renderMgrAuditReminder(dashData);
     renderMgrMetrics(complianceData, dashData);
     renderMgrBarChart(complianceData.byLine || []);
     renderMgrHeatmap(complianceData.byStationRole || [], state.mgrData.selectedLine);
@@ -1266,6 +1267,23 @@ function mgrApplyDateRange() {
     GASCache.invalidatePrefix('mgr_comp_');
     loadManagerDashboard(sd, ed);
   }
+}
+
+function renderMgrAuditReminder(dashData) {
+  const el = $('#mgrAuditReminderAlert');
+  if (!el) return;
+  const reminder = dashData && dashData.ManagerAuditReminder;
+  if (!reminder || reminder.Completed) {
+    el.classList.add('hidden');
+    el.innerHTML = '';
+    return;
+  }
+  el.classList.remove('hidden');
+  el.classList.toggle('danger', reminder.Overdue || reminder.DaysLeft <= 3);
+  const msg = reminder.Overdue
+    ? `🚨 <strong>เลยกำหนดแล้ว!</strong> ยังไม่ได้ตรวจ LPA ประจำเดือนนี้ (กำหนดภายใน ${formatDate(reminder.DeadlineDate)})`
+    : `⏰ เหลืออีก <strong>${reminder.DaysLeft} วัน</strong> ต้องตรวจ LPA ให้ครบ 1 ครั้งภายในเดือนนี้ (กำหนดภายใน ${formatDate(reminder.DeadlineDate)})`;
+  el.innerHTML = `<span>${msg}</span><button class="btn btn-sm btn-primary" onclick="navigateTo('audit')">ไปตรวจเลย →</button>`;
 }
 
 function renderMgrMetrics(cd, dashData) {
