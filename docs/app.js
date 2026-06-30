@@ -1378,6 +1378,32 @@ const M1E_CATEGORIES = [
   { key: 'Environment', label: 'Environment (สิ่งแวดล้อม)', color: '#0b8793' }
 ];
 
+// Keyword heuristics to auto-classify an NG Finding into a 5M1E root-cause bucket
+// from its Thai/English text when no manual RootCauseCategory was selected.
+const M1E_KEYWORDS = {
+  Man: ['พนักงาน', 'ผู้ปฏิบัติงาน', 'โอเปอเรเตอร์', 'operator', 'คนงาน', 'ไม่สวม', 'ไม่ใส่', 'ไม่ปฏิบัติตาม', 'ไม่ทำตาม', 'ไม่ทราบ', 'ไม่รู้', 'ลืม', 'ขาดความรู้', 'ขาดทักษะ', 'ขาดจิตสำนึก', 'จิตสำนึก', 'อบรม', 'training', 'ทักษะ', 'skill', 'ความเข้าใจ', 'ละเลย', 'ประมาท', 'วินัย', 'ppe', 'อุปกรณ์ป้องกัน', 'แว่น', 'ถุงมือ', 'หมวก', 'รองเท้านิรภัย'],
+  Machine: ['เครื่องจักร', 'เครื่องมือ', 'machine', 'อุปกรณ์', 'equipment', 'เสีย', 'ชำรุด', 'breakdown', 'มอเตอร์', 'motor', 'เซนเซอร์', 'sensor', 'jig', 'fixture', 'แม่พิมพ์', 'mold', 'สายพาน', 'conveyor', 'ปั๊ม', 'วาล์ว', 'หัวจ่าย', 'รั่ว', 'ค้าง', 'ติดขัด', 'บำรุงรักษา', 'maintenance', 'pm'],
+  Material: ['วัตถุดิบ', 'material', 'ชิ้นงาน', 'ชิ้นส่วน', 'part', 'ของเสีย', 'defect', 'ลาเบล', 'label', 'ฉลาก', 'สติกเกอร์', 'แผ่นโฟม', 'โฟม', 'กล่อง', 'บรรจุภัณฑ์', 'packaging', 'วัสดุ', 'สินค้า', 'lot', 'รุ่น', 'หมดอายุ', 'ปนเปื้อน', 'สเปค', 'ผิดรุ่น', 'ผิดเบอร์'],
+  Method: ['วิธีการ', 'method', 'wi', 'work instruction', 'procedure', 'ขั้นตอน', 'มาตรฐานการทำงาน', 'sop', 'process', 'กระบวนการ', 'การทำงาน', 'ไม่มีการเคลียร์', 'เคลียร์งาน', 'setup', 'ตั้งค่า', 'เอกสาร', 'บันทึก', 'ฟอร์ม', 'checklist', 'ไม่มีการบันทึก', 'ไม่ได้บันทึก', 'ขั้นตอนการ'],
+  Measurement: ['วัด', 'measure', 'measurement', 'เกจ', 'gauge', 'calibration', 'สอบเทียบ', 'ค่าวัด', 'spec', 'tolerance', 'เครื่องวัด', 'ตรวจวัด', 'บันทึกค่า', 'ค่าผิด', 'เกินค่า', 'อุณหภูมิเกิน', 'แรงดัน', 'torque', 'ทอร์ค'],
+  Environment: ['สิ่งแวดล้อม', 'environment', '5ส', '5s', 'พื้นที่', 'area', 'ความสะอาด', 'สะอาด', 'ระเบียบ', 'จัดเก็บ', 'เก็บ', 'housekeeping', 'แสงสว่าง', 'อุณหภูมิห้อง', 'เสียงดัง', 'ฝุ่น', 'dust', 'พื้น', 'floor', 'ทางเดิน', 'รก', 'เกะกะ', 'วางไม่เป็นที่', 'จอดไม่เป็นที่', 'ไม่เป็นระเบียบ', 'visual management', 'ป้าย', 'เส้นแบ่ง', 'ขยะ', 'รถเข็น']
+};
+
+function classify5m1e(finding) {
+  const manual = String(finding.RootCauseCategory || '').trim();
+  if (manual && M1E_CATEGORIES.some(c => c.key === manual)) return manual;
+  const text = [finding.ProblemDetail, finding.Category, finding.StandardCriteria, finding.RootCause, finding.CheckItemSnapshot, finding.CorrectiveAction]
+    .map(v => String(v || '').toLowerCase()).join(' ');
+  if (!text.trim()) return '';
+  let best = '', bestScore = 0;
+  M1E_CATEGORIES.forEach(c => {
+    let score = 0;
+    (M1E_KEYWORDS[c.key] || []).forEach(kw => { if (text.indexOf(kw.toLowerCase()) !== -1) score++; });
+    if (score > bestScore) { bestScore = score; best = c.key; }
+  });
+  return bestScore > 0 ? best : '';
+}
+
 function renderMgr5m1eChart(findings, sd, ed) {
   const el = $('#mgr5m1eChart');
   if (!el) return;
@@ -1387,14 +1413,23 @@ function renderMgr5m1eChart(findings, sd, ed) {
   M1E_CATEGORIES.forEach(c => { counts[c.key] = 0; });
   let unclassified = 0;
   curr.forEach(f => {
-    const cat = String(f.RootCauseCategory || '').trim();
+    const cat = classify5m1e(f);
     if (cat && Object.prototype.hasOwnProperty.call(counts, cat)) counts[cat]++;
     else unclassified++;
   });
+  const total = curr.length;
   const max = Math.max(1, ...Object.values(counts), unclassified);
-  const rows = M1E_CATEGORIES.map(c => `<div class="mgr-5m1e-row"><span class="mgr-5m1e-label">${escapeHtml(c.label)}</span><div class="mgr-5m1e-bar-wrap"><div class="mgr-5m1e-bar" style="width:${Math.max(2, counts[c.key] / max * 100)}%;background:${c.color}"></div></div><span class="mgr-5m1e-count">${counts[c.key]}</span></div>`).join('') +
+  const topKey = M1E_CATEGORIES.reduce((a, c) => counts[c.key] > counts[a] ? c.key : a, M1E_CATEGORIES[0].key);
+  const rows = M1E_CATEGORIES.map(c => {
+    const pct = total ? Math.round(counts[c.key] / total * 100) : 0;
+    return `<div class="mgr-5m1e-row"><span class="mgr-5m1e-label">${escapeHtml(c.label)}</span><div class="mgr-5m1e-bar-wrap"><div class="mgr-5m1e-bar" style="width:${Math.max(2, counts[c.key] / max * 100)}%;background:${c.color}"></div></div><span class="mgr-5m1e-count">${counts[c.key]} (${pct}%)</span></div>`;
+  }).join('') +
     (unclassified ? `<div class="mgr-5m1e-row"><span class="mgr-5m1e-label">ยังไม่ระบุ</span><div class="mgr-5m1e-bar-wrap"><div class="mgr-5m1e-bar" style="width:${Math.max(2, unclassified / max * 100)}%;background:#9aa5af"></div></div><span class="mgr-5m1e-count">${unclassified}</span></div>` : '');
-  el.innerHTML = rows;
+  const topLabel = (M1E_CATEGORIES.find(c => c.key === topKey) || {}).label || '-';
+  const insight = counts[topKey] > 0
+    ? `<div class="mgr-5m1e-insight">💡 สาเหตุหลักช่วงนี้: <strong>${escapeHtml(topLabel)}</strong> (${counts[topKey]} จาก ${total} รายการ) — ควรเน้นแก้ไขที่จุดนี้ก่อน</div>`
+    : '';
+  el.innerHTML = rows + insight;
 }
 
 function renderMgrOpenFindingsTable(findings, sd, ed) {
@@ -1407,7 +1442,12 @@ function renderMgrOpenFindingsTable(findings, sd, ed) {
   if (!rows.length) { el.innerHTML = emptyHtml('ไม่มี Finding ค้างอยู่ในช่วงที่เลือก'); return; }
   el.innerHTML = tableHtml(
     ['วันที่', 'Line', 'Problem Detail', 'ผู้รับผิดชอบ', 'หมวด 5M1E', 'Status', 'Due Date'],
-    rows.map(f => [formatDate(f.FoundDate), f.LineName || f.LineID, f.ProblemDetail || '-', formatFindingAssignment(f), f.RootCauseCategory || '-', f.Status || '-', formatDate(f.DueDate)])
+    rows.map(f => {
+      const cat = classify5m1e(f);
+      const catLabel = (M1E_CATEGORIES.find(c => c.key === cat) || {}).label || 'ยังไม่ระบุ';
+      const auto = !String(f.RootCauseCategory || '').trim() && cat ? ' (auto)' : '';
+      return [formatDate(f.FoundDate), f.LineName || f.LineID, f.ProblemDetail || '-', formatFindingAssignment(f), catLabel + auto, f.Status || '-', formatDate(f.DueDate)];
+    })
   );
 }
 

@@ -465,7 +465,8 @@ textarea{line-height:1.45}
 .mgr-5m1e-label{width:190px;flex-shrink:0;font-size:.85rem;font-weight:700;color:var(--text)}
 .mgr-5m1e-bar-wrap{flex:1;background:var(--gray-bg);border-radius:6px;height:18px;overflow:hidden}
 .mgr-5m1e-bar{height:100%;border-radius:6px;transition:width .3s}
-.mgr-5m1e-count{width:32px;text-align:right;font-weight:800;font-size:.85rem;color:var(--text)}
+.mgr-5m1e-count{width:72px;text-align:right;font-weight:800;font-size:.85rem;color:var(--text)}
+.mgr-5m1e-insight{margin:10px 20px 4px;padding:10px 14px;background:var(--cyan);border-radius:8px;font-size:.85rem;color:var(--navy);line-height:1.5}
 .mgr-esc-row{display:grid;grid-template-columns:auto 1fr auto auto;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border);align-items:center}
 .mgr-esc-row:last-child{border-bottom:0}
 .mgr-esc-info{min-width:0}
