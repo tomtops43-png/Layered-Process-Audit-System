@@ -169,14 +169,23 @@ function getDashboard(payload, currentUser) {
   }
 }
 
-/** Manager must complete at least 1 LPA audit per month, deadline day 30 (or last day if month is shorter). */
+/** Manager must complete at least 1 LPA audit per month for EACH line they're responsible for, deadline day 30 (or last day if month is shorter). */
 function buildManagerAuditReminder_(currentUser, now, currentPeriod, allAudits) {
   if (cleanString_(currentUser.Role) !== 'Manager') return null;
-  var completed = allAudits.some(function (row) {
-    return valuesEqual_(row.PeriodMonth, currentPeriod) &&
-      valuesEqual_(row.AuditorUserID, currentUser.UserID) &&
-      valuesEqual_(row.AuditorRole, 'Manager');
+  var lines = resolveUserResponsibleLines_(currentUser);
+  if (!lines.length) return null;
+
+  var doneLineIds = {};
+  allAudits.forEach(function (row) {
+    if (valuesEqual_(row.PeriodMonth, currentPeriod) &&
+        valuesEqual_(row.AuditorUserID, currentUser.UserID) &&
+        valuesEqual_(row.AuditorRole, 'Manager')) {
+      doneLineIds[cleanString_(row.LineID)] = true;
+    }
   });
+  var missingLines = lines.filter(function (l) { return !doneLineIds[l.LineID]; });
+  var completed = missingLines.length === 0;
+
   var year = now.getFullYear();
   var month = now.getMonth();
   var daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -184,12 +193,28 @@ function buildManagerAuditReminder_(currentUser, now, currentPeriod, allAudits) 
   var deadlineDate = new Date(year, month, deadlineDay);
   var todayOnly = new Date(year, month, now.getDate());
   var daysLeft = Math.ceil((deadlineDate.getTime() - todayOnly.getTime()) / 86400000);
+
   return {
     Completed: completed,
     DaysLeft: daysLeft,
     DeadlineDate: formatDateBangkok_(deadlineDate),
-    Overdue: !completed && daysLeft < 0
+    Overdue: !completed && daysLeft < 0,
+    TotalLines: lines.length,
+    DoneLines: lines.length - missingLines.length,
+    MissingLines: missingLines.map(function (l) { return l.LineName || l.LineID; })
   };
+}
+
+/** Resolve the distinct active lines a user is responsible for (expands 'ALL' access to every active line). */
+function resolveUserResponsibleLines_(currentUser) {
+  var allLines = getRowsAsObjects(SHEET_NAMES.LINES).filter(function (l) { return isActive_(l.ActiveStatus); });
+  var access = getUserLineAccess_(currentUser);
+  var hasAll = access.some(function (row) { return isAllFilter_(row.LineID); });
+  if (hasAll) return allLines.map(function (l) { return { LineID: cleanString_(l.LineID), LineName: cleanString_(l.LineName) }; });
+  var ids = {};
+  access.forEach(function (row) { var id = cleanString_(row.LineID); if (id) ids[id] = true; });
+  return allLines.filter(function (l) { return ids[cleanString_(l.LineID)]; })
+    .map(function (l) { return { LineID: cleanString_(l.LineID), LineName: cleanString_(l.LineName) }; });
 }
 
 function dashboardCacheKey_(user, period, lineAccess, lineId) {

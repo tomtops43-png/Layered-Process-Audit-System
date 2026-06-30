@@ -1269,8 +1269,8 @@ function mgrApplyDateRange() {
   }
 }
 
-function renderMgrAuditReminder(dashData) {
-  const el = $('#mgrAuditReminderAlert');
+function renderMgrAuditReminder(dashData, selector = '#mgrAuditReminderAlert') {
+  const el = $(selector);
   if (!el) return;
   const reminder = dashData && dashData.ManagerAuditReminder;
   if (!reminder || reminder.Completed) {
@@ -1280,9 +1280,11 @@ function renderMgrAuditReminder(dashData) {
   }
   el.classList.remove('hidden');
   el.classList.toggle('danger', reminder.Overdue || reminder.DaysLeft <= 3);
+  const missingLines = (reminder.MissingLines || []).map(escapeHtml).join(', ') || '-';
+  const progress = `(ตรวจแล้ว ${reminder.DoneLines || 0}/${reminder.TotalLines || 0} Line)`;
   const msg = reminder.Overdue
-    ? `🚨 <strong>เลยกำหนดแล้ว!</strong> ยังไม่ได้ตรวจ LPA ประจำเดือนนี้ (กำหนดภายใน ${formatDate(reminder.DeadlineDate)})`
-    : `⏰ เหลืออีก <strong>${reminder.DaysLeft} วัน</strong> ต้องตรวจ LPA ให้ครบ 1 ครั้งภายในเดือนนี้ (กำหนดภายใน ${formatDate(reminder.DeadlineDate)})`;
+    ? `🚨 <strong>เลยกำหนดแล้ว!</strong> ยังไม่ได้ตรวจ LPA ให้ครบทุก Line ${progress} — เหลือ <strong>${missingLines}</strong> (กำหนดภายใน ${formatDate(reminder.DeadlineDate)})`
+    : `⏰ เหลืออีก <strong>${reminder.DaysLeft} วัน</strong> ต้องตรวจ LPA ให้ครบทุก Line ${progress} — ยังไม่ได้ตรวจ: <strong>${missingLines}</strong> (กำหนดภายใน ${formatDate(reminder.DeadlineDate)})`;
   el.innerHTML = `<span>${msg}</span><button class="btn btn-sm btn-primary" onclick="navigateTo('audit')">ไปตรวจเลย →</button>`;
 }
 
@@ -1602,22 +1604,8 @@ function renderDashboard(data) {
     auditBadge.textContent = '0';
     auditBadge.classList.add('hidden');
   }
-  // Manager monthly audit reminder banner
-  const mgrAlertEl = $('#managerAuditReminderAlert');
-  const mgrReminder = data.ManagerAuditReminder;
-  if (mgrAlertEl) {
-    if (mgrReminder && !mgrReminder.Completed) {
-      mgrAlertEl.classList.remove('hidden');
-      mgrAlertEl.classList.toggle('danger', mgrReminder.Overdue || mgrReminder.DaysLeft <= 3);
-      const msg = mgrReminder.Overdue
-        ? `🚨 <strong>เลยกำหนดแล้ว!</strong> ยังไม่ได้ตรวจ LPA ประจำเดือนนี้ (กำหนดภายใน ${formatDate(mgrReminder.DeadlineDate)})`
-        : `⏰ เหลืออีก <strong>${mgrReminder.DaysLeft} วัน</strong> ต้องตรวจ LPA ให้ครบ 1 ครั้งภายในเดือนนี้ (กำหนดภายใน ${formatDate(mgrReminder.DeadlineDate)})`;
-      mgrAlertEl.innerHTML = `<span>${msg}</span><button class="btn btn-sm btn-primary" onclick="navigateTo('audit')">ไปตรวจเลย →</button>`;
-    } else {
-      mgrAlertEl.classList.add('hidden');
-      mgrAlertEl.innerHTML = '';
-    }
-  }
+  // Manager monthly audit reminder banner (uses #managerAuditReminderAlert id in this view)
+  renderMgrAuditReminder(data, '#managerAuditReminderAlert');
   // Audit alert banner
   const alertEl = $('#auditPlanAlert');
   if (dueToday > 0) {
