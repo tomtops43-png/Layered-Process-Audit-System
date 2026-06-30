@@ -87,7 +87,10 @@
         <!-- Manager Dashboard -->
         <div id="mgrDashboard" class="hidden">
           <div id="mgrHeader" class="mgr-header"></div>
-          <div id="mgrAuditReminderAlert" class="plan-alert hidden"></div>
+          <div id="mgrAuditReminderSection" class="ld-section hidden">
+            <div class="ld-section-title">📋 งานตรวจเดือนนี้</div>
+            <div id="mgrAuditReminderTasks"></div>
+          </div>
           <div id="mgrMetrics" class="ld-metrics"></div>
           <div class="ld-section">
             <div class="ld-section-title">📊 Compliance ตาม Line</div>
@@ -114,7 +117,6 @@
         <div id="managerDashboard">
           <div class="page-heading"><div><p class="eyebrow">ภาพรวมระบบ</p><h2>Dashboard</h2></div><button class="btn btn-outline" id="refreshDashboard">↻ รีเฟรช</button></div>
           <div id="dashboardCards" class="metric-grid"></div>
-          <div id="managerAuditReminderAlert" class="plan-alert hidden"></div>
           <div id="auditPlanAlert" class="plan-alert hidden"></div>
           <div class="content-grid two-columns">
             <article class="panel"><div class="panel-title"><h3>ผลการตรวจรายเดือน</h3></div><div id="monthlyAuditChart" class="bar-chart empty-state">กำลังโหลด...</div></article>

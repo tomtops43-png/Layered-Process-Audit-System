@@ -1269,25 +1269,35 @@ function mgrApplyDateRange() {
   }
 }
 
-function renderMgrAuditReminder(dashData, selector = '#mgrAuditReminderAlert') {
-  const el = $(selector);
-  if (!el) return;
+function renderMgrAuditReminder(dashData) {
+  const section = $('#mgrAuditReminderSection');
+  const tasksEl = $('#mgrAuditReminderTasks');
+  if (!section || !tasksEl) return;
   const reminder = dashData && dashData.ManagerAuditReminder;
-  if (!reminder || reminder.Completed) {
-    el.classList.add('hidden');
-    el.innerHTML = '';
+  const lines = (reminder && reminder.Lines) || [];
+  if (!reminder || !lines.length) {
+    section.classList.add('hidden');
+    tasksEl.innerHTML = '';
     return;
   }
-  el.classList.remove('hidden');
-  el.classList.toggle('danger', reminder.Overdue || reminder.DaysLeft <= 3);
-  const progress = `ตรวจแล้ว ${reminder.DoneLines || 0}/${reminder.TotalLines || 0} Line`;
-  const headline = reminder.Overdue
-    ? `🚨 <strong>เลยกำหนดแล้ว!</strong> ต้องตรวจ LPA ให้ครบทุก Line (${progress}, กำหนดภายใน ${formatDate(reminder.DeadlineDate)})`
-    : `⏰ เหลืออีก <strong>${reminder.DaysLeft} วัน</strong> ต้องตรวจ LPA ให้ครบทุก Line (${progress}, กำหนดภายใน ${formatDate(reminder.DeadlineDate)})`;
-  const lineChips = (reminder.Lines || []).map(l =>
-    `<span class="line-status ${l.Done ? 'done' : 'missing'}">${l.Done ? '✅' : '⏳'} ${escapeHtml(l.LineName)}</span>`
-  ).join('');
-  el.innerHTML = `<div class="mgr-reminder-body"><span>${headline}</span><div class="mgr-reminder-lines">${lineChips}</div></div><button class="btn btn-sm btn-primary" onclick="navigateTo('audit')">ไปตรวจเลย →</button>`;
+  section.classList.remove('hidden');
+  const deadlineLabel = formatDate(reminder.DeadlineDate);
+  tasksEl.innerHTML = lines.map(l => {
+    let badge;
+    if (l.Done) {
+      badge = '<span class="ld-badge done">✅ ตรวจแล้วเดือนนี้</span>';
+    } else if (reminder.Overdue) {
+      badge = '<span class="ld-badge overdue">⚠️ เลยกำหนดแล้ว!</span>';
+    } else {
+      badge = `<span class="ld-badge pending">📅 เหลือ ${reminder.DaysLeft} วัน (ถึง ${deadlineLabel})</span>`;
+    }
+    const startBtn = l.Done ? '' : `<button class="btn btn-primary btn-compact" onclick="startAuditFromDashboard('${escapeAttr(l.LineID)}','ALL','Manager')">เริ่มตรวจ</button>`;
+    return `<div class="ld-task-row">
+      ${badge}
+      <div class="ld-task-info"><div class="ld-task-name">${escapeHtml(l.LineName)}</div><div class="ld-task-meta">Manager · รายเดือน</div></div>
+      ${startBtn}
+    </div>`;
+  }).join('');
 }
 
 function renderMgrMetrics(cd, dashData) {
@@ -1606,8 +1616,6 @@ function renderDashboard(data) {
     auditBadge.textContent = '0';
     auditBadge.classList.add('hidden');
   }
-  // Manager monthly audit reminder banner (uses #managerAuditReminderAlert id in this view)
-  renderMgrAuditReminder(data, '#managerAuditReminderAlert');
   // Audit alert banner
   const alertEl = $('#auditPlanAlert');
   if (dueToday > 0) {
