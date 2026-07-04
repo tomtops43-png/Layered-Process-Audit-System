@@ -218,7 +218,7 @@ function submitFinding(payload, currentUser) {
     if (!rootCause) throw new Error('RootCause is required before submission.');
     if (!correctiveAction) throw new Error('CorrectiveAction is required before submission.');
     if (!afterPhoto) throw new Error('AfterPhotoURL is required before submission.');
-    var rootCauseCategory = cleanString_(payload.rootCauseCategory || payload.RootCauseCategory || finding.RootCauseCategory);
+    var rootCauseCategory = cleanString_(payload.rootCauseCategory || payload.RootCauseCategory || finding.RootCauseCategory) || mapCategoryTo5m1e_(finding.Category);
     var timestamp = formatDateTimeBangkok(new Date());
     var updates = {
       CorrectiveAction: correctiveAction, RootCause: rootCause, RootCauseCategory: rootCauseCategory, AfterPhotoURL: afterPhoto,

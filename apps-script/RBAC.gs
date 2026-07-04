@@ -11,10 +11,10 @@ function getUserPermissions_(user) {
   if (isAdmin_(user)) permissions['*'] = true;
   var defaults = getDefaultRolePermissions_();
   (defaults[user.Role] || []).forEach(function (permissionKey) { permissions[permissionKey] = true; });
-  safeRowsAsObjects_(SHEET_NAMES.ROLE_PERMISSIONS).forEach(function (row) {
+  getCachedRolePermissionRows_().forEach(function (row) {
     if (valuesEqual_(row.Role, user.Role)) permissions[cleanString_(row.PermissionKey)] = isAllowed_(row.Allowed);
   });
-  safeRowsAsObjects_(SHEET_NAMES.USER_PERMISSIONS).forEach(function (row) {
+  getCachedUserPermissionRows_().forEach(function (row) {
     if (valuesEqual_(row.UserID, user.UserID) && cleanString_(row.Allowed).toLowerCase() !== 'inherit') {
       permissions[cleanString_(row.PermissionKey)] = isAllowed_(row.Allowed);
     }
@@ -25,7 +25,7 @@ function getUserPermissions_(user) {
 function getUserLineAccess_(user) {
   if (!user) return [];
   if (isAdmin_(user)) return [{ UserID: user.UserID, LineID: 'ALL', LineName: 'ALL', AccessLevel: 'Manage', ActiveStatus: 'Active' }];
-  return safeRowsAsObjects_(SHEET_NAMES.USER_LINE_ACCESS).filter(function (row) {
+  return getCachedUserLineAccessRows_().filter(function (row) {
     return valuesEqual_(row.UserID, user.UserID) && isActive_(row.ActiveStatus);
   }).map(sanitizeForClient_);
 }
