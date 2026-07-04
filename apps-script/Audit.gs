@@ -223,6 +223,7 @@ function saveAudit(payload, currentUser) {
           PeriodMonth: periodMonth, LineID: payload.lineId, LineName: lineName,
           StationID: payload.stationId, StationName: stationName, Area: area,
           Category: auditRecord.Category,
+          RootCauseCategory: mapCategoryTo5m1e_(auditRecord.Category),
           ProblemDetail: findingDetail || auditRecord.Remark || auditRecord.CheckItemSnapshot,
           StandardCriteria: auditRecord.StandardCriteriaSnapshot,
           CorrectiveAction: auditRecord.CorrectiveAction, RootCause: record.rootCause || '',

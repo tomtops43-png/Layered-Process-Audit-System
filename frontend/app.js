@@ -1378,8 +1378,23 @@ const M1E_CATEGORIES = [
   { key: 'Environment', label: 'Environment (สิ่งแวดล้อม)', color: '#0b8793' }
 ];
 
+// Direct Category → 5M1E mapping (ChecklistMaster Category field)
+const CATEGORY_TO_5M1E = (function () {
+  const m = {};
+  const groups = {
+    Man: ['man', 'คน', 'พนักงาน', 'ผู้ปฏิบัติงาน', 'ผู้ดำเนินการ', 'human', 'operator', 'worker', 'people', 'personnel'],
+    Machine: ['machine', 'เครื่องจักร', 'อุปกรณ์', 'เครื่องมือ', 'equipment', 'tool', 'jig', 'fixture', 'device', 'robot', 'automation'],
+    Material: ['material', 'วัสดุ', 'วัตถุดิบ', 'ชิ้นงาน', 'part', 'component', 'raw material', 'rawmaterial', 'stock', 'supply'],
+    Method: ['method', 'วิธีการ', 'กระบวนการ', 'ขั้นตอน', 'process', 'procedure', 'work instruction', 'wi', 'standard', 'sop'],
+    Measurement: ['measurement', 'การวัด', 'เครื่องมือวัด', 'gauge', 'measuring', 'inspection', 'calibration', 'sensor'],
+    Environment: ['environment', 'สภาพแวดล้อม', 'สิ่งแวดล้อม', '5s', '5ส', 'safety', 'housekeeping', 'cleanliness', 'temperature', 'humidity', 'lighting']
+  };
+  Object.keys(groups).forEach(key => groups[key].forEach(kw => { m[kw.toLowerCase()] = key; }));
+  return m;
+})();
+
 // Keyword heuristics to auto-classify an NG Finding into a 5M1E root-cause bucket
-// from its Thai/English text when no manual RootCauseCategory was selected.
+// from its Thai/English text when Category lookup yields no result.
 const M1E_KEYWORDS = {
   Man: ['พนักงาน', 'ผู้ปฏิบัติงาน', 'โอเปอเรเตอร์', 'operator', 'คนงาน', 'ไม่สวม', 'ไม่ใส่', 'ไม่ปฏิบัติตาม', 'ไม่ทำตาม', 'ไม่ทราบ', 'ไม่รู้', 'ลืม', 'ขาดความรู้', 'ขาดทักษะ', 'ขาดจิตสำนึก', 'จิตสำนึก', 'อบรม', 'training', 'ทักษะ', 'skill', 'ความเข้าใจ', 'ละเลย', 'ประมาท', 'วินัย', 'ppe', 'อุปกรณ์ป้องกัน', 'แว่น', 'ถุงมือ', 'หมวก', 'รองเท้านิรภัย'],
   Machine: ['เครื่องจักร', 'เครื่องมือ', 'machine', 'อุปกรณ์', 'equipment', 'เสีย', 'ชำรุด', 'breakdown', 'มอเตอร์', 'motor', 'เซนเซอร์', 'sensor', 'jig', 'fixture', 'แม่พิมพ์', 'mold', 'สายพาน', 'conveyor', 'ปั๊ม', 'วาล์ว', 'หัวจ่าย', 'รั่ว', 'ค้าง', 'ติดขัด', 'บำรุงรักษา', 'maintenance', 'pm'],
@@ -1390,9 +1405,18 @@ const M1E_KEYWORDS = {
 };
 
 function classify5m1e(finding) {
-  const manual = String(finding.RootCauseCategory || '').trim();
-  if (manual && M1E_CATEGORIES.some(c => c.key === manual)) return manual;
-  const text = [finding.ProblemDetail, finding.Category, finding.StandardCriteria, finding.RootCause, finding.CheckItemSnapshot, finding.CorrectiveAction]
+  // 1. Stored RootCauseCategory (set at Finding creation from Category mapping)
+  const stored = String(finding.RootCauseCategory || '').trim();
+  if (stored && M1E_CATEGORIES.some(c => c.key === stored)) return stored;
+  // 2. Direct Category → 5M1E lookup (ChecklistMaster Category)
+  const catKey = String(finding.Category || '').toLowerCase().trim();
+  if (catKey) {
+    if (CATEGORY_TO_5M1E[catKey]) return CATEGORY_TO_5M1E[catKey];
+    const match = Object.keys(CATEGORY_TO_5M1E).find(k => catKey.indexOf(k) !== -1 || k.indexOf(catKey) !== -1);
+    if (match) return CATEGORY_TO_5M1E[match];
+  }
+  // 3. Keyword heuristics from finding text (fallback for historical data)
+  const text = [finding.ProblemDetail, finding.StandardCriteria, finding.RootCause, finding.CheckItemSnapshot, finding.CorrectiveAction]
     .map(v => String(v || '').toLowerCase()).join(' ');
   if (!text.trim()) return '';
   let best = '', bestScore = 0;
@@ -2285,7 +2309,12 @@ function openFindingEditor(findingId) {
   $('#findingDialogTitle').textContent = `${row.FindingID} · ${row.ProblemDetail || ''}`;
   $('#editFindingId').value = row.FindingID;
   $('#editRootCause').value = row.RootCause || '';
-  $('#editRootCauseCategory').value = row.RootCauseCategory || '';
+  const _5m1eKey = classify5m1e(row);
+  const _5m1eLabel = (_5m1eKey && (M1E_CATEGORIES.find(c => c.key === _5m1eKey) || {}).label) || 'ยังไม่ระบุ';
+  const _badge = $('#editRootCauseCategory');
+  if (_badge) { _badge.textContent = _5m1eLabel; _badge.style.background = _5m1eKey ? (M1E_CATEGORIES.find(c => c.key === _5m1eKey) || {}).color || '#888' : '#aaa'; }
+  const _hiddenCat = $('#editRootCauseCategoryVal');
+  if (_hiddenCat) _hiddenCat.value = _5m1eKey;
   $('#editCorrectiveAction').value = row.CorrectiveAction || '';
   $('#editStatus').value = row.Status || 'Open';
   $('#editStatus').closest('label').classList.toggle('hidden', ['Leader', 'User'].includes(state.user.Role));
@@ -2322,7 +2351,6 @@ function openFindingEditor(findingId) {
   $('#rejectFindingButton').classList.toggle('hidden', isLeaderOrUser || !canVerify);
   $('#submitVerificationButton').classList.toggle('hidden', !canSubmit);
   $('#editRootCause').disabled = !canEditFollowUp;
-  $('#editRootCauseCategory').disabled = !canEditFollowUp;
   $('#editCorrectiveAction').disabled = !canEditFollowUp;
   $('#editActionRemark').disabled = !canEditFollowUp;
   $('#editCloseRemark').disabled = !canVerify;
@@ -2517,7 +2545,7 @@ async function submitFindingForVerification() {
   if (!window.confirm(`ส่ง Finding ${findingId} เพื่อตรวจสอบ?`)) return;
   await runFindingWorkflow('submitFinding', {
     findingId, rootCause, correctiveAction,
-    rootCauseCategory: $('#editRootCauseCategory').value,
+    rootCauseCategory: ($('#editRootCauseCategoryVal') || {}).value || '',
     actionRemark: $('#editActionRemark').value.trim(),
     remark: $('#editActionRemark').value.trim() || 'Submitted for verification'
   }, {

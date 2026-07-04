@@ -20,7 +20,7 @@ function listUsers(payload, currentUser) {
     var role = cleanString_(payload.role);
     var status = cleanString_(payload.status);
     var lineId = cleanString_(payload.lineId);
-    var lineRows = safeRowsAsObjects_(SHEET_NAMES.USER_LINE_ACCESS);
+    var lineRows = getCachedUserLineAccessRows_();
     var users = getRowsAsObjects(SHEET_NAMES.USERS).filter(function (user) {
       var searchText = [user.Username, user.FullName, user.EmployeeID, user.Email].join(' ').toLowerCase();
       var hasLine = isAllFilter_(lineId) || lineRows.some(function (row) {
@@ -152,6 +152,7 @@ function updateRolePermissions(payload, currentUser) {
         Description: entry.description || '', UpdatedAt: formatDateTimeBangkok(new Date()), UpdatedBy: currentUser.UserID
       });
     });
+    invalidateRolePermissionsCache_();
     return jsonResponse(true, 'Role permissions updated.', { updatedCount: entries.length });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
@@ -187,6 +188,7 @@ function updateUserPermissions(payload, currentUser) {
         UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
       });
     });
+    invalidateUserPermissionsCache_();
     return jsonResponse(true, 'User permissions updated.', { updatedCount: entries.length });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
@@ -223,6 +225,7 @@ function updateUserLineAccess(payload, currentUser) {
         CreatedAt: timestamp, CreatedBy: currentUser.UserID, UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
       });
     });
+    invalidateUserLineAccessCache_();
     return jsonResponse(true, 'User line access updated.', { updatedCount: entries.length });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
