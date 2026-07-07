@@ -5,8 +5,25 @@ function getCurrentUserFromRequest_(token) {
   return user;
 }
 
+// Execution-scoped memo + short CacheService cache: RBAC checks run once per finding row,
+// so without this every getFindings call re-reads the permission sheets hundreds of times.
+var RBAC_EXEC_MEMO_ = { permissions: {}, lineAccess: {} };
+var RBAC_CACHE_TTL_ = 60;
+
+function rbacUserKey_(user) {
+  return cleanString_(user.UserID) + '|' + cleanString_(user.Role);
+}
+
 function getUserPermissions_(user) {
   if (!user) return {};
+  var memoKey = rbacUserKey_(user);
+  if (RBAC_EXEC_MEMO_.permissions[memoKey]) return RBAC_EXEC_MEMO_.permissions[memoKey];
+  var cacheKey = 'LPA_RBAC_PERMS_' + memoKey;
+  var cached = safeCacheGetJson_(cacheKey);
+  if (cached) {
+    RBAC_EXEC_MEMO_.permissions[memoKey] = cached;
+    return cached;
+  }
   var permissions = {};
   if (isAdmin_(user)) permissions['*'] = true;
   var defaults = getDefaultRolePermissions_();
@@ -19,15 +36,35 @@ function getUserPermissions_(user) {
       permissions[cleanString_(row.PermissionKey)] = isAllowed_(row.Allowed);
     }
   });
+  safeCachePutJson_(cacheKey, permissions, RBAC_CACHE_TTL_);
+  RBAC_EXEC_MEMO_.permissions[memoKey] = permissions;
   return permissions;
 }
 
 function getUserLineAccess_(user) {
   if (!user) return [];
   if (isAdmin_(user)) return [{ UserID: user.UserID, LineID: 'ALL', LineName: 'ALL', AccessLevel: 'Manage', ActiveStatus: 'Active' }];
-  return safeRowsAsObjects_(SHEET_NAMES.USER_LINE_ACCESS).filter(function (row) {
+  var memoKey = rbacUserKey_(user);
+  if (RBAC_EXEC_MEMO_.lineAccess[memoKey]) return RBAC_EXEC_MEMO_.lineAccess[memoKey];
+  var cacheKey = 'LPA_RBAC_LINES_' + memoKey;
+  var cached = safeCacheGetJson_(cacheKey);
+  if (cached) {
+    RBAC_EXEC_MEMO_.lineAccess[memoKey] = cached;
+    return cached;
+  }
+  var rows = safeRowsAsObjects_(SHEET_NAMES.USER_LINE_ACCESS).filter(function (row) {
     return valuesEqual_(row.UserID, user.UserID) && isActive_(row.ActiveStatus);
   }).map(sanitizeForClient_);
+  safeCachePutJson_(cacheKey, rows, RBAC_CACHE_TTL_);
+  RBAC_EXEC_MEMO_.lineAccess[memoKey] = rows;
+  return rows;
+}
+
+function invalidateRbacCacheForUser_(userId, role) {
+  var memoKey = cleanString_(userId) + '|' + cleanString_(role);
+  delete RBAC_EXEC_MEMO_.permissions[memoKey];
+  delete RBAC_EXEC_MEMO_.lineAccess[memoKey];
+  safeCacheRemove_(['LPA_RBAC_PERMS_' + memoKey, 'LPA_RBAC_LINES_' + memoKey]);
 }
 
 function safeRowsAsObjects_(sheetName) {

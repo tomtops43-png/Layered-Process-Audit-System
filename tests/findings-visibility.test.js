@@ -1,4 +1,4 @@
-const assert = require('assert');
+﻿const assert = require('assert');
 const fs = require('fs');
 const vm = require('vm');
 
@@ -53,7 +53,20 @@ const context = {
   formatDateTimeBangkok: () => '2026-06-15 12:00:00',
   getPeriodMonth: () => '202606',
   jsonResponse: (success, message, data) => ({ success, message, data }),
-  safeErrorMessage_: error => error.message
+  safeErrorMessage_: error => error.message,
+  csvContains_: (csv, value) => {
+    const target = String(value === null || value === undefined ? '' : value).trim().toLowerCase();
+    if (!target) return false;
+    return String(csv === null || csv === undefined ? '' : csv).split(',')
+      .map(item => item.trim().toLowerCase()).includes(target);
+  },
+  csvList_: value => String(value === null || value === undefined ? '' : value).split(',')
+    .map(item => item.trim()).filter(Boolean),
+  toNumber_: value => { const n = Number(value); return isNaN(n) ? 0 : n; },
+  safeCacheGetJson_: () => null,
+  safeCachePutJson_: () => false,
+  safeCacheRemove_: () => {},
+  invalidateDashboardCachesForUser_: () => {}
 };
 vm.createContext(context);
 ['apps-script/RBAC.gs', 'apps-script/Findings.gs'].forEach(file => {
@@ -64,8 +77,16 @@ function setPermissions(role, permissions) {
   sheets.RolePermissions = permissions.map(PermissionKey => ({ Role: role, PermissionKey, Allowed: true }));
 }
 
+// Each production request runs in a fresh Apps Script execution, so the
+// execution-scoped RBAC/audit memos start empty. Reset them per simulated call.
+function freshRequest() {
+  context.RBAC_EXEC_MEMO_ = { permissions: {}, lineAccess: {} };
+  context.FINDING_AUDIT_LAYER_MEMO_ = null;
+  return context;
+}
+
 function visibleIds(user, payload = {}) {
-  const response = context.getFindings(payload, user);
+  const response = freshRequest().getFindings(payload, user);
   assert.strictEqual(response.success, true, response.message);
   return response.data.findings.map(row => row.FindingID).sort();
 }
@@ -165,7 +186,7 @@ sheets.Findings = [{
   AfterPhotoURL: ''
 }];
 setPermissions('Leader', ['findings.view.assigned', 'findings.update.assigned']);
-let response = context.submitFinding({
+let response = freshRequest().submitFinding({
   findingId: 'F-WORKFLOW',
   correctiveAction: 'Corrected',
   afterPhotoUrl: 'https://example.test/after.jpg'
@@ -173,7 +194,7 @@ let response = context.submitFinding({
 assert.strictEqual(response.success, false);
 assert.match(response.message, /RootCause is required/);
 
-response = context.submitFinding({
+response = freshRequest().submitFinding({
   findingId: 'F-WORKFLOW',
   rootCause: 'Root cause',
   correctiveAction: 'Corrected',
@@ -185,15 +206,15 @@ assert.strictEqual(sheets.Findings[0].VerificationStatus, 'Pending');
 assert.strictEqual(sheets.Findings[0].SubmittedBy, workflowLeader.UserID);
 
 setPermissions('User', ['findings.close.major']);
-response = context.closeFinding({ findingId: 'F-WORKFLOW', closeRemark: 'Unauthorized close' }, outsider);
+response = freshRequest().closeFinding({ findingId: 'F-WORKFLOW', closeRemark: 'Unauthorized close' }, outsider);
 assert.strictEqual(response.success, false);
 
 setPermissions('Manager', ['findings.view.all', 'findings.verify', 'findings.close.major']);
-response = context.verifyFinding({ findingId: 'F-WORKFLOW', decision: 'Approve' }, workflowManager);
+response = freshRequest().verifyFinding({ findingId: 'F-WORKFLOW', decision: 'Approve' }, workflowManager);
 assert.strictEqual(response.success, false);
 assert.match(response.message, /CloseRemark is required/);
 
-response = context.verifyFinding({
+response = freshRequest().verifyFinding({
   findingId: 'F-WORKFLOW',
   decision: 'Approve',
   closeRemark: 'Verified and complete'
@@ -205,7 +226,7 @@ assert.strictEqual(sheets.Findings[0].ClosedBy, workflowManager.UserID);
 
 sheets.Findings[0].Status = 'Pending Verification';
 sheets.Findings[0].VerificationStatus = 'Pending';
-response = context.verifyFinding({
+response = freshRequest().verifyFinding({
   findingId: 'F-WORKFLOW',
   decision: 'Reject',
   rejectReason: 'Correct the evidence'
@@ -223,7 +244,7 @@ assert(
 );
 
 setPermissions('Leader', ['findings.view.assigned', 'findings.update.assigned']);
-response = context.submitFinding({
+response = freshRequest().submitFinding({
   findingId: 'F-WORKFLOW',
   rootCause: 'Revised root cause',
   correctiveAction: 'Revised correction',
@@ -253,3 +274,4 @@ const configSource = fs.readFileSync('apps-script/Config.gs', 'utf8');
 assert(configSource.includes("'ActionRemark'"), 'Findings schema must include ActionRemark');
 
 console.log('Finding visibility authorization tests passed.');
+

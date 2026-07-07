@@ -41,6 +41,26 @@ function createToken_(user, now) {
   return token;
 }
 
+// Short-lived cache of the Users sheet so validateToken does not hit the
+// spreadsheet on every API request. Rows are read-only lookups (no _rowNumber use).
+var USERS_RAW_CACHE_KEY = 'LPA_USERS_RAW';
+var USERS_RAW_CACHE_TTL = 60;
+
+function findUserByIdCached_(userId) {
+  var cached = safeCacheGetJson_(USERS_RAW_CACHE_KEY);
+  var rows = cached || getRowsAsObjects(SHEET_NAMES.USERS).map(function (row) {
+    var copy = sanitizeForClient_(row);
+    delete copy.PasswordHash;
+    return copy;
+  });
+  if (!cached) safeCachePutJson_(USERS_RAW_CACHE_KEY, rows, USERS_RAW_CACHE_TTL);
+  return rows.filter(function (row) { return valuesEqual_(row.UserID, userId); })[0] || null;
+}
+
+function invalidateUsersCache_() {
+  safeCacheRemove_(USERS_RAW_CACHE_KEY);
+}
+
 function validateToken(token) {
   token = cleanString_(token);
   if (!token) return null;
@@ -54,7 +74,7 @@ function validateToken(token) {
       PropertiesService.getScriptProperties().deleteProperty(key);
       return null;
     }
-    var user = findById_(SHEET_NAMES.USERS, 'UserID', session.UserID);
+    var user = findUserByIdCached_(session.UserID);
     if (!user || !isActive_(user.ActiveStatus)) return null;
     session.Role = user.Role;
     session.FullName = user.FullName;

@@ -1,6 +1,23 @@
 /** Finding search, update, and closure APIs. */
 var FINDINGS_RAW_CACHE_KEY = 'LPA_FINDINGS_RAW';
-var FINDINGS_RAW_CACHE_TTL = 120;
+var FINDINGS_RAW_CACHE_TTL = 300;
+
+// AuditID -> AuditLayer map, built once per execution. Looking this up per finding row
+// via findById_ used to re-read the whole AUDIT_SESSIONS sheet for every row.
+var FINDING_AUDIT_LAYER_MEMO_ = null;
+
+function getAuditLayerForFinding_(auditId) {
+  var id = cleanString_(auditId).toLowerCase();
+  if (!id) return '';
+  if (!FINDING_AUDIT_LAYER_MEMO_) {
+    FINDING_AUDIT_LAYER_MEMO_ = {};
+    safeRowsAsObjects_(SHEET_NAMES.AUDIT_SESSIONS).forEach(function (row) {
+      var key = cleanString_(row.AuditID).toLowerCase();
+      if (key) FINDING_AUDIT_LAYER_MEMO_[key] = cleanString_(row.AuditLayer);
+    });
+  }
+  return FINDING_AUDIT_LAYER_MEMO_[id] || '';
+}
 
 function getCachedFindingRows_() {
   var cached = safeCacheGetJson_(FINDINGS_RAW_CACHE_KEY);
@@ -62,9 +79,12 @@ function getMyFindingNotificationSummary(payload, currentUser) {
     var overdue = visible.filter(function (row) {
       return valuesEqual_(row.OverdueFlag, 'Yes') && ['closed'].indexOf(cleanString_(row.Status).toLowerCase()) === -1;
     });
+    var actionableIds = {};
+    assignedOpen.concat(pendingVerification).forEach(function (item) {
+      actionableIds[cleanString_(item.FindingID).toLowerCase()] = true;
+    });
     var actionable = visible.filter(function (row) {
-      return assignedOpen.some(function (item) { return valuesEqual_(item.FindingID, row.FindingID); }) ||
-        pendingVerification.some(function (item) { return valuesEqual_(item.FindingID, row.FindingID); });
+      return actionableIds[cleanString_(row.FindingID).toLowerCase()] === true;
     });
     var latest = actionable.slice().sort(function (a, b) {
       return cleanString_(b.UpdatedAt || b.CreatedAt || b.FoundDate).localeCompare(cleanString_(a.UpdatedAt || a.CreatedAt || a.FoundDate));
@@ -282,6 +302,7 @@ function verifyFinding(payload, currentUser) {
     }
     var updated = updateObjectById(SHEET_NAMES.FINDINGS, 'FindingID', payload.findingId, updates);
     appendActionLog_(payload.findingId, oldStatus, updates.Status, updates, payload.remark || updates.RejectReason || updates.CloseRemark || '', payload.evidenceUrl || '', currentUser, timestamp);
+    invalidateFindingsCache_();
     invalidateDashboardCachesForUser_(currentUser);
     return jsonResponse(true, updates.Status === 'Closed' ? 'Finding approved and closed.' : 'Finding rejected.', { finding: sanitizeFindingForClient_(updated) });
   } catch (error) {
@@ -394,8 +415,7 @@ function canDirectlyCloseMinorFinding_(currentUser, finding) {
   var severity = cleanString_(finding.Severity || finding.Priority).toLowerCase();
   if (severity !== 'minor' || !hasPermission_(currentUser, 'findings.close.minor') ||
       !isAssignedToUser_(finding, currentUser)) return false;
-  var audit = findById_(SHEET_NAMES.AUDIT_SESSIONS, 'AuditID', finding.AuditID) || {};
-  var layer = cleanString_(audit.AuditLayer).toLowerCase();
+  var layer = getAuditLayerForFinding_(finding.AuditID).toLowerCase();
   var verificationRequired = cleanString_(finding.VerificationRequired).toLowerCase();
   return verificationRequired === 'no' || (!verificationRequired && (!layer || layer === 'leader'));
 }
