@@ -66,7 +66,11 @@ const context = {
   safeCacheGetJson_: () => null,
   safeCachePutJson_: () => false,
   safeCacheRemove_: () => {},
-  invalidateDashboardCachesForUser_: () => {}
+  invalidateDashboardCachesForUser_: () => {},
+  getCachedRolePermissionRows_: () => sheets.RolePermissions.map(row => ({ ...row })),
+  getCachedUserPermissionRows_: () => sheets.UserPermissions.map(row => ({ ...row })),
+  getCachedUserLineAccessRows_: () => sheets.UserLineAccess.map(row => ({ ...row })),
+  mapCategoryTo5m1e_: () => ''
 };
 vm.createContext(context);
 ['apps-script/RBAC.gs', 'apps-script/Findings.gs'].forEach(file => {

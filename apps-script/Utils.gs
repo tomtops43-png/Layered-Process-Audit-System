@@ -117,6 +117,40 @@ function getCachedListRows_() {
 function invalidateUserCache_() { safeCacheRemove_(_USERS_CACHE_KEY); }
 function invalidateChecklistCache_() { safeCacheRemove_([_CHECKLIST_CACHE_KEY, _LISTS_CACHE_KEY]); }
 
+/** Cached RBAC lookups — these are re-read once per finding row by canViewFindingRbac_,
+ * so leaving them uncached turns getFindings into hundreds of uncached sheet reads per request. */
+var _ROLE_PERMISSIONS_CACHE_KEY = 'LPA_ROLE_PERMISSIONS_ALL_ROWS';
+var _USER_PERMISSIONS_CACHE_KEY = 'LPA_USER_PERMISSIONS_ALL_ROWS';
+var _USER_LINE_ACCESS_CACHE_KEY = 'LPA_USER_LINE_ACCESS_ALL_ROWS';
+
+function getCachedRolePermissionRows_() {
+  var cached = safeCacheGetJson_(_ROLE_PERMISSIONS_CACHE_KEY);
+  if (cached) return cached;
+  var rows = safeRowsAsObjects_(SHEET_NAMES.ROLE_PERMISSIONS);
+  safeCachePutJson_(_ROLE_PERMISSIONS_CACHE_KEY, rows, 300);
+  return rows;
+}
+
+function getCachedUserPermissionRows_() {
+  var cached = safeCacheGetJson_(_USER_PERMISSIONS_CACHE_KEY);
+  if (cached) return cached;
+  var rows = safeRowsAsObjects_(SHEET_NAMES.USER_PERMISSIONS);
+  safeCachePutJson_(_USER_PERMISSIONS_CACHE_KEY, rows, 300);
+  return rows;
+}
+
+function getCachedUserLineAccessRows_() {
+  var cached = safeCacheGetJson_(_USER_LINE_ACCESS_CACHE_KEY);
+  if (cached) return cached;
+  var rows = safeRowsAsObjects_(SHEET_NAMES.USER_LINE_ACCESS);
+  safeCachePutJson_(_USER_LINE_ACCESS_CACHE_KEY, rows, 300);
+  return rows;
+}
+
+function invalidateRolePermissionsCache_() { safeCacheRemove_(_ROLE_PERMISSIONS_CACHE_KEY); }
+function invalidateUserPermissionsCache_() { safeCacheRemove_(_USER_PERMISSIONS_CACHE_KEY); }
+function invalidateUserLineAccessCache_() { safeCacheRemove_(_USER_LINE_ACCESS_CACHE_KEY); }
+
 function getDefaultDueDays_() {
   var cacheKey = 'LPA_SETTING_DUE_DAYS';
   var cached = CacheService.getScriptCache().get(cacheKey);
@@ -332,6 +366,33 @@ function valuesEqual_(left, right) { return cleanString_(left).toLowerCase() ===
 function csvList_(value) {
   return cleanString_(value).split(',').map(function (item) { return cleanString_(item); }).filter(Boolean);
 }
+var CATEGORY_5M1E_MAP_ = (function () {
+  var m = {};
+  var groups = {
+    Man: ['man', 'คน', 'พนักงาน', 'ผู้ปฏิบัติงาน', 'ผู้ดำเนินการ', 'human', 'operator', 'worker', 'people', 'personnel'],
+    Machine: ['machine', 'เครื่องจักร', 'อุปกรณ์', 'เครื่องมือ', 'equipment', 'tool', 'jig', 'fixture', 'device', 'robot', 'automation'],
+    Material: ['material', 'วัสดุ', 'วัตถุดิบ', 'ชิ้นงาน', 'part', 'component', 'raw material', 'rawmaterial', 'stock', 'supply'],
+    Method: ['method', 'วิธีการ', 'กระบวนการ', 'ขั้นตอน', 'process', 'procedure', 'work instruction', 'wi', 'standard', 'sop'],
+    Measurement: ['measurement', 'การวัด', 'เครื่องมือวัด', 'gauge', 'measuring', 'inspection', 'calibration', 'sensor'],
+    Environment: ['environment', 'สภาพแวดล้อม', 'สิ่งแวดล้อม', '5s', 'safety', 'housekeeping', 'cleanliness', 'temperature', 'humidity', 'lighting']
+  };
+  Object.keys(groups).forEach(function (key) {
+    groups[key].forEach(function (kw) { m[kw.toLowerCase()] = key; });
+  });
+  return m;
+})();
+
+function mapCategoryTo5m1e_(category) {
+  var cat = cleanString_(category).toLowerCase().trim();
+  if (!cat) return '';
+  if (CATEGORY_5M1E_MAP_[cat]) return CATEGORY_5M1E_MAP_[cat];
+  var keys = Object.keys(CATEGORY_5M1E_MAP_);
+  for (var i = 0; i < keys.length; i++) {
+    if (cat.indexOf(keys[i]) !== -1 || keys[i].indexOf(cat) !== -1) return CATEGORY_5M1E_MAP_[keys[i]];
+  }
+  return '';
+}
+
 function csvContains_(csv, value) {
   var target = cleanString_(value).toLowerCase();
   if (!target) return false;

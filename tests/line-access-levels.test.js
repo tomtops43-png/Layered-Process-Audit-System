@@ -22,7 +22,8 @@ const context = {
   sanitizeForClient_: row => ({ ...row }),
   safeCacheGetJson_: () => null,
   safeCachePutJson_: () => false,
-  safeCacheRemove_: () => {}
+  safeCacheRemove_: () => {},
+  getCachedUserLineAccessRows_: () => Object.keys(rowsByUser).reduce((rows, key) => rows.concat(rowsByUser[key]), [])
 };
 vm.createContext(context);
 vm.runInContext(source, context);

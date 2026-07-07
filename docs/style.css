@@ -115,6 +115,7 @@ label{display:flex;flex-direction:column;gap:7px;font-size:.88rem;font-weight:70
 .plan-alert{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 18px;background:linear-gradient(90deg,#fff4e0,#fff8ed);border:1.5px solid var(--orange);border-radius:12px;margin-bottom:18px;font-size:.95rem;color:var(--orange)}
 .plan-alert.hidden{display:none}
 .plan-alert.danger{background:linear-gradient(90deg,var(--red-bg),#fff5f5);border-color:var(--red);color:var(--red-dark)}
+.auto-badge{display:inline-block;padding:4px 14px;border-radius:20px;font-size:.85rem;font-weight:600;color:#fff;background:#aaa;letter-spacing:.3px;margin-top:6px}
 /* Matrix View */
 .mx-bar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:18px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:12px}
 .mx-filters{display:flex;gap:8px;flex-wrap:wrap}

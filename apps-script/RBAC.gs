@@ -28,10 +28,10 @@ function getUserPermissions_(user) {
   if (isAdmin_(user)) permissions['*'] = true;
   var defaults = getDefaultRolePermissions_();
   (defaults[user.Role] || []).forEach(function (permissionKey) { permissions[permissionKey] = true; });
-  safeRowsAsObjects_(SHEET_NAMES.ROLE_PERMISSIONS).forEach(function (row) {
+  getCachedRolePermissionRows_().forEach(function (row) {
     if (valuesEqual_(row.Role, user.Role)) permissions[cleanString_(row.PermissionKey)] = isAllowed_(row.Allowed);
   });
-  safeRowsAsObjects_(SHEET_NAMES.USER_PERMISSIONS).forEach(function (row) {
+  getCachedUserPermissionRows_().forEach(function (row) {
     if (valuesEqual_(row.UserID, user.UserID) && cleanString_(row.Allowed).toLowerCase() !== 'inherit') {
       permissions[cleanString_(row.PermissionKey)] = isAllowed_(row.Allowed);
     }
@@ -52,7 +52,7 @@ function getUserLineAccess_(user) {
     RBAC_EXEC_MEMO_.lineAccess[memoKey] = cached;
     return cached;
   }
-  var rows = safeRowsAsObjects_(SHEET_NAMES.USER_LINE_ACCESS).filter(function (row) {
+  var rows = getCachedUserLineAccessRows_().filter(function (row) {
     return valuesEqual_(row.UserID, user.UserID) && isActive_(row.ActiveStatus);
   }).map(sanitizeForClient_);
   safeCachePutJson_(cacheKey, rows, RBAC_CACHE_TTL_);

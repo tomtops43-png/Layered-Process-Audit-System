@@ -1,4 +1,4 @@
-/** User-facing account APIs. */
+﻿/** User-facing account APIs. */
 function getCurrentUser(currentUser) {
   try {
     var user = findById_(SHEET_NAMES.USERS, 'UserID', currentUser.UserID);
@@ -20,7 +20,7 @@ function listUsers(payload, currentUser) {
     var role = cleanString_(payload.role);
     var status = cleanString_(payload.status);
     var lineId = cleanString_(payload.lineId);
-    var lineRows = safeRowsAsObjects_(SHEET_NAMES.USER_LINE_ACCESS);
+    var lineRows = getCachedUserLineAccessRows_();
     var users = getRowsAsObjects(SHEET_NAMES.USERS).filter(function (user) {
       var searchText = [user.Username, user.FullName, user.EmployeeID, user.Email].join(' ').toLowerCase();
       var hasLine = isAllFilter_(lineId) || lineRows.some(function (row) {
@@ -65,7 +65,7 @@ function createUser(payload, currentUser) {
       CreatedAt: timestamp, CreatedBy: currentUser.UserID, UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
     };
     appendObject(SHEET_NAMES.USERS, user);
-    invalidateUsersCache_();
+    invalidateUserCache_();
     return jsonResponse(true, 'User created.', { user: publicUser_(user) });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
@@ -93,7 +93,7 @@ function updateUser(payload, currentUser) {
     updates.UpdatedAt = formatDateTimeBangkok(new Date());
     updates.UpdatedBy = currentUser.UserID;
     var updated = updateObjectById(SHEET_NAMES.USERS, 'UserID', payload.userId, updates);
-    invalidateUsersCache_();
+    invalidateUserCache_();
     invalidateRbacCacheForUser_(payload.userId, existing.Role);
     if (updates.Role !== undefined) invalidateRbacCacheForUser_(payload.userId, updates.Role);
     return jsonResponse(true, 'User updated.', { user: publicUser_(updated) });
@@ -111,7 +111,7 @@ function deactivateUser(payload, currentUser) {
       ActiveStatus: 'Inactive', UpdatedAt: formatDateTimeBangkok(new Date()), UpdatedBy: currentUser.UserID
     });
     if (!updated) throw new Error('User not found: ' + payload.userId);
-    invalidateUsersCache_();
+    invalidateUserCache_();
     invalidateRbacCacheForUser_(payload.userId, updated.Role);
     return jsonResponse(true, 'User deactivated.', { user: publicUser_(updated) });
   } catch (error) {
@@ -158,6 +158,7 @@ function updateRolePermissions(payload, currentUser) {
         Description: entry.description || '', UpdatedAt: formatDateTimeBangkok(new Date()), UpdatedBy: currentUser.UserID
       });
     });
+    invalidateRolePermissionsCache_();
     return jsonResponse(true, 'Role permissions updated.', { updatedCount: entries.length });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
@@ -194,6 +195,7 @@ function updateUserPermissions(payload, currentUser) {
         UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
       });
     });
+    invalidateUserPermissionsCache_();
     invalidateRbacCacheForUser_(payload.userId, targetUser.Role);
     return jsonResponse(true, 'User permissions updated.', { updatedCount: entries.length });
   } catch (error) {
@@ -232,6 +234,7 @@ function updateUserLineAccess(payload, currentUser) {
         CreatedAt: timestamp, CreatedBy: currentUser.UserID, UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
       });
     });
+    invalidateUserLineAccessCache_();
     invalidateRbacCacheForUser_(payload.userId, targetUser.Role);
     return jsonResponse(true, 'User line access updated.', { updatedCount: entries.length });
   } catch (error) {
