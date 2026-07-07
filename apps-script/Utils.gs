@@ -260,6 +260,40 @@ function hashPassword(password) {
   }).join('');
 }
 
+/** Salted, iterated password hashes stored as "v1$<salt>$<hex>".
+ * Legacy rows hold a bare unsalted SHA-256 hex; verifyPassword_ accepts both
+ * so existing users keep working, and login() upgrades legacy rows in place. */
+var PASSWORD_HASH_ITERATIONS = 1000;
+
+function createPasswordHash_(password) {
+  var salt = Utilities.getUuid().replace(/-/g, '');
+  return 'v1$' + salt + '$' + saltedPasswordDigest_(password, salt);
+}
+
+function saltedPasswordDigest_(password, salt) {
+  if (password === undefined || password === null || String(password) === '') throw new Error('Password is required.');
+  var value = salt + ':' + String(password);
+  for (var i = 0; i < PASSWORD_HASH_ITERATIONS; i++) {
+    value = hashPassword(value);
+  }
+  return value;
+}
+
+function verifyPassword_(password, storedHash) {
+  var stored = cleanString_(storedHash);
+  if (!stored) return false;
+  if (stored.indexOf('v1$') === 0) {
+    var parts = stored.split('$');
+    if (parts.length !== 3 || !parts[1]) return false;
+    return saltedPasswordDigest_(password, parts[1]).toLowerCase() === parts[2].toLowerCase();
+  }
+  return hashPassword(String(password)).toLowerCase() === stored.toLowerCase();
+}
+
+function isLegacyPasswordHash_(storedHash) {
+  return cleanString_(storedHash).indexOf('v1$') !== 0;
+}
+
 function jsonResponse(success, message, data) {
   return ContentService.createTextOutput(JSON.stringify({
     success: Boolean(success),

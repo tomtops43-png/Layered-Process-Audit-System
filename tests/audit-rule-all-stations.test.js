@@ -29,6 +29,7 @@ const context = {
   }),
   cleanString_: value => value == null ? '' : String(value).trim(),
   valuesEqual_: (left, right) => String(left || '').trim().toLowerCase() === String(right || '').trim().toLowerCase(),
+  isAllFilter_: value => ['', 'all', 'ทั้งหมด', 'null', 'undefined'].includes(String(value == null ? '' : value).trim().toLowerCase()),
   isAdmin_: user => user.Role === 'Admin',
   requireLineAccess_: () => true,
   findById_: (sheet, field, value) => (sheets[sheet] || []).find(row => String(row[field]) === String(value)) || null,
@@ -45,6 +46,9 @@ const context = {
   },
   sanitizeForClient_: row => ({ ...row }),
   invalidateDashboardCachesForUser_: () => {},
+  safeCacheGetJson_: () => null,
+  safeCachePutJson_: () => false,
+  safeCacheRemove_: () => {},
   jsonResponse: (success, message, data) => ({ success, message, data }),
   safeErrorMessage_: error => error.message,
   LockService: {
@@ -60,27 +64,27 @@ const basePayload = {
   frequency: 'Daily', dayOfWeek: '', dayOfMonth: '', dueTime: '17:00', activeStatus: 'Active'
 };
 
+// Station 'ALL' now creates a single line-level rule (see "Migrate rules to
+// line-level"), not one rule per station.
 let response = context.upsertAuditPlanRule(basePayload, admin);
 assert.strictEqual(response.success, true, response.message);
-assert.strictEqual(response.data.createdCount, 2);
+assert.strictEqual(response.data.createdCount, 1);
 assert.strictEqual(response.data.skippedDuplicateCount, 0);
-assert.strictEqual(response.data.totalStations, 2);
-assert.deepStrictEqual(sheets.AuditPlanRules.map(row => row.StationID).sort(), ['ST1', 'ST2']);
+assert.deepStrictEqual(sheets.AuditPlanRules.map(row => row.StationID), ['ALL']);
 
 response = context.upsertAuditPlanRule(basePayload, admin);
 assert.strictEqual(response.success, true, response.message);
 assert.strictEqual(response.data.createdCount, 0);
-assert.strictEqual(response.data.skippedDuplicateCount, 2);
-assert.strictEqual(sheets.AuditPlanRules.length, 2);
+assert.strictEqual(response.data.skippedDuplicateCount, 1);
+assert.strictEqual(sheets.AuditPlanRules.length, 1);
 
 response = context.upsertAuditPlanRule({ ...basePayload, stationId: 'ST1', frequency: 'Weekly', dayOfWeek: 'Fri' }, admin);
 assert.strictEqual(response.success, true, response.message);
 assert.strictEqual(response.data.createdCount, 1);
-assert.strictEqual(response.data.totalStations, 1);
-assert.strictEqual(sheets.AuditPlanRules.length, 3);
+assert.strictEqual(sheets.AuditPlanRules.length, 2);
 
 response = context.upsertAuditPlanRule({ ...basePayload, stationId: 'ST3' }, admin);
 assert.strictEqual(response.success, false);
-assert.match(response.message, /not active|does not belong/);
+assert.match(response.message, /not active|does not belong|No active lines\/stations/);
 
 console.log('Audit rule All Stations tests passed.');

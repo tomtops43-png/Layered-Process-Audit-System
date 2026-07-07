@@ -1,6 +1,8 @@
 /** Finding search, update, and closure APIs. */
 var FINDINGS_RAW_CACHE_KEY = 'LPA_FINDINGS_RAW';
 var FINDINGS_RAW_CACHE_TTL = 300;
+var FINDINGS_DEFAULT_PAGE_SIZE = 300;
+var FINDINGS_MAX_PAGE_SIZE = 1000;
 
 // AuditID -> AuditLayer map, built once per execution. Looking this up per finding row
 // via findById_ used to re-read the whole AUDIT_SESSIONS sheet for every row.
@@ -58,7 +60,18 @@ function getFindings(payload, currentUser) {
     });
     rows = rows.filter(function (row) { return canViewFindingRbac_(currentUser, row); });
     rows.sort(function (a, b) { return cleanString_(a.DueDate).localeCompare(cleanString_(b.DueDate)); });
-    return jsonResponse(true, 'Findings loaded.', { findings: rows.map(sanitizeFindingForClient_), count: rows.length });
+    // Paginate so the response stays small as the sheet grows (mobile clients
+    // were timing out parsing multi-MB payloads). Clients pass offset to page.
+    var total = rows.length;
+    var offset = Math.max(Math.floor(toNumber_(payload.offset)) || 0, 0);
+    var limit = Math.floor(toNumber_(payload.limit)) || FINDINGS_DEFAULT_PAGE_SIZE;
+    limit = Math.min(Math.max(limit, 1), FINDINGS_MAX_PAGE_SIZE);
+    var page = rows.slice(offset, offset + limit);
+    return jsonResponse(true, 'Findings loaded.', {
+      findings: page.map(sanitizeFindingForClient_),
+      count: page.length, total: total, offset: offset, limit: limit,
+      hasMore: offset + page.length < total
+    });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
