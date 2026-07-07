@@ -19,7 +19,11 @@ const context = {
   getRowsAsObjects: () => Object.keys(rowsByUser).reduce((rows, key) => rows.concat(rowsByUser[key]), []),
   safeErrorMessage_: error => error.message,
   isActive_: value => String(value).toLowerCase() === 'active',
-  sanitizeForClient_: row => ({ ...row })
+  sanitizeForClient_: row => ({ ...row }),
+  safeCacheGetJson_: () => null,
+  safeCachePutJson_: () => false,
+  safeCacheRemove_: () => {},
+  getCachedUserLineAccessRows_: () => Object.keys(rowsByUser).reduce((rows, key) => rows.concat(rowsByUser[key]), [])
 };
 vm.createContext(context);
 vm.runInContext(source, context);

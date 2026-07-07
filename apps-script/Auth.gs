@@ -41,6 +41,14 @@ function createToken_(user, now) {
   return token;
 }
 
+// Cached Users lookup so validateToken does not hit the spreadsheet on every
+// API request. Shares the Users row cache in Utils.gs (invalidated on user edits).
+function findUserByIdCached_(userId) {
+  return getCachedUserRows_().filter(function (row) {
+    return valuesEqual_(row.UserID, userId);
+  })[0] || null;
+}
+
 function validateToken(token) {
   token = cleanString_(token);
   if (!token) return null;
@@ -54,7 +62,7 @@ function validateToken(token) {
       PropertiesService.getScriptProperties().deleteProperty(key);
       return null;
     }
-    var user = findById_(SHEET_NAMES.USERS, 'UserID', session.UserID);
+    var user = findUserByIdCached_(session.UserID);
     if (!user || !isActive_(user.ActiveStatus)) return null;
     session.Role = user.Role;
     session.FullName = user.FullName;

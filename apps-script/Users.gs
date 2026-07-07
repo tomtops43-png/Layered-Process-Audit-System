@@ -1,4 +1,4 @@
-/** User-facing account APIs. */
+﻿/** User-facing account APIs. */
 function getCurrentUser(currentUser) {
   try {
     var user = findById_(SHEET_NAMES.USERS, 'UserID', currentUser.UserID);
@@ -65,6 +65,7 @@ function createUser(payload, currentUser) {
       CreatedAt: timestamp, CreatedBy: currentUser.UserID, UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
     };
     appendObject(SHEET_NAMES.USERS, user);
+    invalidateUserCache_();
     return jsonResponse(true, 'User created.', { user: publicUser_(user) });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
@@ -92,6 +93,9 @@ function updateUser(payload, currentUser) {
     updates.UpdatedAt = formatDateTimeBangkok(new Date());
     updates.UpdatedBy = currentUser.UserID;
     var updated = updateObjectById(SHEET_NAMES.USERS, 'UserID', payload.userId, updates);
+    invalidateUserCache_();
+    invalidateRbacCacheForUser_(payload.userId, existing.Role);
+    if (updates.Role !== undefined) invalidateRbacCacheForUser_(payload.userId, updates.Role);
     return jsonResponse(true, 'User updated.', { user: publicUser_(updated) });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
@@ -107,6 +111,8 @@ function deactivateUser(payload, currentUser) {
       ActiveStatus: 'Inactive', UpdatedAt: formatDateTimeBangkok(new Date()), UpdatedBy: currentUser.UserID
     });
     if (!updated) throw new Error('User not found: ' + payload.userId);
+    invalidateUserCache_();
+    invalidateRbacCacheForUser_(payload.userId, updated.Role);
     return jsonResponse(true, 'User deactivated.', { user: publicUser_(updated) });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
@@ -176,7 +182,8 @@ function updateUserPermissions(payload, currentUser) {
   try {
     requirePermission_(currentUser, 'users.managePermission');
     requireFields_(payload, ['userId']);
-    if (!findById_(SHEET_NAMES.USERS, 'UserID', payload.userId)) throw new Error('User not found: ' + payload.userId);
+    var targetUser = findById_(SHEET_NAMES.USERS, 'UserID', payload.userId);
+    if (!targetUser) throw new Error('User not found: ' + payload.userId);
     var entries = normalizeEntries_(payload, 'permissions');
     var timestamp = formatDateTimeBangkok(new Date());
     entries.forEach(function (entry) {
@@ -189,6 +196,7 @@ function updateUserPermissions(payload, currentUser) {
       });
     });
     invalidateUserPermissionsCache_();
+    invalidateRbacCacheForUser_(payload.userId, targetUser.Role);
     return jsonResponse(true, 'User permissions updated.', { updatedCount: entries.length });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
@@ -212,7 +220,8 @@ function updateUserLineAccess(payload, currentUser) {
   try {
     requirePermission_(currentUser, 'users.managePermission');
     requireFields_(payload, ['userId']);
-    if (!findById_(SHEET_NAMES.USERS, 'UserID', payload.userId)) throw new Error('User not found: ' + payload.userId);
+    var targetUser = findById_(SHEET_NAMES.USERS, 'UserID', payload.userId);
+    if (!targetUser) throw new Error('User not found: ' + payload.userId);
     var entries = normalizeEntries_(payload, 'lineAccess');
     var timestamp = formatDateTimeBangkok(new Date());
     entries.forEach(function (entry) {
@@ -226,6 +235,7 @@ function updateUserLineAccess(payload, currentUser) {
       });
     });
     invalidateUserLineAccessCache_();
+    invalidateRbacCacheForUser_(payload.userId, targetUser.Role);
     return jsonResponse(true, 'User line access updated.', { updatedCount: entries.length });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
