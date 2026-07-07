@@ -1,22 +1,59 @@
 /** Authentication, token persistence, and role authorization. */
+var LOGIN_MAX_FAILED_ATTEMPTS = 5;
+var LOGIN_LOCKOUT_SECONDS = 600;
+
+function loginFailureKey_(username) {
+  return 'LPA_LOGIN_FAIL_' + cleanString_(username).toLowerCase();
+}
+
+function registerLoginFailure_(username) {
+  var key = loginFailureKey_(username);
+  var cache = CacheService.getScriptCache();
+  var count = (Number(cache.get(key)) || 0) + 1;
+  cache.put(key, String(count), LOGIN_LOCKOUT_SECONDS);
+  return count;
+}
+
+function isLoginLocked_(username) {
+  return (Number(CacheService.getScriptCache().get(loginFailureKey_(username))) || 0) >= LOGIN_MAX_FAILED_ATTEMPTS;
+}
+
+function clearLoginFailures_(username) {
+  CacheService.getScriptCache().remove(loginFailureKey_(username));
+}
+
 function login(payload) {
   try {
     requireFields_(payload, ['username', 'password']);
     var username = cleanString_(payload.username).toLowerCase();
+    if (isLoginLocked_(username)) {
+      return jsonResponse(false, 'Too many failed login attempts. Please try again in 10 minutes.', {});
+    }
     var user = getRowsAsObjects(SHEET_NAMES.USERS).filter(function (row) {
       return cleanString_(row.Username).toLowerCase() === username;
     })[0];
-    if (!user || !isActive_(user.ActiveStatus)) return jsonResponse(false, 'Invalid username or password.', {});
-    if (cleanString_(user.PasswordHash).toLowerCase() !== hashPassword(payload.password).toLowerCase()) {
+    if (!user || !isActive_(user.ActiveStatus)) {
+      registerLoginFailure_(username);
+      return jsonResponse(false, 'Invalid username or password.', {});
+    }
+    if (!verifyPassword_(payload.password, user.PasswordHash)) {
+      registerLoginFailure_(username);
       return jsonResponse(false, 'Invalid username or password.', {});
     }
     if (VALID_ROLES.indexOf(cleanString_(user.Role)) === -1) return jsonResponse(false, 'User role is not valid.', {});
+    clearLoginFailures_(username);
 
     var now = new Date();
     var token = createToken_(user, now);
-    updateObjectById(SHEET_NAMES.USERS, 'UserID', user.UserID, {
+    var loginUpdates = {
       LastLogin: formatDateTimeBangkok(now), UpdatedAt: formatDateTimeBangkok(now), UpdatedBy: user.UserID
-    });
+    };
+    // Transparently migrate legacy unsalted hashes now that we know the password.
+    if (isLegacyPasswordHash_(user.PasswordHash)) {
+      loginUpdates.PasswordHash = createPasswordHash_(payload.password);
+      invalidateUserCache_();
+    }
+    updateObjectById(SHEET_NAMES.USERS, 'UserID', user.UserID, loginUpdates);
     var context = permissionContext_(user);
     return jsonResponse(true, 'Login successful.', {
       token: token, expiresIn: TOKEN_TTL_SECONDS, user: publicUser_(user),

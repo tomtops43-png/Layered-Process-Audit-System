@@ -37,8 +37,15 @@ function uploadFile(payload, currentUser) {
 
     var blob = Utilities.newBlob(bytes, cleanString_(payload.mimeType), safeName);
     var file = subFolder.createFile(blob);
-    try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); }
-    catch (sharingError) { console.warn('Drive sharing could not be changed: ' + sharingError.message); }
+    // Settings row FILE_LINK_SHARING = 'restricted' keeps uploads private to the
+    // Drive folder ACL; anything else (or no row) keeps link sharing so photos
+    // render for users without Google accounts.
+    var sharingMode = '';
+    try { sharingMode = cleanString_(getSetting('FILE_LINK_SHARING')).toLowerCase(); } catch (settingError) { sharingMode = ''; }
+    if (sharingMode !== 'restricted') {
+      try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); }
+      catch (sharingError) { console.warn('Drive sharing could not be changed: ' + sharingError.message); }
+    }
 
     var timestamp = formatDateTimeBangkok(now);
     var periodMonth = getPeriodMonth(now);

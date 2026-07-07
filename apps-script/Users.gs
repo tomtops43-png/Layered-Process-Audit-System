@@ -58,7 +58,7 @@ function createUser(payload, currentUser) {
     var userId = generateId('U', SHEET_NAMES.USERS, 'UserID', '');
     var user = {
       UserID: userId, EmployeeID: payload.employeeId || '', Username: cleanString_(payload.username),
-      PasswordHash: hashPassword(payload.password), FullName: cleanString_(payload.fullName),
+      PasswordHash: createPasswordHash_(payload.password), FullName: cleanString_(payload.fullName),
       Nickname: payload.nickname || '', Role: cleanString_(payload.role), Department: payload.department || '',
       LineDefault: payload.lineDefault || '', Email: payload.email || '', Phone: payload.phone || '',
       ActiveStatus: payload.activeStatus || 'Active', LastLogin: '',
@@ -125,9 +125,11 @@ function resetUserPassword(payload, currentUser) {
     requireFields_(payload, ['userId', 'password']);
     if (cleanString_(payload.password).length < 8) throw new Error('Password must contain at least 8 characters.');
     var updated = updateObjectById(SHEET_NAMES.USERS, 'UserID', payload.userId, {
-      PasswordHash: hashPassword(payload.password), UpdatedAt: formatDateTimeBangkok(new Date()), UpdatedBy: currentUser.UserID
+      PasswordHash: createPasswordHash_(payload.password), UpdatedAt: formatDateTimeBangkok(new Date()), UpdatedBy: currentUser.UserID
     });
     if (!updated) throw new Error('User not found: ' + payload.userId);
+    invalidateUserCache_();
+    clearLoginFailures_(updated.Username);
     return jsonResponse(true, 'Password reset successfully.', { UserID: payload.userId });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});

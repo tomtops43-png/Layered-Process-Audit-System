@@ -1693,7 +1693,7 @@ function stopFindingNotificationPolling() {
 function scheduleNextFindingNotificationPoll() {
   if (!state.token || !state.user) return;
   if (state.notificationTimer) clearTimeout(state.notificationTimer);
-  const delay = document.visibilityState === 'hidden' ? 90000 : 30000;
+  const delay = document.visibilityState === 'hidden' ? 180000 : 60000;
   state.notificationTimer = setTimeout(() => pollFindingNotifications(false), delay);
 }
 
@@ -2273,11 +2273,14 @@ async function loadFindings(force = false) {
     overdueOnly: $('#findingOverdue').checked
   };
   Object.keys(payload).forEach(key => { if (payload[key] === '' || payload[key] === false) delete payload[key]; });
+  payload.limit = 300;
   const cacheKey = JSON.stringify(payload);
   const CACHE_TTL = 5 * 60 * 1000;
   if (!force && state.findingsCache && state.findingsCache.key === cacheKey &&
       Date.now() - state.findingsCache.ts < CACHE_TTL) {
     state.findings = state.findingsCache.data;
+    state.findingsTotal = state.findingsCache.total ?? state.findings.length;
+    state.findingsQuery = payload;
     renderFindings();
     return;
   }
@@ -2286,7 +2289,9 @@ async function loadFindings(force = false) {
   try {
     const data = await apiCall('getFindings', payload);
     state.findings = Array.isArray(data.findings) ? data.findings : [];
-    state.findingsCache = { key: cacheKey, data: state.findings, ts: Date.now() };
+    state.findingsTotal = number(data.total ?? state.findings.length);
+    state.findingsQuery = payload;
+    state.findingsCache = { key: cacheKey, data: state.findings, total: state.findingsTotal, ts: Date.now() };
     renderFindings();
   } catch (error) {
     showToast(error.message, 'error');
@@ -2295,10 +2300,35 @@ async function loadFindings(force = false) {
   }
 }
 
+async function loadMoreFindings(button) {
+  if (!state.findingsQuery) return;
+  button.disabled = true;
+  button.textContent = 'กำลังโหลด...';
+  try {
+    const payload = { ...state.findingsQuery, offset: state.findings.length };
+    const data = await apiCall('getFindings', payload);
+    state.findings = state.findings.concat(Array.isArray(data.findings) ? data.findings : []);
+    state.findingsTotal = number(data.total ?? state.findingsTotal);
+    if (state.findingsCache) {
+      state.findingsCache.data = state.findings;
+      state.findingsCache.total = state.findingsTotal;
+    }
+    renderFindings();
+  } catch (error) {
+    showToast(error.message, 'error');
+    renderFindings();
+  }
+}
+
 function renderFindings() {
   const container = $('#findingsList');
   if (!state.findings.length) return container.innerHTML = emptyHtml('ไม่พบ Finding ตามเงื่อนไข');
   container.innerHTML = state.findings.map(row => `<article class="finding-card ${String(row.OverdueFlag).toLowerCase() === 'yes' ? 'overdue' : ''}"><div class="finding-summary"><div><span class="finding-id">${escapeHtml(row.FindingID)}</span><span class="data-label">${formatDate(row.FoundDate)} · ${escapeHtml(row.Category || '-')} · ${escapeHtml(row.Severity || row.Priority || '-')}</span></div><div><span class="data-label">Line</span>${escapeHtml(row.LineName || row.LineID || '-')}</div><div><span class="data-label">Station</span>${escapeHtml(row.StationName || row.StationID || '-')}</div><div><span class="data-label">เปิดโดย</span>${escapeHtml(row.AuditorName || row.CreatedByName || '-')}<span class="table-subtext">${escapeHtml(row.AuditorRole || '')}</span></div><div><span class="data-label">รับผิดชอบโดย</span>${escapeHtml(formatFindingAssignment(row))}<span class="table-subtext">${escapeHtml(formatFindingAssignmentMode(row))}</span></div><div><span class="data-label">Due Date</span>${formatDate(row.DueDate)}</div><div><span class="status-badge ${String(row.OverdueFlag).toLowerCase() === 'yes' ? 'status-overdue' : statusClass(row.Status)}">${String(row.OverdueFlag).toLowerCase() === 'yes' ? `Overdue ${number(row.DaysOverdue)}d` : escapeHtml(row.Status || '-')}</span></div></div><div class="finding-detail"><div><span class="data-label">Problem Detail</span>${escapeHtml(row.ProblemDetail || '-')}</div><div><span class="data-label">Corrective Action</span>${escapeHtml(row.CorrectiveAction || '-')}</div><div class="photo-link"><span class="data-label">Photo</span>${photoLinks(row)}</div></div><div class="finding-actions"><button class="btn btn-outline" data-edit-finding="${escapeAttr(row.FindingID)}">เปิด Finding</button></div></article>`).join('');
+  const hasMore = number(state.findingsTotal) > state.findings.length;
+  if (hasMore) {
+    container.innerHTML += `<div style="text-align:center;padding:12px"><button class="btn btn-outline" id="loadMoreFindingsBtn">โหลดเพิ่ม (แสดง ${state.findings.length} จาก ${number(state.findingsTotal)})</button></div>`;
+    $('#loadMoreFindingsBtn').addEventListener('click', event => loadMoreFindings(event.target));
+  }
   $$('[data-edit-finding]', container).forEach(button => button.addEventListener('click', () => openFindingEditor(button.dataset.editFinding)));
 }
 

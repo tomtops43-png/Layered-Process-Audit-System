@@ -12,7 +12,7 @@ assert.strictEqual(frontend, docs);
 assert(frontend.includes('await initializeAuthenticatedApp(false);'));
 assert(frontend.includes('async function ensureMasterDataLoaded'));
 assert(frontend.includes("if (['audit', 'audit-plan', 'findings', 'checklist', 'admin'].includes(page))"));
-assert(frontend.includes('limit: 100'));
+assert(frontend.includes('limit: 200'));
 assert(frontend.includes("await navigateTo('audit');"));
 
 assert(dashboard.includes('safeCacheGetJson_(cacheKey)'));

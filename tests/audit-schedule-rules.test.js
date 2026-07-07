@@ -42,11 +42,11 @@ assert(html.includes('LPA SCHEDULE / AUDIT RULES'));
 assert(html.includes('id="auditRuleForm"'));
 assert(frontend.includes("apiCall('getAuditPlanRules'"));
 assert(frontend.includes("apiCall('upsertAuditPlanRule'"));
-assert(frontend.includes('limit: 100'));
+assert(frontend.includes('limit: 300'));
 assert(!frontend.includes("apiCall('generateAuditPlan'"));
 assert(frontend.includes("['My Due Today', ruleSummary.DueToday"));
 assert(frontend.includes('<option value="ALL">ทั้งหมด</option>'));
-assert(frontend.includes('ระบบจะสร้างกฎสำหรับ Station ที่ Active ทั้งหมดใน Line นี้'));
+assert(frontend.includes('ระบบจะสร้างกฎสำหรับ Station ที่ Active ทั้งหมดใน'));
 assert(schedule.includes("valuesEqual_(stationSelection, 'ALL')"));
 assert(schedule.includes('skippedDuplicateCount'));
 assert.strictEqual(frontend, docs);
@@ -60,6 +60,7 @@ const context = {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   },
   parseDate_: value => new Date(`${String(value).slice(0, 10)}T00:00:00`),
+  dateOnly_: value => String(value == null ? '' : value).slice(0, 10),
   isoWeekKey_: date => {
     const d = new Date(date);
     const start = new Date(d.getFullYear(), 0, 1);

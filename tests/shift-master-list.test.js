@@ -32,7 +32,7 @@ assert(code.includes('getMasterLists:'));
 assert(code.includes('upsertMasterList:'));
 assert(rbac.includes("getMasterLists: ['users.managePermission']"));
 assert(audit.includes("if (!shift) throw new Error('กรุณาเลือก Shift')"));
-assert(audit.includes("getActiveListRows_('Shift')"));
+assert(audit.includes("valuesEqual_(row.ListType, 'Shift')"), 'saveAudit must validate shift against the master list');
 assert(audit.includes('Shift ที่เลือกไม่ได้เปิดใช้งาน'));
 
 assert.strictEqual(frontend, docs);
