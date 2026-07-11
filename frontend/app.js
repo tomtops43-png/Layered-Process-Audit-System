@@ -655,6 +655,7 @@ async function loadLeaderDashboard() {
   $('#ldHeader').innerHTML = '<div class="ld-header-left"><div class="ld-greeting">กำลังโหลด Dashboard...</div></div>';
   $('#ldMetrics').innerHTML = Array.from({length: 4}, () => '<div class="ld-card skeleton-card" style="min-height:90px"></div>').join('');
   $('#ldTasks').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
+  $('#ldShiftFindings').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   $('#ldFindings').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   if (needsProdPlan) await ensureProductionPlan();
   await fetchLeaderDashData(ldKey, today, rolesToFetch, false);
@@ -664,6 +665,7 @@ function renderLeaderFromData(d) {
   renderLeaderHeader(d.dashData);
   renderLeaderMetrics(d.dashData, d.rules, d.todayAudits, d.myFindings);
   renderLeaderTasks(d.rules, d.todayAudits);
+  renderLeaderShiftFindings(d.shiftFindings, d.shiftInfo);
   renderLeaderFindings(d.myFindings);
 }
 
@@ -709,7 +711,9 @@ async function fetchLeaderDashData(ldKey, today, rolesToFetch, silent) {
     state.dashboard = dashData;
     const todayAudits = batch.todayAudits || []; // contains this month's audits
     const myFindings = (batch.myFindings || []).filter(f => (f.Status || '').toLowerCase() !== 'closed');
-    const d = { dashData, rules, todayAudits, myFindings };
+    const shiftFindings = batch.shiftFindings || [];
+    const shiftInfo = batch.shiftInfo || null;
+    const d = { dashData, rules, todayAudits, myFindings, shiftFindings, shiftInfo };
     state.leaderDashData = d;
     GASCache.set(ldKey, d, 20); // 20-minute cache
     renderLeaderFromData(d);
@@ -717,7 +721,7 @@ async function fetchLeaderDashData(ldKey, today, rolesToFetch, silent) {
     if (silent) return; // Background refresh failure — keep showing old data silently
     const msg = error.message || 'โหลดไม่สำเร็จ';
     $('#ldHeader').innerHTML = `<div class="ld-header-left"><div class="ld-greeting">❌ ${escapeHtml(msg)}</div></div><button class="ld-refresh" onclick="loadLeaderDashboard()">↻ ลองใหม่</button>`;
-    $('#ldMetrics').innerHTML = ''; $('#ldTasks').innerHTML = '<div class="empty-state">โหลดไม่สำเร็จ — กด ↻ ลองใหม่</div>'; $('#ldFindings').innerHTML = '';
+    $('#ldMetrics').innerHTML = ''; $('#ldTasks').innerHTML = '<div class="empty-state">โหลดไม่สำเร็จ — กด ↻ ลองใหม่</div>'; $('#ldShiftFindings').innerHTML = ''; $('#ldFindings').innerHTML = '';
     showToast(msg, 'error');
   }
 }
@@ -874,6 +878,28 @@ function renderLeaderTasks(rules, todayAudits) {
       ${badge}
       <div class="ld-task-info"><div class="ld-task-name">${escapeHtml(r.LineName || r.LineID)}</div><div class="ld-task-meta">${escapeHtml(note)}</div></div>
       ${startBtn}
+    </div>`;
+  }).join('');
+}
+
+function renderLeaderShiftFindings(findings, shiftInfo) {
+  const shiftLabel = shiftInfo?.name || detectCurrentShift();
+  const titleEl = $('#ldShiftFindingTitle');
+  if (titleEl) titleEl.textContent = `📢 Finding ที่เปิด${escapeHtml(shiftLabel)} (สำหรับมิตติ้งเช้า)`;
+  findings = findings || [];
+  if (!findings.length) {
+    $('#ldShiftFindings').innerHTML = '<div class="empty-state">✅ ยังไม่มี Finding เปิดในกะนี้</div>';
+    return;
+  }
+  $('#ldShiftFindings').innerHTML = findings.map(f => {
+    const severity = String(f.Severity || f.Priority || '').toLowerCase();
+    const sevBadge = severity === 'critical' ? '<span class="ld-badge overdue">🔴 Critical</span>'
+      : severity === 'major' ? '<span class="ld-badge pending">🟠 Major</span>'
+      : '<span class="ld-badge done">🟡 Minor</span>';
+    return `<div class="ld-finding-row">
+      ${sevBadge}
+      <div class="ld-finding-info"><div class="ld-finding-name">${escapeHtml(f.ProblemDetail || f.FindingID)}</div><div class="ld-finding-meta">${escapeHtml(f.LineName || f.LineID)} / ${escapeHtml(f.StationName || f.StationID)} · ${escapeHtml(f.Category || '')}</div></div>
+      <div class="ld-due-label">${escapeHtml(f.Status || 'Open')}</div>
     </div>`;
   }).join('');
 }
