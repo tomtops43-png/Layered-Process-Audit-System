@@ -204,6 +204,10 @@ function bindEvents() {
   ['#editCloseRemark', '#editRejectReason'].forEach(selector => {
     $(selector).addEventListener('input', event => event.target.classList.remove('field-error'));
   });
+  populateFindingReasonSelect('#editCloseReasonSelect', FINDING_CLOSE_REASONS);
+  populateFindingReasonSelect('#editRejectReasonSelect', FINDING_REJECT_REASONS);
+  wireFindingReasonSelect('#editCloseReasonSelect', '#editCloseRemark', '#editCloseRemarkNoteField');
+  wireFindingReasonSelect('#editRejectReasonSelect', '#editRejectReason', '#editRejectReasonNoteField');
   $('#addUserButton').addEventListener('click', () => openUserEditor());
   $('#migrateRulesBtn').addEventListener('click', async () => {
     if (!confirm('แปลง Rule ระดับ Station ทั้งหมด → Line Level?\n(ลบ Rule เก่า สร้าง Rule ใหม่ 1 ต่อ 1 Line)\nไม่สามารถย้อนกลับได้')) return;
@@ -1378,6 +1382,25 @@ function renderMgrFindingSummary(findings, sd, ed) {
   }).join('');
 }
 
+const FINDING_REASON_OTHER = '__other__';
+
+const FINDING_CLOSE_REASONS = [
+  'แก้ไขเรียบร้อยตามมาตรฐานแล้ว',
+  'ตรวจสอบหน้างานแล้วถูกต้องตรงตามมาตรฐาน',
+  'ดำเนินการแก้ไขและป้องกันการเกิดซ้ำเรียบร้อยแล้ว',
+  'เปลี่ยน/ซ่อมอุปกรณ์ที่ชำรุดเรียบร้อยแล้ว',
+  'มีการอบรม/กำชับพนักงานที่เกี่ยวข้องแล้ว',
+  'ปรับปรุงพื้นที่ทำงานให้เป็นไปตามมาตรฐาน 5ส แล้ว'
+];
+
+const FINDING_REJECT_REASONS = [
+  'รูปหลังแก้ไขไม่ชัดเจนหรือไม่ตรงจุดที่พบปัญหา',
+  'แก้ไขยังไม่ครบถ้วน ไม่ตรงกับปัญหาที่พบ',
+  'Root Cause ไม่สอดคล้องกับปัญหาที่พบจริง',
+  'แนวทางแก้ไขไม่เพียงพอ ไม่สามารถป้องกันการเกิดซ้ำได้',
+  'ข้อมูลไม่ครบถ้วน กรุณาระบุรายละเอียดเพิ่มเติม'
+];
+
 const M1E_CATEGORIES = [
   { key: 'Man', label: 'Man (คน)', color: '#1769aa' },
   { key: 'Machine', label: 'Machine (เครื่องจักร)', color: '#d56a00' },
@@ -2388,10 +2411,8 @@ function openFindingEditor(findingId) {
   $('#editStatus').value = row.Status || 'Open';
   $('#editStatus').closest('label').classList.toggle('hidden', ['Leader', 'User'].includes(state.user.Role));
   $('#editActionRemark').value = row.ActionRemark || '';
-  $('#editCloseRemark').value = '';
-  $('#editRejectReason').value = '';
-  $('#editCloseRemark').classList.remove('field-error');
-  $('#editRejectReason').classList.remove('field-error');
+  resetFindingReasonField('#editCloseReasonSelect', '#editCloseRemark', '#editCloseRemarkNoteField');
+  resetFindingReasonField('#editRejectReasonSelect', '#editRejectReason', '#editRejectReasonNoteField');
   $('#editAfterPhoto').value = '';
   state.findingPhotoRemovals = new Set();
   renderFindingPhotoPreview();
@@ -2417,12 +2438,18 @@ function openFindingEditor(findingId) {
   $('#verifierFindingHelp').classList.toggle('hidden', !canVerify || isLeaderOrUser);
   $('#editCloseRemarkField').classList.toggle('hidden', !canVerify || isLeaderOrUser);
   $('#editRejectReasonField').classList.toggle('hidden', !canVerify || isLeaderOrUser);
+  if (!canVerify || isLeaderOrUser) {
+    $('#editCloseRemarkNoteField').classList.add('hidden');
+    $('#editRejectReasonNoteField').classList.add('hidden');
+  }
   $('#approveFindingButton').classList.toggle('hidden', isLeaderOrUser || !canVerify || !hasPermission(closePermission));
   $('#rejectFindingButton').classList.toggle('hidden', isLeaderOrUser || !canVerify);
   $('#submitVerificationButton').classList.toggle('hidden', !canSubmit);
   $('#editRootCause').disabled = !canEditFollowUp;
   $('#editCorrectiveAction').disabled = !canEditFollowUp;
   $('#editActionRemark').disabled = !canEditFollowUp;
+  $('#editCloseReasonSelect').disabled = !canVerify;
+  $('#editRejectReasonSelect').disabled = !canVerify;
   $('#editCloseRemark').disabled = !canVerify;
   $('#editRejectReason').disabled = !canVerify;
   $('#editAfterPhotoField').classList.toggle('hidden', !canEditFollowUp);
@@ -2631,17 +2658,23 @@ async function submitFindingForVerification() {
 
 async function verifyFinding(decision) {
   const findingId = $('#editFindingId').value;
-  const remarkField = decision === 'Reject' ? $('#editRejectReason') : $('#editCloseRemark');
+  const isReject = decision === 'Reject';
+  const selectField = isReject ? $('#editRejectReasonSelect') : $('#editCloseReasonSelect');
+  const remarkField = isReject ? $('#editRejectReason') : $('#editCloseRemark');
   const verifierRemark = remarkField.value.trim();
+  selectField.classList.remove('field-error');
+  remarkField.classList.remove('field-error');
   if (!verifierRemark) {
-    remarkField.classList.add('field-error');
-    remarkField.focus();
-    const warning = decision === 'Reject'
-      ? 'กรุณาระบุเหตุผลการ Reject ก่อนส่งกลับให้ผู้รับผิดชอบแก้ไข'
-      : 'กรุณาระบุ Close Remark ก่อนปิด Finding';
+    // Empty because nothing was picked yet -> flag the dropdown; empty
+    // because "อื่นๆ" was picked but left blank -> flag the free-text field.
+    const invalidField = selectField.value === FINDING_REASON_OTHER ? remarkField : selectField;
+    invalidField.classList.add('field-error');
+    invalidField.focus();
+    const warning = isReject
+      ? 'กรุณาเลือกหรือระบุเหตุผลการ Reject ก่อนส่งกลับให้ผู้รับผิดชอบแก้ไข'
+      : 'กรุณาเลือกหรือระบุเหตุผลการปิด Finding ก่อนปิด Finding';
     return showToast(warning, 'warning');
   }
-  remarkField.classList.remove('field-error');
   const confirmation = decision === 'Reject'
     ? 'ยืนยัน Reject Finding นี้และส่งกลับให้ผู้รับผิดชอบแก้ไข?'
     : 'ยืนยันปิด Finding นี้?';
@@ -3411,6 +3444,41 @@ function populateAuditRuleStationSelect(lineId, allowAll) {
   select.innerHTML = `<option value="">เลือก Station</option>${allOption}` +
     rows.map(row => `<option value="${escapeAttr(row.StationID)}">${escapeHtml(row.StationName || row.StationID)}</option>`).join('');
   if ((current === 'ALL' && allowAll) || rows.some(row => String(row.StationID) === current)) select.value = current;
+}
+
+// Verifier close/reject reasons: a fixed dropdown of common reasons plus
+// "อื่นๆ" that reveals a free-text field, instead of an open textarea for
+// every verification. Selecting a preset writes straight into the textarea
+// (still the field actually submitted), so no backend changes were needed.
+function populateFindingReasonSelect(selector, reasons) {
+  $(selector).innerHTML = `<option value="">-- เลือกเหตุผล --</option>` +
+    reasons.map(reason => `<option value="${escapeAttr(reason)}">${escapeHtml(reason)}</option>`).join('') +
+    `<option value="${FINDING_REASON_OTHER}">อื่นๆ (ระบุเอง)</option>`;
+}
+
+function wireFindingReasonSelect(selectSelector, textareaSelector, noteFieldSelector) {
+  $(selectSelector).addEventListener('change', () => {
+    const select = $(selectSelector);
+    const textarea = $(textareaSelector);
+    const isOther = select.value === FINDING_REASON_OTHER;
+    $(noteFieldSelector).classList.toggle('hidden', !isOther);
+    textarea.classList.remove('field-error');
+    select.classList.remove('field-error');
+    if (isOther) {
+      textarea.value = '';
+      textarea.focus();
+    } else {
+      textarea.value = select.value;
+    }
+  });
+}
+
+function resetFindingReasonField(selectSelector, textareaSelector, noteFieldSelector) {
+  $(selectSelector).value = '';
+  $(selectSelector).classList.remove('field-error');
+  $(textareaSelector).value = '';
+  $(textareaSelector).classList.remove('field-error');
+  $(noteFieldSelector).classList.add('hidden');
 }
 
 function populateSelect(selector, rows, valueField, textField, firstLabel, allOptionLabel) {
