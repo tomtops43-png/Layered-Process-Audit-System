@@ -122,7 +122,9 @@ function getDefaultRolePermissions_() {
     Engineer: ['audit.engineer.create', 'audit.view.line', 'audit.plan.view', 'findings.view.line', 'findings.assign', 'findings.update.line', 'findings.verify', 'findings.close.minor', 'findings.close.major', 'dashboard.view', 'reports.view'],
     Leader: ['audit.leader.create', 'audit.view.own', 'audit.plan.view', 'findings.view.assigned', 'findings.view.created', 'findings.update.assigned', 'dashboard.view'],
     User: ['findings.view.assigned', 'findings.update.assigned', 'dashboard.view'],
-    Viewer: ['dashboard.view.all', 'audit.view.all', 'audit.plan.view', 'findings.view.all', 'reports.view']
+    Viewer: ['dashboard.view.all', 'audit.view.all', 'audit.plan.view', 'findings.view.all', 'reports.view'],
+    // Customer: external customer-facing account — broad read access across every dashboard/menu, no write actions.
+    Customer: ['dashboard.view.all', 'audit.view.all', 'audit.plan.view', 'findings.view.all', 'reports.view', 'checklist.view']
   };
 }
 

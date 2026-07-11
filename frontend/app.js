@@ -428,7 +428,7 @@ async function ensureMasterDataLoaded(withLoading = true) {
 async function loadDashboard() {
   const role = state.user?.Role || '';
   const isLeaderRole = role === 'Leader' || role === 'Supervisor';
-  const isMgrRole = role === 'Manager' || role === 'Viewer'; // Viewer sees Manager dashboard
+  const isMgrRole = role === 'Manager' || role === 'Viewer' || role === 'Customer'; // Viewer/Customer see the Manager-style dashboard
   const isDirRole = role === 'Admin';
   $('#leaderDashboard').classList.toggle('hidden', !isLeaderRole);
   $('#mgrDashboard').classList.toggle('hidden', !isMgrRole);
@@ -656,7 +656,6 @@ async function loadLeaderDashboard() {
   $('#ldHeader').innerHTML = '<div class="ld-header-left"><div class="ld-greeting">กำลังโหลด Dashboard...</div></div>';
   $('#ldMetrics').innerHTML = Array.from({length: 4}, () => '<div class="ld-card skeleton-card" style="min-height:90px"></div>').join('');
   $('#ldTasks').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
-  $('#ldShiftFindings').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   $('#ldFindings').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   if (needsProdPlan) await ensureProductionPlan();
   await fetchLeaderDashData(ldKey, today, rolesToFetch, false);
@@ -666,7 +665,6 @@ function renderLeaderFromData(d) {
   renderLeaderHeader(d.dashData);
   renderLeaderMetrics(d.dashData, d.rules, d.todayAudits, d.myFindings);
   renderLeaderTasks(d.rules, d.todayAudits);
-  renderLeaderShiftFindings(d.shiftFindings, d.shiftInfo);
   renderLeaderFindings(d.myFindings);
 }
 
@@ -712,9 +710,7 @@ async function fetchLeaderDashData(ldKey, today, rolesToFetch, silent) {
     state.dashboard = dashData;
     const todayAudits = batch.todayAudits || []; // contains this month's audits
     const myFindings = (batch.myFindings || []).filter(f => (f.Status || '').toLowerCase() !== 'closed');
-    const shiftFindings = batch.shiftFindings || [];
-    const shiftInfo = batch.shiftInfo || null;
-    const d = { dashData, rules, todayAudits, myFindings, shiftFindings, shiftInfo };
+    const d = { dashData, rules, todayAudits, myFindings };
     state.leaderDashData = d;
     GASCache.set(ldKey, d, 20); // 20-minute cache
     renderLeaderFromData(d);
@@ -722,7 +718,7 @@ async function fetchLeaderDashData(ldKey, today, rolesToFetch, silent) {
     if (silent) return; // Background refresh failure — keep showing old data silently
     const msg = error.message || 'โหลดไม่สำเร็จ';
     $('#ldHeader').innerHTML = `<div class="ld-header-left"><div class="ld-greeting">❌ ${escapeHtml(msg)}</div></div><button class="ld-refresh" onclick="loadLeaderDashboard()">↻ ลองใหม่</button>`;
-    $('#ldMetrics').innerHTML = ''; $('#ldTasks').innerHTML = '<div class="empty-state">โหลดไม่สำเร็จ — กด ↻ ลองใหม่</div>'; $('#ldShiftFindings').innerHTML = ''; $('#ldFindings').innerHTML = '';
+    $('#ldMetrics').innerHTML = ''; $('#ldTasks').innerHTML = '<div class="empty-state">โหลดไม่สำเร็จ — กด ↻ ลองใหม่</div>'; $('#ldFindings').innerHTML = '';
     showToast(msg, 'error');
   }
 }
@@ -895,18 +891,6 @@ function shiftFindingRowHtml(f) {
   </div>`;
 }
 
-function renderLeaderShiftFindings(findings, shiftInfo) {
-  const shiftLabel = shiftInfo?.name || detectCurrentShift();
-  const titleEl = $('#ldShiftFindingTitle');
-  if (titleEl) titleEl.textContent = `📢 Finding ที่เปิด${escapeHtml(shiftLabel)} (สำหรับมิตติ้งเช้า)`;
-  findings = findings || [];
-  if (!findings.length) {
-    $('#ldShiftFindings').innerHTML = '<div class="empty-state">✅ ยังไม่มี Finding เปิดในกะนี้</div>';
-    return;
-  }
-  $('#ldShiftFindings').innerHTML = findings.map(shiftFindingRowHtml).join('');
-}
-
 function renderMgrShiftDigest(digest) {
   const el = $('#mgrShiftDigest');
   if (!el) return;
@@ -947,14 +931,15 @@ async function loadFindingShiftDigest() {
   }
 }
 
-/** ENC LINE customer viewer account: dashboard is Finding-only, sidebar trimmed to Dashboard.
- * Only ever ADDS 'hidden' to non-dashboard nav items — never removes it, so it can't
+/** Viewer role (morning-meeting account): sidebar trimmed to Dashboard + Finding Tracking only.
+ * Only ever ADDS 'hidden' to other nav items — never removes it, so it can't
  * undo applyPermissionVisibility()'s permission-based hiding for other roles. */
+const VIEWER_ALLOWED_PAGES_ = new Set(['dashboard', 'findings']);
 function applyViewerAccountRestrictions() {
   const isViewer = state.user?.Role === 'Viewer';
   if (isViewer) {
     $$('.main-nav .nav-item').forEach(btn => {
-      if (btn.dataset.page !== 'dashboard') btn.classList.add('hidden');
+      if (!VIEWER_ALLOWED_PAGES_.has(btn.dataset.page)) btn.classList.add('hidden');
     });
   }
   const section = $('#mgrShiftDigestSection');
@@ -1353,7 +1338,7 @@ function renderMgrHeader() {
   const isWeek = sd === thisWeekStart && ed === today;
   $('#mgrHeader').innerHTML = `
     <div class="mgr-header-left">
-      <div class="ld-greeting">👔 ${escapeHtml(user.FullName || user.Username)} · ${escapeHtml(user.Role === 'Viewer' ? 'Customer' : 'Manager')}</div>
+      <div class="ld-greeting">👔 ${escapeHtml(user.FullName || user.Username)} · ${escapeHtml(user.Role === 'Customer' ? 'Customer' : user.Role === 'Viewer' ? 'Viewer' : 'Manager')}</div>
       <div class="ld-sub">Plant Overview Dashboard</div>
     </div>
     <div class="mgr-period-row">
@@ -2413,7 +2398,7 @@ async function loadFindings(force = false) {
   const payload = {
     lineId: optionalFilterValue($('#findingLine').value), stationId: optionalFilterValue($('#findingStation').value),
     category: optionalFilterValue($('#findingCategory').value), status: optionalFilterValue($('#findingStatus').value),
-    pic: optionalFilterValue($('#findingPicName').value), picName: optionalFilterValue($('#findingPicName').value),
+    picUserId: optionalFilterValue($('#findingPicName').value),
     periodMonth: monthToPeriod($('#findingMonth').value),
     myFindings: optionalFilterValue($('#findingMine').value),
     overdueOnly: $('#findingOverdue').checked
@@ -3478,6 +3463,12 @@ function populateAllMasterSelects() {
   populateSelect('#auditRuleLine', state.masterData.lines || [], 'LineID', 'LineName', 'เลือก Line', 'ทั้งหมด (ALL Lines)');
   populateAuditRuleStationSelect('', true);
   populateSelect('#auditRuleUser', state.masterData.users || [], 'UserID', 'FullName', 'ตาม Role');
+  const picUsers = (state.masterData.users || [])
+    .filter(u => (!u.ActiveStatus || String(u.ActiveStatus).toLowerCase() === 'active') && u.Role && !EXCLUDED_ASSIGNABLE_ROLES.has(u.Role))
+    .slice()
+    .sort((a, b) => String(a.FullName || '').localeCompare(String(b.FullName || ''), 'th'))
+    .map(u => ({ UserID: u.UserID, PicLabel: `${u.FullName || u.Username} (${u.Role})` }));
+  populateSelect('#findingPicName', picUsers, 'UserID', 'PicLabel', 'ทั้งหมด');
   populateSelect('#adminLineFilter', state.masterData.lines || [], 'LineID', 'LineName', 'ทั้งหมด');
   populateSelect('#adminLineDefault', state.masterData.lines || [], 'LineID', 'LineName', 'ไม่ระบุ');
   const shifts = (state.masterData.lists || [])
@@ -3574,7 +3565,7 @@ function populateSelect(selector, rows, valueField, textField, firstLabel, allOp
   else if (rows.some(row => String(row[valueField]) === current)) select.value = current;
 }
 
-const EXCLUDED_ASSIGNABLE_ROLES = new Set(['Admin', 'Viewer']);
+const EXCLUDED_ASSIGNABLE_ROLES = new Set(['Admin', 'Viewer', 'Customer']);
 
 function assignableRoles() {
   const order = ['Leader', 'Supervisor', 'Engineer', 'Manager'];

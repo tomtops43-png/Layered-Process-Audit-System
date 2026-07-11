@@ -49,28 +49,9 @@ function getLeaderDashboardBatch(payload, currentUser) {
       return false;
     }).map(sanitizeFindingForClient_);
 
-    // 5. Findings opened this shift, for the Leader's morning meeting — every
-    // finding on lines the user can view, not just findings assigned to them.
-    var shiftInfo = detectShiftInfo_(now);
-    var auditShiftMap = {};
-    allAuditSessions.forEach(function(a) {
-      var id = cleanString_(a.AuditID);
-      if (id) auditShiftMap[id] = { shift: cleanString_(a.Shift), date: dateOnly_(a.AuditDate) };
-    });
-    var shiftFindings = allFindingRows.filter(function(f) {
-      var info = auditShiftMap[cleanString_(f.AuditID)];
-      var foundDate = info ? info.date : dateOnly_(f.FoundDate);
-      var shiftName = info ? info.shift : '';
-      if (foundDate !== shiftInfo.date) return false;
-      if (shiftName && shiftName !== shiftInfo.name) return false;
-      return canAccessLineFromRows_(currentUser, f.LineID, 'View', lineAccess);
-    }).sort(function(a, b) { return cleanString_(a.FoundDate).localeCompare(cleanString_(b.FoundDate)); })
-      .map(sanitizeFindingForClient_);
-
     var result = {
       ruleSummary: ruleSummary, rules: rules,
       todayAudits: todayAudits, myFindings: myFindings,
-      shiftInfo: shiftInfo, shiftFindings: shiftFindings,
       MyOpenFindings: myFindings.length,
       MyOverdueFindings: myFindings.filter(function(f){ return valuesEqual_(f.OverdueFlag,'Yes'); }).length,
       serverDate: today
@@ -320,17 +301,6 @@ function resolveUserResponsibleLines_(currentUser) {
   access.forEach(function (row) { var id = cleanString_(row.LineID); if (id) ids[id] = true; });
   return allLines.filter(function (l) { return ids[cleanString_(l.LineID)]; })
     .map(function (l) { return { LineID: cleanString_(l.LineID), LineName: cleanString_(l.LineName) }; });
-}
-
-/** Mirrors the frontend's detectCurrentShift()/getShiftDate() so shift findings line up with the shift badge shown on the dashboard. */
-function detectShiftInfo_(now) {
-  var hour = Number(Utilities.formatDate(now, APP_TIMEZONE, 'H'));
-  var name = (hour >= 8 && hour < 20) ? 'กะเช้า' : 'กะดึก';
-  var date = formatDateBangkok_(now);
-  if (name === 'กะดึก' && hour < 8) {
-    date = formatDateBangkok_(new Date(now.getTime() - 24 * 3600 * 1000));
-  }
-  return { name: name, date: date };
 }
 
 function dashboardCacheKey_(user, period, lineAccess, lineId) {

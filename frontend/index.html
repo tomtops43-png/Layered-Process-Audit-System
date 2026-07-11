@@ -63,10 +63,6 @@
             <div id="ldTasks"></div>
           </div>
           <div class="ld-section">
-            <div id="ldShiftFindingTitle" class="ld-section-title">📢 Finding ที่เปิดกะนี้ (สำหรับมิตติ้งเช้า)</div>
-            <div id="ldShiftFindings"></div>
-          </div>
-          <div class="ld-section">
             <div id="ldFindingTitle" class="ld-section-title">⚠️ Finding ที่ฉันรับผิดชอบ</div>
             <div id="ldFindings"></div>
           </div>
@@ -212,7 +208,7 @@
             <label>Category<input id="findingCategory" placeholder="ค้นหา Category"></label>
             <label>Status<select id="findingStatus"><option value="">ทั้งหมด</option><option>Open</option><option>Assigned</option><option>In Progress</option><option>Pending Verification</option><option>Closed</option><option>Rejected</option><option>Overdue</option></select></label>
             <label>My Findings<select id="findingMine"><option value="">ทั้งหมด</option><option value="assigned">Assigned to Me</option><option value="created">Created by Me</option><option value="verification">Pending My Verification</option></select></label>
-            <label>PIC Name<input id="findingPicName" placeholder="ชื่อ PIC"></label>
+            <label>ผู้รับผิดชอบ<select id="findingPicName"><option value="">ทั้งหมด</option></select></label>
             <label>เดือน<input id="findingMonth" type="month"></label>
             <label class="check-label"><input id="findingOverdue" type="checkbox"> Overdue only</label>
           </div>
@@ -251,7 +247,7 @@
         <article class="panel filters-panel">
           <div class="form-grid filter-grid">
             <label>ค้นหา<input id="adminUserSearch" placeholder="Username / Full Name"></label>
-            <label>Role<select id="adminRoleFilter"><option value="">ทั้งหมด</option><option>Admin</option><option>Manager</option><option>Supervisor</option><option>Engineer</option><option>Leader</option><option>User</option><option>Viewer</option></select></label>
+            <label>Role<select id="adminRoleFilter"><option value="">ทั้งหมด</option><option>Admin</option><option>Manager</option><option>Supervisor</option><option>Engineer</option><option>Leader</option><option>User</option><option>Viewer</option><option>Customer</option></select></label>
             <label>Status<select id="adminStatusFilter"><option value="">ทั้งหมด</option><option>Active</option><option>Inactive</option></select></label>
             <label>Line<select id="adminLineFilter"><option value="">ทั้งหมด</option></select></label>
           </div>
@@ -333,7 +329,7 @@
         <label>Username *<input id="adminUsername" required></label>
         <label>Full Name *<input id="adminFullName" required></label>
         <label>Nickname<input id="adminNickname"></label>
-        <label>Role *<select id="adminUserRole" required><option>Admin</option><option>Manager</option><option>Supervisor</option><option>Engineer</option><option>Leader</option><option>User</option><option>Viewer</option></select><small class="field-help">Viewer = ดูข้อมูลได้อย่างเดียว ไม่สามารถแก้ไขหรือบันทึกใดๆ</small></label>
+        <label>Role *<select id="adminUserRole" required><option>Admin</option><option>Manager</option><option>Supervisor</option><option>Engineer</option><option>Leader</option><option>User</option><option>Viewer</option><option>Customer</option></select><small class="field-help">Viewer = บัญชีสำหรับมิตติ้งเช้า (Dashboard + Finding Tracking) · Customer = ลูกค้าดูข้อมูลได้ทุกเมนู แต่แก้ไขหรือบันทึกอะไรไม่ได้</small></label>
         <label>Department<input id="adminDepartment"></label>
         <label>Default Line<select id="adminLineDefault"><option value="">ไม่ระบุ</option></select></label>
         <label>Email<input id="adminEmail" type="email"></label>

@@ -453,10 +453,11 @@ function normalizeFindingAssignmentMode_(mode, source) {
 
 function getAssignableFindingRoles_() {
   var fallback = ['Leader', 'Supervisor', 'Engineer', 'Manager', 'Admin'];
+  var excludedRoles = { viewer: true, customer: true };
   var seen = {};
   getRowsAsObjects(SHEET_NAMES.USERS).forEach(function (user) {
     var role = cleanString_(user.Role);
-    if (role && isActive_(user.ActiveStatus)) seen[role.toLowerCase()] = role;
+    if (role && isActive_(user.ActiveStatus) && !excludedRoles[role.toLowerCase()]) seen[role.toLowerCase()] = role;
   });
   fallback.forEach(function (role) { if (!seen[role.toLowerCase()]) seen[role.toLowerCase()] = role; });
   var order = { leader: 1, supervisor: 2, engineer: 3, manager: 4, admin: 5 };
