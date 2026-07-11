@@ -192,6 +192,15 @@ function bindEvents() {
   $('#submitVerificationButton').addEventListener('click', submitFindingForVerification);
   $('#approveFindingButton').addEventListener('click', () => verifyFinding('Approve'));
   $('#rejectFindingButton').addEventListener('click', () => verifyFinding('Reject'));
+  document.addEventListener('click', event => {
+    const trigger = event.target.closest('[data-photo-url]');
+    if (!trigger || event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    openPhotoLightbox(trigger.dataset.photoUrl);
+  });
+  $('#closePhotoLightbox').addEventListener('click', closePhotoLightbox);
+  $('#photoLightbox').addEventListener('click', event => { if (event.target === event.currentTarget) closePhotoLightbox(); });
+  $('#photoLightbox').addEventListener('close', () => { $('#photoLightboxImage').src = ''; });
   ['#editCloseRemark', '#editRejectReason'].forEach(selector => {
     $(selector).addEventListener('input', event => event.target.classList.remove('field-error'));
   });
@@ -2230,7 +2239,7 @@ function renderPhotoPreview(input, targetSelector, existingUrl = '', scope = doc
   }
   const existingHtml = existingUrls.map((u, i) => `<span class="photo-preview-item" data-existing-url="${escapeAttr(u)}">${
     options.onRemoveExisting ? `<button type="button" class="photo-preview-remove" data-remove-existing="${escapeAttr(u)}" title="ลบรูปนี้">×</button>` : ''
-  }<a href="${escapeAttr(u)}" target="_blank" rel="noopener" title="เปิดรูปเต็ม"><img src="${escapeAttr(driveThumbnailUrl_(u))}" alt="รูปที่ ${i + 1}" loading="lazy"></a><span>รูปที่ ${i + 1}</span></span>`).join('');
+  }<a href="${escapeAttr(u)}" data-photo-url="${escapeAttr(u)}" class="photo-link-trigger" rel="noopener" title="ดูรูปเต็ม"><img src="${escapeAttr(driveThumbnailUrl_(u))}" alt="รูปที่ ${i + 1}" loading="lazy"></a><span>รูปที่ ${i + 1}</span></span>`).join('');
   const newHtml = files.map(file => {
     const url = URL.createObjectURL(file);
     return `<span class="photo-preview-item"><img src="${escapeAttr(url)}" alt="preview" data-revoke="${escapeAttr(url)}"><span>${escapeHtml(file.name)} · ${Math.ceil(file.size / 1024)} KB</span></span>`;
@@ -3658,16 +3667,30 @@ function photoLinks(row) {
   if (row.BeforePhotoURL) {
     row.BeforePhotoURL.split(',').map(u => u.trim()).filter(Boolean).forEach((u, i, arr) => {
       const label = arr.length > 1 ? `Before ${i + 1}` : 'Before';
-      links.push(`<a href="${escapeAttr(u)}" target="_blank" rel="noopener">${label}</a>`);
+      links.push(`<a href="${escapeAttr(u)}" data-photo-url="${escapeAttr(u)}" class="photo-link-trigger" rel="noopener">${label}</a>`);
     });
   }
   if (row.AfterPhotoURL) {
     row.AfterPhotoURL.split(',').map(u => u.trim()).filter(Boolean).forEach((u, i, arr) => {
       const label = arr.length > 1 ? `After ${i + 1}` : 'After';
-      links.push(`<a href="${escapeAttr(u)}" target="_blank" rel="noopener">${label}</a>`);
+      links.push(`<a href="${escapeAttr(u)}" data-photo-url="${escapeAttr(u)}" class="photo-link-trigger" rel="noopener">${label}</a>`);
     });
   }
   return links.length ? links.join(' · ') : '-';
+}
+
+// Opens Before/After photo links inline instead of letting them navigate to
+// Google Drive. Delegated on document so it covers both the finding-card
+// list and the finding edit dialog's thumbnails without per-render binding.
+function openPhotoLightbox(url) {
+  if (!url) return;
+  $('#photoLightboxImage').src = driveThumbnailUrl_(url, 1920);
+  $('#photoLightbox').showModal();
+}
+
+function closePhotoLightbox() {
+  const dialog = $('#photoLightbox');
+  if (dialog.open) dialog.close();
 }
 
 function statusClass(status) {

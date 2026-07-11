@@ -185,6 +185,11 @@ label{display:flex;flex-direction:column;gap:7px;font-size:.88rem;font-weight:70
 .modal-head h3{margin:0}
 .modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
 .full-width{grid-column:1/-1}
+.photo-lightbox{position:relative;width:min(1200px,calc(100% - 24px));max-height:92vh;border:0;border-radius:14px;padding:0;background:#0b0f14;box-shadow:0 24px 80px rgba(0,0,0,.4)}
+.photo-lightbox::backdrop{background:rgba(4,18,30,.82)}
+.photo-lightbox img{display:block;max-width:100%;max-height:88vh;margin:0 auto;object-fit:contain}
+.photo-lightbox-close{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.55);color:#fff;border-radius:50%;z-index:1}
+.photo-link-trigger{cursor:pointer;background:none;border:0;padding:0;font:inherit}
 .form-error{margin-bottom:14px;padding:11px 13px;border:1px solid #e7a8a8;border-radius:8px;background:var(--red-bg);color:var(--red-dark);font-weight:700}
 .field-error{border-color:var(--red)!important;box-shadow:0 0 0 3px rgba(192,38,45,.14)!important}
 .rejection-history{padding:13px 15px;border:1px solid #e7a8a8;border-radius:10px;background:var(--red-bg);color:var(--red-dark)}
