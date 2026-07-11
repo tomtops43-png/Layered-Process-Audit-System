@@ -3465,10 +3465,25 @@ function formatFindingAssignmentMode(row) {
   return findingAssignmentMode(row) === 'ROLE' ? 'รูปแบบ: ตามตำแหน่ง' : 'รูปแบบ: ระบุรายบุคคล';
 }
 
+// AssignedUserID/AssignedRole can hold a CSV list when a finding is
+// multi-assigned (e.g. "U-Leader1,U-Leader2"), matching the server's
+// isAssignedToUser_ in Findings.gs. An exact-equality check here would wrongly
+// hide the edit form for every co-assignee except whichever ID happens to
+// come first, blocking them from responding at all — independent of due date.
+function csvContainsValue(csv, value) {
+  const target = String(value ?? '').trim().toLowerCase();
+  if (!target) return false;
+  return String(csv ?? '').split(',').map(v => v.trim().toLowerCase()).includes(target);
+}
+
 function isFindingAssignedToCurrentUser(row) {
-  if (findingAssignmentMode(row) === 'ROLE') return String(row.AssignedRole || row.AssignedRoleName || row.AssignedToRole || '').toLowerCase() === String(state.user?.Role || '').toLowerCase();
-  const assignedUserId = String(row.AssignedUserID || row.AssignedToUserID || row.ResponsibleUserID || row.PICUserID || '');
-  return assignedUserId ? assignedUserId === String(state.user?.UserID || '') : String(row.AssignedUserName || row.AssignedToName || row.PICName || '') === String(state.user?.FullName || '');
+  if (findingAssignmentMode(row) === 'ROLE') {
+    const assignedRole = row.AssignedRole || row.AssignedRoleName || row.AssignedToRole || row.AssignedToName || row.ResponsiblePerson || row.PICName || '';
+    return csvContainsValue(assignedRole, state.user?.Role) || csvContainsValue(assignedRole, state.user?.FullName);
+  }
+  const assignedUserId = row.AssignedUserID || row.AssignedToUserID || row.ResponsibleUserID || row.PICUserID || '';
+  if (assignedUserId) return csvContainsValue(assignedUserId, state.user?.UserID);
+  return csvContainsValue(row.AssignedUserName || row.AssignedToName || row.PICName, state.user?.FullName);
 }
 
 function activeUserOptions() {
