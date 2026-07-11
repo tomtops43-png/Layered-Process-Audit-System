@@ -186,7 +186,7 @@ function bindEvents() {
   $('#exportCsvButton').addEventListener('click', exportReportCsv);
   $('#loadMasterChecklistButton').addEventListener('click', loadMasterChecklist);
   $('#findingForm').addEventListener('submit', event => event.preventDefault());
-  $('#editAfterPhoto').addEventListener('change', event => renderPhotoPreview(event.target, '#editPhotoPreview', state.editingFinding?.AfterPhotoURL));
+  $('#editAfterPhoto').addEventListener('change', renderFindingPhotoPreview);
   $('#closeFindingDialog').addEventListener('click', () => $('#findingDialog').close());
   $('#cancelFindingEdit').addEventListener('click', () => $('#findingDialog').close());
   $('#submitVerificationButton').addEventListener('click', submitFindingForVerification);
@@ -2203,29 +2203,59 @@ function isAuditDuplicateMessage(message) {
     String(message || '').includes('มีการบันทึก LPA สำหรับ Line / Station / Layer / Shift นี้แล้ว');
 }
 
-function renderPhotoPreview(input, targetSelector, existingUrl = '', scope = document) {
+// Renders Drive-hosted photos inline instead of as bare links: pulling the
+// file ID out of the "view" URL lets Drive's thumbnail endpoint serve the
+// image directly, so users don't get bounced out to Drive to see it.
+function driveThumbnailUrl_(url, size = 1000) {
+  const str = String(url || '');
+  const match = str.match(/\/d\/([a-zA-Z0-9_-]{10,})/) || str.match(/[?&]id=([a-zA-Z0-9_-]{10,})/);
+  return match ? `https://drive.google.com/thumbnail?id=${match[1]}&sz=w${size}` : str;
+}
+
+function renderPhotoPreview(input, targetSelector, existingUrl = '', scope = document, options = {}) {
   const target = typeof targetSelector === 'string' ? $(targetSelector, scope) : targetSelector;
   if (!target) return;
   const files = input && input.files ? Array.from(input.files) : [];
-  if (!files.length) {
-    if (existingUrl) {
-      const urls = existingUrl.split(',').map(u => u.trim()).filter(Boolean);
-      target.innerHTML = urls.map((u, i) => `<a href="${escapeAttr(u)}" target="_blank" rel="noopener">รูปที่ ${i + 1}</a>`).join(' · ');
-    } else {
-      target.innerHTML = '';
-    }
-    return;
-  }
   const nonImages = files.filter(f => !String(f.type || '').startsWith('image/'));
   if (nonImages.length) {
     target.innerHTML = '<span class="required-note">กรุณาเลือกไฟล์รูปภาพเท่านั้น</span>';
     return;
   }
-  target.innerHTML = files.map(file => {
+  const removedUrls = options.removedUrls || [];
+  const existingUrls = String(existingUrl || '').split(',').map(u => u.trim()).filter(Boolean)
+    .filter(u => !removedUrls.includes(u));
+  if (!existingUrls.length && !files.length) {
+    target.innerHTML = '';
+    return;
+  }
+  const existingHtml = existingUrls.map((u, i) => `<span class="photo-preview-item" data-existing-url="${escapeAttr(u)}">${
+    options.onRemoveExisting ? `<button type="button" class="photo-preview-remove" data-remove-existing="${escapeAttr(u)}" title="ลบรูปนี้">×</button>` : ''
+  }<a href="${escapeAttr(u)}" target="_blank" rel="noopener" title="เปิดรูปเต็ม"><img src="${escapeAttr(driveThumbnailUrl_(u))}" alt="รูปที่ ${i + 1}" loading="lazy"></a><span>รูปที่ ${i + 1}</span></span>`).join('');
+  const newHtml = files.map(file => {
     const url = URL.createObjectURL(file);
     return `<span class="photo-preview-item"><img src="${escapeAttr(url)}" alt="preview" data-revoke="${escapeAttr(url)}"><span>${escapeHtml(file.name)} · ${Math.ceil(file.size / 1024)} KB</span></span>`;
   }).join('');
+  target.innerHTML = `<div class="photo-preview-grid">${existingHtml}${newHtml}</div>`;
   $$('img[data-revoke]', target).forEach(img => img.addEventListener('load', () => URL.revokeObjectURL(img.dataset.revoke), { once: true }));
+  if (options.onRemoveExisting) {
+    $$('[data-remove-existing]', target).forEach(button => button.addEventListener('click', event => {
+      event.preventDefault();
+      options.onRemoveExisting(button.dataset.removeExisting);
+    }));
+  }
+}
+
+// Finding After-Photo preview is backed by state.findingPhotoRemovals so a
+// removal click can re-render immediately without re-fetching the finding.
+function renderFindingPhotoPreview() {
+  renderPhotoPreview($('#editAfterPhoto'), '#editPhotoPreview', state.editingFinding?.AfterPhotoURL || '', document, {
+    removedUrls: state.findingPhotoRemovals ? Array.from(state.findingPhotoRemovals) : [],
+    onRemoveExisting: url => {
+      if (!state.findingPhotoRemovals) state.findingPhotoRemovals = new Set();
+      state.findingPhotoRemovals.add(url);
+      renderFindingPhotoPreview();
+    }
+  });
 }
 
 async function compressImage(file, maxPx = 800, quality = 0.6) {
@@ -2354,7 +2384,8 @@ function openFindingEditor(findingId) {
   $('#editCloseRemark').classList.remove('field-error');
   $('#editRejectReason').classList.remove('field-error');
   $('#editAfterPhoto').value = '';
-  renderPhotoPreview($('#editAfterPhoto'), '#editPhotoPreview', row.AfterPhotoURL || '');
+  state.findingPhotoRemovals = new Set();
+  renderFindingPhotoPreview();
   const status = String(row.Status || '').toLowerCase();
   const pending = status === 'pending verification';
   const canVerify = pending && hasPermission('findings.verify');
@@ -2563,14 +2594,19 @@ function onReassignUserChange() {
   }
 }
 
+function findingKeptExistingPhotos() {
+  const removed = state.findingPhotoRemovals ? Array.from(state.findingPhotoRemovals) : [];
+  return String(state.editingFinding?.AfterPhotoURL || '').split(',').map(u => u.trim()).filter(Boolean)
+    .filter(u => !removed.includes(u));
+}
+
 async function submitFindingForVerification() {
   const findingId = $('#editFindingId').value;
   const rootCause = $('#editRootCause').value.trim();
   const correctiveAction = $('#editCorrectiveAction').value.trim();
-  const existingPhoto = state.editingFinding ? state.editingFinding.AfterPhotoURL : '';
-  const file = $('#editAfterPhoto').files[0];
-  if (!rootCause || !correctiveAction || (!file && !existingPhoto)) {
-    return showToast('กรุณากรอก Root Cause, Corrective Action และแนบ After Photo ให้ครบก่อนส่งตรวจยืนยัน', 'warning');
+  const hasPhoto = findingKeptExistingPhotos().length > 0 || $('#editAfterPhoto').files.length > 0;
+  if (!rootCause || !correctiveAction || !hasPhoto) {
+    return showToast('กรุณากรอก Root Cause, Corrective Action และแนบ After Photo อย่างน้อย 1 รูปให้ครบก่อนส่งตรวจยืนยัน', 'warning');
   }
   if (!window.confirm(`ส่ง Finding ${findingId} เพื่อตรวจสอบ?`)) return;
   await runFindingWorkflow('submitFinding', {
@@ -2619,12 +2655,22 @@ async function runFindingWorkflow(action, payload, options) {
   actionBtns.forEach(b => { b.disabled = true; });
   showLoading(settings.loadingMessage);
   try {
-    const file = $('#editAfterPhoto').files[0];
-    if (file) {
-      const upload = await uploadFile(file, 'Finding', payload.findingId, 'AfterPhoto', false);
-      payload.afterPhotoUrl = upload.DriveFileURL;
+    const files = Array.from($('#editAfterPhoto').files || []);
+    const keptExisting = findingKeptExistingPhotos();
+    if (files.length) {
+      const uploadedUrls = [];
+      for (let i = 0; i < files.length; i++) {
+        // Update the existing overlay's text in place rather than calling
+        // showLoading again — that would push busyDepth past the single
+        // hideLoading() in the finally block and leave the UI stuck busy.
+        if (files.length > 1) $('#loadingText').textContent = `กำลังอัปโหลดรูปหลังแก้ไข ${i + 1}/${files.length}...`;
+        const upload = await uploadFile(files[i], 'Finding', payload.findingId, 'AfterPhoto', false);
+        uploadedUrls.push(upload.DriveFileURL);
+      }
+      $('#loadingText').textContent = settings.loadingMessage;
+      payload.afterPhotoUrl = keptExisting.concat(uploadedUrls).join(',');
     } else if (state.editingFinding) {
-      payload.afterPhotoUrl = state.editingFinding.AfterPhotoURL || '';
+      payload.afterPhotoUrl = keptExisting.join(',');
     }
     // Attach reassign fields if set
     const reassignRoles = getReassignSelectedRoles();
@@ -2638,6 +2684,7 @@ async function runFindingWorkflow(action, payload, options) {
     }
     await apiCall(action, payload);
     $('#findingDialog').close();
+    state.findingPhotoRemovals = new Set();
     state.findingsCache = null;
     state.leaderDashData = null;
     GASCache.invalidate('dashboard'); GASCache.invalidatePrefix('mgr_comp_'); GASCache.invalidatePrefix('dir_dash_');
@@ -3614,7 +3661,12 @@ function photoLinks(row) {
       links.push(`<a href="${escapeAttr(u)}" target="_blank" rel="noopener">${label}</a>`);
     });
   }
-  if (row.AfterPhotoURL) links.push(`<a href="${escapeAttr(row.AfterPhotoURL)}" target="_blank" rel="noopener">After</a>`);
+  if (row.AfterPhotoURL) {
+    row.AfterPhotoURL.split(',').map(u => u.trim()).filter(Boolean).forEach((u, i, arr) => {
+      const label = arr.length > 1 ? `After ${i + 1}` : 'After';
+      links.push(`<a href="${escapeAttr(u)}" target="_blank" rel="noopener">${label}</a>`);
+    });
+  }
   return links.length ? links.join(' · ') : '-';
 }
 
