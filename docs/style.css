@@ -483,6 +483,13 @@ textarea{line-height:1.45}
 .mgr-esc-name{font-weight:700;font-size:.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mgr-esc-meta{font-size:.75rem;color:var(--muted);margin-top:2px}
 .mgr-esc-due{text-align:right;font-size:.8rem;font-weight:800;white-space:nowrap}
+.mgr-shift-day{border-bottom:1px solid var(--border)}
+.mgr-shift-day:last-child{border-bottom:0}
+.mgr-shift-day-title{padding:12px 18px;font-weight:800;font-size:.85rem;background:var(--bg)}
+.mgr-shift-day-date{font-weight:600;color:var(--muted);font-size:.78rem}
+.mgr-shift-day .empty-state{padding:14px 18px}
+.mgr-shift-group-title{padding:8px 18px;font-weight:700;font-size:.78rem;color:var(--navy);background:var(--cyan)}
+.mgr-shift-count{font-weight:600;color:var(--muted)}
 @media print{.sidebar,.topbar,#mgrHeader .mgr-period-row,#mgrHeader .mgr-export-btn,button{display:none!important}.main-content{padding:0!important}.page{display:block!important}}
 @media(max-width:768px){.mgr-bar-row{grid-template-columns:90px 1fr 42px}.mgr-esc-row{grid-template-columns:auto 1fr;grid-template-rows:auto auto auto}.mgr-esc-row>div:nth-child(3){grid-column:2}.mgr-esc-row>button{grid-column:1/-1}}
 

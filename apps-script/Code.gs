@@ -48,6 +48,7 @@ function doPost(e) {
       uploadFile: function (user) { return uploadFile(payload, user); },
       getDashboard: function (user) { return getDashboard(payload, user); },
       getLeaderDashboardBatch: function (user) { return getLeaderDashboardBatch(payload, user); },
+      getFindingShiftDigest: function (user) { return getFindingShiftDigest(payload, user); },
       getMonthlyReport: function (user) { return getMonthlyReport(payload, user); },
       exportReportCsv: function (user) { return exportReportCsv(payload, user); },
       listUsers: function (user) { return listUsers(payload, user); },

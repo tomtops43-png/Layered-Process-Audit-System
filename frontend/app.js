@@ -377,6 +377,7 @@ async function initializeAuthenticatedApp(validateSession = true) {
   applyPermissionVisibility();
   applyAuditPlanRoleScope();
   applyAuditLayerPermissions();
+  applyViewerAccountRestrictions();
   showDashboardSkeleton();
   await navigateTo('dashboard');
   // Pre-warm GAS findings cache in background so Finding Tracking page loads fast on first visit
@@ -882,6 +883,18 @@ function renderLeaderTasks(rules, todayAudits) {
   }).join('');
 }
 
+function shiftFindingRowHtml(f) {
+  const severity = String(f.Severity || f.Priority || '').toLowerCase();
+  const sevBadge = severity === 'critical' ? '<span class="ld-badge overdue">🔴 Critical</span>'
+    : severity === 'major' ? '<span class="ld-badge pending">🟠 Major</span>'
+    : '<span class="ld-badge done">🟡 Minor</span>';
+  return `<div class="ld-finding-row">
+    ${sevBadge}
+    <div class="ld-finding-info"><div class="ld-finding-name">${escapeHtml(f.ProblemDetail || f.FindingID)}</div><div class="ld-finding-meta">${escapeHtml(f.LineName || f.LineID)} / ${escapeHtml(f.StationName || f.StationID)} · ${escapeHtml(f.Category || '')}</div></div>
+    <div class="ld-due-label">${escapeHtml(f.Status || 'Open')}</div>
+  </div>`;
+}
+
 function renderLeaderShiftFindings(findings, shiftInfo) {
   const shiftLabel = shiftInfo?.name || detectCurrentShift();
   const titleEl = $('#ldShiftFindingTitle');
@@ -891,17 +904,61 @@ function renderLeaderShiftFindings(findings, shiftInfo) {
     $('#ldShiftFindings').innerHTML = '<div class="empty-state">✅ ยังไม่มี Finding เปิดในกะนี้</div>';
     return;
   }
-  $('#ldShiftFindings').innerHTML = findings.map(f => {
-    const severity = String(f.Severity || f.Priority || '').toLowerCase();
-    const sevBadge = severity === 'critical' ? '<span class="ld-badge overdue">🔴 Critical</span>'
-      : severity === 'major' ? '<span class="ld-badge pending">🟠 Major</span>'
-      : '<span class="ld-badge done">🟡 Minor</span>';
-    return `<div class="ld-finding-row">
-      ${sevBadge}
-      <div class="ld-finding-info"><div class="ld-finding-name">${escapeHtml(f.ProblemDetail || f.FindingID)}</div><div class="ld-finding-meta">${escapeHtml(f.LineName || f.LineID)} / ${escapeHtml(f.StationName || f.StationID)} · ${escapeHtml(f.Category || '')}</div></div>
-      <div class="ld-due-label">${escapeHtml(f.Status || 'Open')}</div>
-    </div>`;
+  $('#ldShiftFindings').innerHTML = findings.map(shiftFindingRowHtml).join('');
+}
+
+function renderMgrShiftDigest(digest) {
+  const el = $('#mgrShiftDigest');
+  if (!el) return;
+  if (!digest) { el.innerHTML = emptyHtml('ไม่มีข้อมูล'); return; }
+  const sections = [
+    { key: 'today', label: '📅 วันนี้' },
+    { key: 'yesterday', label: '📅 เมื่อวาน' },
+    { key: 'sevenDaysAgo', label: '📅 7 วันก่อน' }
+  ];
+  el.innerHTML = sections.map(s => {
+    const bucket = digest[s.key] || {};
+    const dateLabel = bucket.date ? formatDate(bucket.date) : '';
+    const groups = bucket.shiftGroups || [];
+    const body = !groups.length
+      ? '<div class="empty-state">✅ ไม่มี Finding เปิดในวันนี้</div>'
+      : groups.map(g => `
+        <div class="mgr-shift-group">
+          <div class="mgr-shift-group-title">🕐 ${escapeHtml(g.shift)} <span class="mgr-shift-count">${g.count} รายการ</span></div>
+          ${g.findings.map(shiftFindingRowHtml).join('')}
+        </div>`).join('');
+    return `
+      <div class="mgr-shift-day">
+        <div class="mgr-shift-day-title">${escapeHtml(s.label)} <span class="mgr-shift-day-date">(${escapeHtml(dateLabel)})</span> — ${bucket.totalCount || 0} Finding</div>
+        ${body}
+      </div>`;
   }).join('');
+}
+
+async function loadFindingShiftDigest() {
+  const el = $('#mgrShiftDigest');
+  if (!el) return;
+  el.innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
+  try {
+    const digest = await apiCall('getFindingShiftDigest', {});
+    renderMgrShiftDigest(digest);
+  } catch (error) {
+    el.innerHTML = emptyHtml(error.message || 'โหลด Finding ไม่สำเร็จ');
+  }
+}
+
+/** ENC LINE customer viewer account: dashboard is Finding-only, sidebar trimmed to Dashboard.
+ * Only ever ADDS 'hidden' to non-dashboard nav items — never removes it, so it can't
+ * undo applyPermissionVisibility()'s permission-based hiding for other roles. */
+function applyViewerAccountRestrictions() {
+  const isViewer = state.user?.Role === 'Viewer';
+  if (isViewer) {
+    $$('.main-nav .nav-item').forEach(btn => {
+      if (btn.dataset.page !== 'dashboard') btn.classList.add('hidden');
+    });
+  }
+  const section = $('#mgrShiftDigestSection');
+  if (section) section.classList.toggle('hidden', !isViewer);
 }
 
 function renderLeaderFindings(findings) {
@@ -1213,6 +1270,7 @@ function renderDirLayer(data) {
 if (!state.mgrData) state.mgrData = { complianceData: null, dashData: null, findings: [], period: 'month', selectedLine: '', startDate: '', endDate: '' };
 
 async function loadManagerDashboard(startDate, endDate) {
+  if (state.user?.Role === 'Viewer') loadFindingShiftDigest();
   const today = localDateInput(new Date());
   // Set or compute date range
   if (startDate && endDate) {

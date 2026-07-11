@@ -190,6 +190,87 @@ function getDashboard(payload, currentUser) {
   }
 }
 
+var SHIFT_DISPLAY_ORDER_ = ['กะเช้า', 'กะดึก'];
+
+function sortShiftNames_(names) {
+  return names.sort(function (a, b) {
+    var ia = SHIFT_DISPLAY_ORDER_.indexOf(a);
+    var ib = SHIFT_DISPLAY_ORDER_.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b);
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+}
+
+/**
+ * Finding-focused digest for the plant/customer viewer dashboard: findings opened
+ * Today, Yesterday, and 7 days ago (same weekday last week), each split by shift —
+ * built for the Leader's daily morning meeting so the team can see what happened
+ * without digging through Finding Tracking.
+ */
+function getFindingShiftDigest(payload, currentUser) {
+  try {
+    var permissions = getUserPermissions_(currentUser);
+    if (!permissionEnabled_(permissions, 'dashboard.view') && !permissionEnabled_(permissions, 'dashboard.view.all')) {
+      throw new Error('Permission denied: dashboard.view');
+    }
+    var lineAccess = getUserLineAccess_(currentUser);
+    var now = new Date();
+    var dayLabels = {
+      today: formatDateBangkok_(now),
+      yesterday: formatDateBangkok_(new Date(now.getTime() - 24 * 3600 * 1000)),
+      sevenDaysAgo: formatDateBangkok_(new Date(now.getTime() - 7 * 24 * 3600 * 1000))
+    };
+    var bucketKeyByDate = {};
+    bucketKeyByDate[dayLabels.today] = 'today';
+    bucketKeyByDate[dayLabels.yesterday] = 'yesterday';
+    bucketKeyByDate[dayLabels.sevenDaysAgo] = 'sevenDaysAgo';
+
+    var allAuditSessions = getRowsAsObjects(SHEET_NAMES.AUDIT_SESSIONS);
+    var auditShiftMap = {};
+    allAuditSessions.forEach(function (a) {
+      var id = cleanString_(a.AuditID);
+      if (id) auditShiftMap[id] = { shift: cleanString_(a.Shift), date: dateOnly_(a.AuditDate) };
+    });
+
+    var buckets = {
+      today: { date: dayLabels.today, shiftsMap: {} },
+      yesterday: { date: dayLabels.yesterday, shiftsMap: {} },
+      sevenDaysAgo: { date: dayLabels.sevenDaysAgo, shiftsMap: {} }
+    };
+
+    getCachedFindingRows_().map(refreshOverdueForRead_).forEach(function (f) {
+      if (!canViewFindingForDashboard_(currentUser, f, permissions, lineAccess)) return;
+      var info = auditShiftMap[cleanString_(f.AuditID)];
+      var foundDate = info ? info.date : dateOnly_(f.FoundDate);
+      var bucketKey = bucketKeyByDate[foundDate];
+      if (!bucketKey) return;
+      var shiftName = (info && info.shift) || 'ไม่ระบุกะ';
+      var bucket = buckets[bucketKey];
+      if (!bucket.shiftsMap[shiftName]) bucket.shiftsMap[shiftName] = [];
+      bucket.shiftsMap[shiftName].push(sanitizeFindingForClient_(f));
+    });
+
+    var digest = {};
+    Object.keys(buckets).forEach(function (key) {
+      var bucket = buckets[key];
+      digest[key] = {
+        date: bucket.date,
+        shiftGroups: sortShiftNames_(Object.keys(bucket.shiftsMap)).map(function (shiftName) {
+          var list = bucket.shiftsMap[shiftName].sort(function (a, b) { return cleanString_(a.FoundDate).localeCompare(cleanString_(b.FoundDate)); });
+          return { shift: shiftName, count: list.length, findings: list };
+        }),
+        totalCount: Object.keys(bucket.shiftsMap).reduce(function (sum, k) { return sum + bucket.shiftsMap[k].length; }, 0)
+      };
+    });
+
+    return jsonResponse(true, 'Finding shift digest loaded.', digest);
+  } catch (error) {
+    return jsonResponse(false, safeErrorMessage_(error), {});
+  }
+}
+
 /** Manager must complete at least 1 LPA audit per month for EACH line they're responsible for, deadline day 30 (or last day if month is shorter). */
 function buildManagerAuditReminder_(currentUser, now, currentPeriod, allAudits) {
   if (cleanString_(currentUser.Role) !== 'Manager') return null;
