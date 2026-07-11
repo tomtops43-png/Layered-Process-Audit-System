@@ -2660,11 +2660,14 @@ async function runFindingWorkflow(action, payload, options) {
     if (files.length) {
       const uploadedUrls = [];
       for (let i = 0; i < files.length; i++) {
-        showLoading(files.length > 1 ? `กำลังอัปโหลดรูปหลังแก้ไข ${i + 1}/${files.length}...` : settings.loadingMessage);
+        // Update the existing overlay's text in place rather than calling
+        // showLoading again — that would push busyDepth past the single
+        // hideLoading() in the finally block and leave the UI stuck busy.
+        if (files.length > 1) $('#loadingText').textContent = `กำลังอัปโหลดรูปหลังแก้ไข ${i + 1}/${files.length}...`;
         const upload = await uploadFile(files[i], 'Finding', payload.findingId, 'AfterPhoto', false);
         uploadedUrls.push(upload.DriveFileURL);
       }
-      showLoading(settings.loadingMessage);
+      $('#loadingText').textContent = settings.loadingMessage;
       payload.afterPhotoUrl = keptExisting.concat(uploadedUrls).join(',');
     } else if (state.editingFinding) {
       payload.afterPhotoUrl = keptExisting.join(',');
