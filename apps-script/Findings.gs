@@ -147,10 +147,10 @@ function updateFinding(payload, currentUser) {
       throw new Error('This finding cannot be edited in its current status.');
     }
 
-    var allowed = ['CorrectiveAction', 'RootCause', 'RootCauseCategory', 'ActionRemark', 'DueDate', 'Status', 'AfterPhotoURL'];
+    var allowed = ['CorrectiveAction', 'RootCause', 'RootCauseCategory', 'ActionRemark', 'DueDate', 'Status', 'AfterPhotoURL', 'BeforePhotoURL'];
     var aliases = {
       correctiveAction: 'CorrectiveAction', rootCause: 'RootCause', rootCauseCategory: 'RootCauseCategory', dueDate: 'DueDate', status: 'Status',
-      actionRemark: 'ActionRemark', afterPhotoUrl: 'AfterPhotoURL'
+      actionRemark: 'ActionRemark', afterPhotoUrl: 'AfterPhotoURL', beforePhotoUrl: 'BeforePhotoURL'
     };
     var updates = {};
     allowed.forEach(function (field) { if (Object.prototype.hasOwnProperty.call(payload, field)) updates[field] = payload[field]; });
@@ -252,9 +252,13 @@ function submitFinding(payload, currentUser) {
     if (!correctiveAction) throw new Error('CorrectiveAction is required before submission.');
     if (!afterPhoto) throw new Error('AfterPhotoURL is required before submission.');
     var rootCauseCategory = cleanString_(payload.rootCauseCategory || payload.RootCauseCategory || finding.RootCauseCategory) || mapCategoryTo5m1e_(finding.Category);
+    // BeforePhotoURL is optional here — audits sometimes get submitted without one,
+    // and the assignee can attach it retroactively; falls back to whatever was there.
+    var beforePhoto = cleanString_(payload.beforePhotoUrl || payload.BeforePhotoURL || finding.BeforePhotoURL);
     var timestamp = formatDateTimeBangkok(new Date());
     var updates = {
       CorrectiveAction: correctiveAction, RootCause: rootCause, RootCauseCategory: rootCauseCategory, AfterPhotoURL: afterPhoto,
+      BeforePhotoURL: beforePhoto,
       Status: 'Pending Verification', VerificationStatus: 'Pending',
       SubmittedAt: timestamp, SubmittedBy: currentUser.UserID, SubmittedByName: currentUser.FullName,
       ActionBy: currentUser.UserID, ActionByName: currentUser.FullName,
