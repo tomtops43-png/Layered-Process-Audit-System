@@ -290,8 +290,10 @@
         <input id="reassignUserName" type="hidden">
         <input id="reassignMode" type="hidden">
         <label class="full-width">หมายเหตุการดำเนินการ<textarea id="editActionRemark" rows="2"></textarea></label>
-        <label id="editCloseRemarkField" class="full-width hidden">เหตุผลการปิด Finding<textarea id="editCloseRemark" rows="2"></textarea></label>
-        <label id="editRejectReasonField" class="full-width hidden">เหตุผลที่ Reject<textarea id="editRejectReason" rows="2"></textarea></label>
+        <label id="editCloseRemarkField" class="full-width hidden">เหตุผลการปิด Finding<select id="editCloseReasonSelect"></select></label>
+        <label id="editCloseRemarkNoteField" class="full-width hidden">ระบุเหตุผลการปิด Finding<textarea id="editCloseRemark" rows="2"></textarea></label>
+        <label id="editRejectReasonField" class="full-width hidden">เหตุผลที่ Reject<select id="editRejectReasonSelect"></select></label>
+        <label id="editRejectReasonNoteField" class="full-width hidden">ระบุเหตุผลที่ Reject<textarea id="editRejectReason" rows="2"></textarea></label>
         <section id="rejectionHistory" class="rejection-history full-width hidden">
           <strong>เหตุผลที่ถูก Reject</strong>
           <p id="rejectionReasonDisplay">-</p>
