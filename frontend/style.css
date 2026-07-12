@@ -425,6 +425,8 @@ textarea{line-height:1.45}
 .ld-card-note{font-size:.72rem;color:var(--muted)}
 .ld-section{background:#fff;border-radius:var(--radius);border:1px solid var(--border);box-shadow:var(--shadow);margin-bottom:16px;overflow:hidden}
 .ld-section-title{padding:14px 18px;font-weight:800;font-size:.9rem;border-bottom:1px solid var(--border);background:var(--cyan)}
+.mgr-shift-digest-title{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.mgr-line-select-light{background:#fff;border:1px solid var(--border);color:var(--navy);border-radius:7px;padding:6px 10px;font-size:.8rem;font-weight:700;min-height:auto;width:auto}
 .ld-task-row{display:grid;grid-template-columns:auto 1fr auto auto;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border);align-items:center}
 .ld-task-row:last-child{border-bottom:0}
 .ld-badge{display:inline-flex;align-items:center;gap:4px;border-radius:99px;padding:5px 11px;font-size:.75rem;font-weight:900;white-space:nowrap}
@@ -437,6 +439,8 @@ textarea{line-height:1.45}
 .ld-task-time{font-size:.8rem;font-weight:700;color:var(--muted);white-space:nowrap}
 .ld-finding-row{display:grid;grid-template-columns:auto 1fr auto auto;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border);align-items:center}
 .ld-finding-row:last-child{border-bottom:0}
+.ld-finding-row-clickable{cursor:pointer;transition:background .12s ease}
+.ld-finding-row-clickable:hover,.ld-finding-row-clickable:focus-visible{background:var(--cyan)}
 .ld-finding-info{min-width:0}
 .ld-finding-name{font-weight:700;font-size:.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ld-finding-meta{font-size:.75rem;color:var(--muted);margin-top:2px}

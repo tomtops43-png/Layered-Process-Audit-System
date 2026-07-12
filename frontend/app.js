@@ -884,7 +884,7 @@ function shiftFindingRowHtml(f) {
   const sevBadge = severity === 'critical' ? '<span class="ld-badge overdue">🔴 Critical</span>'
     : severity === 'major' ? '<span class="ld-badge pending">🟠 Major</span>'
     : '<span class="ld-badge done">🟡 Minor</span>';
-  return `<div class="ld-finding-row">
+  return `<div class="ld-finding-row ld-finding-row-clickable" onclick="openFindingForEdit('${escapeAttr(f.FindingID)}')" role="button" tabindex="0">
     ${sevBadge}
     <div class="ld-finding-info"><div class="ld-finding-name">${escapeHtml(f.ProblemDetail || f.FindingID)}</div><div class="ld-finding-meta">${escapeHtml(f.LineName || f.LineID)} / ${escapeHtml(f.StationName || f.StationID)} · ${escapeHtml(f.Category || '')}</div></div>
     <div class="ld-due-label">${escapeHtml(f.Status || 'Open')}</div>
@@ -919,12 +919,26 @@ function renderMgrShiftDigest(digest) {
   }).join('');
 }
 
+function populateShiftDigestPicFilter() {
+  const select = $('#mgrShiftDigestPic');
+  if (!select) return;
+  const picUsers = (state.masterData.users || [])
+    .filter(u => (!u.ActiveStatus || String(u.ActiveStatus).toLowerCase() === 'active') && u.Role && !EXCLUDED_ASSIGNABLE_ROLES.has(u.Role))
+    .slice()
+    .sort((a, b) => String(a.FullName || '').localeCompare(String(b.FullName || ''), 'th'))
+    .map(u => ({ UserID: u.UserID, PicLabel: `${u.FullName || u.Username} (${u.Role})` }));
+  populateSelect('#mgrShiftDigestPic', picUsers, 'UserID', 'PicLabel', 'ผู้รับผิดชอบ: ทั้งหมด');
+}
+
 async function loadFindingShiftDigest() {
   const el = $('#mgrShiftDigest');
   if (!el) return;
   el.innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   try {
-    const digest = await apiCall('getFindingShiftDigest', {});
+    if (!(state.masterData.users || []).length) await ensureMasterDataLoaded(false);
+    populateShiftDigestPicFilter();
+    const picUserId = $('#mgrShiftDigestPic')?.value || '';
+    const digest = await apiCall('getFindingShiftDigest', picUserId ? { picUserId } : {});
     renderMgrShiftDigest(digest);
   } catch (error) {
     el.innerHTML = emptyHtml(error.message || 'โหลด Finding ไม่สำเร็จ');

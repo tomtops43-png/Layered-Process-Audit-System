@@ -197,6 +197,7 @@ function getFindingShiftDigest(payload, currentUser) {
       throw new Error('Permission denied: dashboard.view');
     }
     var lineAccess = getUserLineAccess_(currentUser);
+    var picUserId = cleanString_(payload && payload.picUserId);
     var now = new Date();
     var dayLabels = {
       today: formatDateBangkok_(now),
@@ -223,6 +224,7 @@ function getFindingShiftDigest(payload, currentUser) {
 
     getCachedFindingRows_().map(refreshOverdueForRead_).forEach(function (f) {
       if (!canViewFindingForDashboard_(currentUser, f, permissions, lineAccess)) return;
+      if (picUserId && !csvContains_(f.AssignedToUserID || f.PICUserID, picUserId)) return;
       var info = auditShiftMap[cleanString_(f.AuditID)];
       var foundDate = info ? info.date : dateOnly_(f.FoundDate);
       var bucketKey = bucketKeyByDate[foundDate];
