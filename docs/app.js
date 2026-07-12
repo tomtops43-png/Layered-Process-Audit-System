@@ -2373,6 +2373,16 @@ function renderFindingPhotoPreview() {
   });
 }
 
+// Before Photo is view-only in this dialog — no upload/remove, just the
+// evidence captured at audit time for reference while doing corrective action.
+function renderViewOnlyPhotoGallery(targetSelector, urlCsv) {
+  const target = $(targetSelector);
+  if (!target) return;
+  const urls = String(urlCsv || '').split(',').map(u => u.trim()).filter(Boolean);
+  if (!urls.length) { target.innerHTML = '<span class="muted">ไม่มีรูปแนบ</span>'; return; }
+  target.innerHTML = `<div class="photo-preview-grid">${urls.map((u, i) => `<span class="photo-preview-item"><a href="${escapeAttr(u)}" data-photo-url="${escapeAttr(u)}" class="photo-link-trigger" rel="noopener"><img src="${escapeAttr(driveThumbnailUrl_(u))}" alt="รูปที่ ${i + 1}" loading="lazy"></a><span>รูปที่ ${i + 1}</span></span>`).join('')}</div>`;
+}
+
 async function compressImage(file, maxPx = 800, quality = 0.6) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -2523,6 +2533,7 @@ function openFindingEditor(findingId) {
   state.editingFinding = row;
   $('#findingDialogTitle').textContent = `${row.FindingID} · ${row.ProblemDetail || ''}`;
   $('#editFindingId').value = row.FindingID;
+  renderViewOnlyPhotoGallery('#viewBeforePhoto', row.BeforePhotoURL);
   $('#editRootCause').value = row.RootCause || '';
   const _5m1eKey = classify5m1e(row);
   const _5m1eLabel = (_5m1eKey && (M1E_CATEGORIES.find(c => c.key === _5m1eKey) || {}).label) || 'ยังไม่ระบุ';
