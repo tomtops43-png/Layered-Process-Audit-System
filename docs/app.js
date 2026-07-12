@@ -187,7 +187,6 @@ function bindEvents() {
   $('#loadMasterChecklistButton').addEventListener('click', loadMasterChecklist);
   $('#findingForm').addEventListener('submit', event => event.preventDefault());
   $('#editAfterPhoto').addEventListener('change', renderFindingPhotoPreview);
-  $('#editBeforePhoto').addEventListener('change', renderFindingBeforePhotoPreview);
   $('#closeFindingDialog').addEventListener('click', () => $('#findingDialog').close());
   $('#cancelFindingEdit').addEventListener('click', () => $('#findingDialog').close());
   $('#submitVerificationButton').addEventListener('click', submitFindingForVerification);
@@ -2360,19 +2359,6 @@ function renderFindingPhotoPreview() {
   });
 }
 
-// Before-Photo: lets whoever can edit the finding add/replace the "before" evidence
-// retroactively — audits sometimes get submitted without one. Same removal-set pattern.
-function renderFindingBeforePhotoPreview() {
-  renderPhotoPreview($('#editBeforePhoto'), '#editBeforePhotoPreview', state.editingFinding?.BeforePhotoURL || '', document, {
-    removedUrls: state.findingBeforePhotoRemovals ? Array.from(state.findingBeforePhotoRemovals) : [],
-    onRemoveExisting: url => {
-      if (!state.findingBeforePhotoRemovals) state.findingBeforePhotoRemovals = new Set();
-      state.findingBeforePhotoRemovals.add(url);
-      renderFindingBeforePhotoPreview();
-    }
-  });
-}
-
 async function compressImage(file, maxPx = 800, quality = 0.6) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -2499,9 +2485,6 @@ function openFindingEditor(findingId) {
   $('#editAfterPhoto').value = '';
   state.findingPhotoRemovals = new Set();
   renderFindingPhotoPreview();
-  $('#editBeforePhoto').value = '';
-  state.findingBeforePhotoRemovals = new Set();
-  renderFindingBeforePhotoPreview();
   const status = String(row.Status || '').toLowerCase();
   const pending = status === 'pending verification';
   const canVerify = pending && hasPermission('findings.verify');
@@ -2540,8 +2523,6 @@ function openFindingEditor(findingId) {
   $('#editRejectReason').disabled = !canVerify;
   $('#editAfterPhotoField').classList.toggle('hidden', !canEditFollowUp);
   $('#editAfterPhoto').disabled = !canEditFollowUp;
-  $('#editBeforePhotoField').classList.toggle('hidden', !canEditFollowUp);
-  $('#editBeforePhoto').disabled = !canEditFollowUp;
 
   // Reassign section — Supervisor, Manager, Engineer, Admin only
   const canReassign = ['Supervisor', 'Manager', 'Engineer', 'Admin'].includes(state.user.Role) && status !== 'closed';
@@ -2724,12 +2705,6 @@ function findingKeptExistingPhotos() {
     .filter(u => !removed.includes(u));
 }
 
-function findingKeptExistingBeforePhotos() {
-  const removed = state.findingBeforePhotoRemovals ? Array.from(state.findingBeforePhotoRemovals) : [];
-  return String(state.editingFinding?.BeforePhotoURL || '').split(',').map(u => u.trim()).filter(Boolean)
-    .filter(u => !removed.includes(u));
-}
-
 async function submitFindingForVerification() {
   const findingId = $('#editFindingId').value;
   const rootCause = $('#editRootCause').value.trim();
@@ -2807,20 +2782,6 @@ async function runFindingWorkflow(action, payload, options) {
       payload.afterPhotoUrl = keptExisting.concat(uploadedUrls).join(',');
     } else if (state.editingFinding) {
       payload.afterPhotoUrl = keptExisting.join(',');
-    }
-    const beforeFiles = Array.from($('#editBeforePhoto').files || []);
-    const keptExistingBefore = findingKeptExistingBeforePhotos();
-    if (beforeFiles.length) {
-      const uploadedBeforeUrls = [];
-      for (let i = 0; i < beforeFiles.length; i++) {
-        if (beforeFiles.length > 1) $('#loadingText').textContent = `กำลังอัปโหลดรูปก่อนแก้ไข ${i + 1}/${beforeFiles.length}...`;
-        const upload = await uploadFile(beforeFiles[i], 'Finding', payload.findingId, 'BeforePhoto', false);
-        uploadedBeforeUrls.push(upload.DriveFileURL);
-      }
-      $('#loadingText').textContent = settings.loadingMessage;
-      payload.beforePhotoUrl = keptExistingBefore.concat(uploadedBeforeUrls).join(',');
-    } else if (state.editingFinding) {
-      payload.beforePhotoUrl = keptExistingBefore.join(',');
     }
     // Attach reassign fields if set
     const reassignRoles = getReassignSelectedRoles();
