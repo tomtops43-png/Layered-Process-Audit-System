@@ -42,6 +42,7 @@ function saveAudit(payload, currentUser) {
       var validatedResult = normalizeAuditResult_(record.result);
       if (!validatedResult) throw new Error('Record ' + (index + 1) + ': result must be OK, NG, or N/A.');
       if (validatedResult === 'NG') {
+        if (!getFindingDetailItems_(record).length) throw new Error('Record ' + (index + 1) + ': at least one problem detail is required.');
         var assignmentMode = normalizeFindingAssignmentMode_(record.assignmentMode, record);
         if (assignmentMode === 'ROLE') {
           var selectedRoles = csvList_(record.assignedRole || record.assignedRoleName || record.responsiblePerson || record.picName);
@@ -159,7 +160,10 @@ function saveAudit(payload, currentUser) {
     var usersMap = {};
     getCachedUserRows_().forEach(function (row) { usersMap[cleanString_(row.UserID)] = row; });
     var defaultDays = getDefaultDueDays_();
-    var ngCount = payload.records.filter(function (r) { return normalizeAuditResult_(r.result) === 'NG'; }).length;
+    var recordProblemItems = payload.records.map(function (r) {
+      return normalizeAuditResult_(r.result) === 'NG' ? getFindingDetailItems_(r) : [];
+    });
+    var ngCount = recordProblemItems.reduce(function (sum, items) { return sum + items.length; }, 0);
     // Pre-generate all IDs in two batch calls (one sheet read each)
     var recordIds = generateMultipleIdsWithoutLock_('AR', SHEET_NAMES.AUDIT_RECORDS, 'RecordID', periodMonth, payload.records.length);
     var findingIds_pre = ngCount > 0 ? generateMultipleIdsWithoutLock_('F', SHEET_NAMES.FINDINGS, 'FindingID', periodMonth, ngCount) : [];
@@ -173,7 +177,12 @@ function saveAudit(payload, currentUser) {
       var recordId = recordIds[index];
       var result = normalizeAuditResult_(record.result);
       var dueDate = record.dueDate ? formatDateBangkok_(record.dueDate) : (result === 'NG' ? addDays_(parseDate_(auditDate) || now, defaultDays) : '');
-      var findingDetail = cleanString_(record.findingDetail);
+      // Multiple problems reported for one checklist item become separate Findings
+      // (each with its own Root Cause / Corrective Action) instead of one long blob.
+      var problemItems = recordProblemItems[index];
+      var findingDetailSummary = problemItems.length > 1
+        ? problemItems.map(function (t, i) { return (i + 1) + '. ' + t; }).join('\n')
+        : (problemItems[0] || '');
       var assignmentMode = result === 'NG' ? normalizeFindingAssignmentMode_(record.assignmentMode, record) : '';
       var assignedUserId = '';
       var assignedName = '';
@@ -197,7 +206,6 @@ function saveAudit(payload, currentUser) {
       }
       var responsibleDisplay = assignmentMode === 'ROLE' ? assignedRoleName : assignedName;
       var initialFindingStatus = result === 'NG' ? 'Assigned' : 'Completed';
-      var findingId = result === 'NG' ? findingIds_pre[findingIdIndex++] : '';
       var auditRecord = {
         RecordID: recordId, AuditID: auditId, AuditDate: auditDate, PeriodMonth: periodMonth,
         LineID: payload.lineId, LineName: lineName, StationID: payload.stationId, StationName: stationName,
@@ -205,11 +213,11 @@ function saveAudit(payload, currentUser) {
         CheckItemSnapshot: record.checkItem || checklist.CheckItem || '',
         StandardCriteriaSnapshot: record.standardCriteria || checklist.StandardCriteria || '',
         ChecklistRevision: record.checklistRevision || checklist.Revision || '', Result: result,
-        FindingDetail: findingDetail, CorrectiveAction: record.correctiveAction || '',
+        FindingDetail: findingDetailSummary, CorrectiveAction: record.correctiveAction || '',
         ResponsiblePerson: result === 'NG' ? responsibleDisplay : cleanString_(record.responsiblePerson || record.picName),
         DueDate: dueDate, Status: initialFindingStatus,
         BeforePhotoURL: record.beforePhotoUrl || '', AfterPhotoURL: record.afterPhotoUrl || '',
-        Remark: record.remark || '', FindingID: findingId, CreatedAt: timestamp, CreatedBy: currentUser.UserID,
+        Remark: record.remark || '', FindingID: '', CreatedAt: timestamp, CreatedBy: currentUser.UserID,
         UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
       };
       auditRecordsBatch.push(auditRecord);
@@ -218,36 +226,42 @@ function saveAudit(payload, currentUser) {
         var severity = cleanString_(record.severity || record.priority || checklist.Severity) || 'Minor';
         var verificationRequired = cleanString_(record.verificationRequired) ||
           (severity.toLowerCase() === 'minor' && cleanString_(payload.auditLayer).toLowerCase() === 'leader' ? 'No' : 'Yes');
-        findingsBatch.push({
-          FindingID: findingId, AuditID: auditId, RecordID: recordId, FoundDate: auditDate,
-          PeriodMonth: periodMonth, LineID: payload.lineId, LineName: lineName,
-          StationID: payload.stationId, StationName: stationName, Area: area,
-          Category: auditRecord.Category,
-          RootCauseCategory: mapCategoryTo5m1e_(auditRecord.Category),
-          ProblemDetail: findingDetail || auditRecord.Remark || auditRecord.CheckItemSnapshot,
-          StandardCriteria: auditRecord.StandardCriteriaSnapshot,
-          CorrectiveAction: auditRecord.CorrectiveAction, RootCause: record.rootCause || '',
-          ActionRemark: cleanString_(record.actionRemark),
-          AssignmentMode: assignmentMode, AssignedRole: assignmentMode === 'ROLE' ? assignedRole : '',
-          AssignedRoleName: assignmentMode === 'ROLE' ? assignedRoleName : '',
-          AssignedUserID: assignmentMode === 'USER' ? assignedUserId : '',
-          AssignedUserName: assignmentMode === 'USER' ? assignedName : '',
-          ResponsibleUserID: assignmentMode === 'USER' ? assignedUserId : '',
-          ResponsiblePerson: responsibleDisplay, Responsible: responsibleDisplay,
-          PICUserID: assignmentMode === 'USER' ? assignedUserId : '', PICName: responsibleDisplay,
-          AuditorUserID: currentUser.UserID, AuditorName: currentUser.FullName, AuditorRole: currentUser.Role,
-          AssignedToUserID: assignmentMode === 'USER' ? assignedUserId : '', AssignedToName: responsibleDisplay,
-          AssignedToRole: assignedRole,
-          VerifierUserID: '', VerifierName: '', VerifierRole: '', Severity: severity,
-          VerificationRequired: verificationRequired, VerificationStatus: 'Not Submitted',
-          SubmittedAt: '', SubmittedBy: '', SubmittedByName: '', ActionBy: '', ActionByName: '',
-          DueDate: dueDate, Status: initialFindingStatus, Priority: record.priority || severity,
-          BeforePhotoURL: auditRecord.BeforePhotoURL, AfterPhotoURL: auditRecord.AfterPhotoURL,
-          ClosedDate: '', ClosedAt: '', ClosedBy: '', ClosedByName: '', CloseRemark: '',
-          RejectedAt: '', RejectedBy: '', RejectedByName: '', RejectReason: '', OverdueFlag: 'No', DaysOverdue: 0,
-          CreatedAt: timestamp, CreatedBy: currentUser.UserID, UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
+        var recordFindingIds = [];
+        problemItems.forEach(function (problemText) {
+          var findingId = findingIds_pre[findingIdIndex++];
+          recordFindingIds.push(findingId);
+          findingsBatch.push({
+            FindingID: findingId, AuditID: auditId, RecordID: recordId, FoundDate: auditDate,
+            PeriodMonth: periodMonth, LineID: payload.lineId, LineName: lineName,
+            StationID: payload.stationId, StationName: stationName, Area: area,
+            Category: auditRecord.Category,
+            RootCauseCategory: mapCategoryTo5m1e_(auditRecord.Category),
+            ProblemDetail: problemText || auditRecord.Remark || auditRecord.CheckItemSnapshot,
+            StandardCriteria: auditRecord.StandardCriteriaSnapshot,
+            CorrectiveAction: '', RootCause: '',
+            ActionRemark: '',
+            AssignmentMode: assignmentMode, AssignedRole: assignmentMode === 'ROLE' ? assignedRole : '',
+            AssignedRoleName: assignmentMode === 'ROLE' ? assignedRoleName : '',
+            AssignedUserID: assignmentMode === 'USER' ? assignedUserId : '',
+            AssignedUserName: assignmentMode === 'USER' ? assignedName : '',
+            ResponsibleUserID: assignmentMode === 'USER' ? assignedUserId : '',
+            ResponsiblePerson: responsibleDisplay, Responsible: responsibleDisplay,
+            PICUserID: assignmentMode === 'USER' ? assignedUserId : '', PICName: responsibleDisplay,
+            AuditorUserID: currentUser.UserID, AuditorName: currentUser.FullName, AuditorRole: currentUser.Role,
+            AssignedToUserID: assignmentMode === 'USER' ? assignedUserId : '', AssignedToName: responsibleDisplay,
+            AssignedToRole: assignedRole,
+            VerifierUserID: '', VerifierName: '', VerifierRole: '', Severity: severity,
+            VerificationRequired: verificationRequired, VerificationStatus: 'Not Submitted',
+            SubmittedAt: '', SubmittedBy: '', SubmittedByName: '', ActionBy: '', ActionByName: '',
+            DueDate: dueDate, Status: initialFindingStatus, Priority: record.priority || severity,
+            BeforePhotoURL: auditRecord.BeforePhotoURL, AfterPhotoURL: auditRecord.AfterPhotoURL,
+            ClosedDate: '', ClosedAt: '', ClosedBy: '', ClosedByName: '', CloseRemark: '',
+            RejectedAt: '', RejectedBy: '', RejectedByName: '', RejectReason: '', OverdueFlag: 'No', DaysOverdue: 0,
+            CreatedAt: timestamp, CreatedBy: currentUser.UserID, UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
+          });
+          findingIds.push(findingId);
         });
-        findingIds.push(findingId);
+        auditRecord.FindingID = recordFindingIds.join(', ');
       }
     });
 
@@ -266,6 +280,15 @@ function saveAudit(payload, currentUser) {
   } finally {
     if (saveLockAcquired) saveLock.releaseLock();
   }
+}
+
+// Reads the auditor's list of distinct problems for one NG checklist item.
+// Accepts the new findingDetails array (one Finding per entry); falls back to
+// the legacy single findingDetail string for any older client still sending it.
+function getFindingDetailItems_(record) {
+  var raw = record.findingDetails;
+  var list = Array.isArray(raw) ? raw : [record.findingDetail];
+  return list.map(function (t) { return cleanString_(t); }).filter(Boolean);
 }
 
 function buildAuditKey_(auditDate, lineId, stationId, auditLayer, shift, auditorId) {

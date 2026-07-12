@@ -1966,7 +1966,8 @@ function renderAuditChecklist() {
     : `<label>มอบหมายให้ตำแหน่ง<select data-field="assignedRole"><option value="">เลือกตำแหน่งรับผิดชอบ</option>${roleOptions}</select></label>`;
   const userFieldHtml = `<div class="form-field full-width hidden" data-field="userCheckboxWrap"><span class="data-label">เลือกผู้รับผิดชอบ (เลือกได้หลายคน)</span><div class="checkbox-group" data-field="userCheckboxGroup"></div></div><label data-field="userPickerLabel" class="hidden">เลือกผู้รับผิดชอบ<select data-field="assignedUserSelect"><option value="">-- เลือกชื่อ --</option></select></label>`;
   const assignmentFields = `${roleFieldHtml}${userFieldHtml}<label>ผู้รับผิดชอบ<input data-field="responsiblePerson" readonly></label><input data-field="assignmentMode" type="hidden" value="ROLE"><input data-field="assignedUserId" type="hidden"><input data-field="assignedUserName" type="hidden"><input data-field="findingStatus" type="hidden" value="Assigned">`;
-  container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>เกณฑ์มาตรฐาน</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>ตัวอย่าง OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>ตัวอย่าง NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="N/A">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid"><label>รายละเอียดปัญหา *<textarea data-field="findingDetail" rows="2"></textarea></label>${assignmentFields}<label>กำหนดวันแก้ไข *<input data-field="dueDate" type="date"></label><label>รูปก่อนแก้ไข *<input data-field="beforePhoto" type="file" accept="image/*" multiple><span class="photo-preview" data-field="beforePhotoPreview"></span></label><label>หมายเหตุ<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
+  const findingDetailFieldHtml = `<div class="form-field full-width finding-detail-field"><span class="data-label">รายละเอียดปัญหา * (แยกเป็นข้อๆ หากมีหลายประเด็นในจุดตรวจนี้ — แต่ละข้อจะกลายเป็นคนละ Finding)</span><div class="finding-detail-list" data-field="findingDetailList"><div class="finding-detail-item"><span class="finding-detail-index">1</span><textarea data-field="findingDetailItem" rows="2" placeholder="อธิบายปัญหาที่พบ"></textarea><button type="button" class="finding-detail-remove" data-remove-finding-detail hidden aria-label="ลบปัญหานี้">×</button></div></div><button type="button" class="btn btn-outline btn-compact finding-detail-add" data-add-finding-detail>+ เพิ่มปัญหา</button></div>`;
+  container.innerHTML = state.checklist.map((item, index) => `<article class="checklist-card" data-checklist-id="${escapeAttr(item.ChecklistID)}"><div class="checklist-head"><p class="eyebrow">ข้อ ${index + 1} · ${escapeHtml(item.Category || 'ทั่วไป')}</p><h3>${escapeHtml(item.CheckItem || '-')}</h3></div><div class="criteria-grid"><div class="criteria-box"><strong>เกณฑ์มาตรฐาน</strong>${escapeHtml(item.StandardCriteria || '-')}</div><div class="criteria-box ok-example"><strong>ตัวอย่าง OK</strong>${escapeHtml(item.ExampleOK || '-')}</div><div class="criteria-box ng-example"><strong>ตัวอย่าง NG</strong>${escapeHtml(item.ExampleNG || '-')}</div></div><div class="result-buttons"><button type="button" class="result-button ok" data-result="OK">OK</button><button type="button" class="result-button ng" data-result="NG">NG</button><button type="button" class="result-button na" data-result="N/A">N/A</button></div><div class="ng-fields hidden"><p class="required-note">กรุณากรอกข้อมูล Finding ให้ครบ</p><div class="form-grid">${findingDetailFieldHtml}${assignmentFields}<label>กำหนดวันแก้ไข *<input data-field="dueDate" type="date"></label><label>รูปก่อนแก้ไข *<input data-field="beforePhoto" type="file" accept="image/*" multiple><span class="photo-preview" data-field="beforePhotoPreview"></span></label><label>หมายเหตุ<textarea data-field="remark" rows="2"></textarea></label></div></div></article>`).join('');
   $$('.checklist-card', container).forEach(card => {
     $$('.result-button', card).forEach(button => button.addEventListener('click', () => selectAuditResult(card, button.dataset.result)));
     $$('input, select, textarea', card).forEach(field => {
@@ -1976,6 +1977,10 @@ function renderAuditChecklist() {
         updateAuditSaveButtonState();
       });
     });
+    $$('.finding-detail-item', card).forEach(item => wireFindingDetailItem(card, item));
+    renumberFindingDetailItems(card);
+    const addDetailBtn = $('[data-add-finding-detail]', card);
+    if (addDetailBtn) addDetailBtn.addEventListener('click', () => { addFindingDetailItem(card); saveAuditDraft(); });
     if (isManager) {
       wireCheckboxChips(card);
       $$('[data-role-checkbox]', card).forEach(cb => cb.addEventListener('change', () => {
@@ -2175,7 +2180,7 @@ function auditNgDetailsComplete() {
     const card = $(`.checklist-card[data-checklist-id="${cssEscape(item.ChecklistID)}"]`);
     // Before Photo is optional — only require core finding fields
     const hasAssignment = getSelectedRoles(card).length > 0 || Boolean(fieldValue(card, 'assignedUserId'));
-    return Boolean(card && fieldValue(card, 'findingDetail') &&
+    return Boolean(card && fieldValues(card, 'findingDetailItem').length &&
       hasAssignment && fieldValue(card, 'dueDate'));
   });
 }
@@ -2214,7 +2219,7 @@ async function saveAudit() {
     const answer = state.auditAnswers[item.ChecklistID];
     const record = { checklistId: item.ChecklistID, category: item.Category, checkItem: item.CheckItem, standardCriteria: item.StandardCriteria, checklistRevision: item.Revision, result: answer.result, remark: fieldValue(card, 'remark') };
     if (answer.result === 'NG') {
-      record.findingDetail = fieldValue(card, 'findingDetail');
+      record.findingDetails = fieldValues(card, 'findingDetailItem');
       record.correctiveAction = '';
       record.assignmentMode = fieldValue(card, 'assignmentMode') || 'ROLE';
       record.assignedUserId = fieldValue(card, 'assignedUserId') || '';
@@ -2239,7 +2244,7 @@ async function saveAudit() {
       record.dueDate = fieldValue(card, 'dueDate');
       record.status = (record.assignedRole || record.assignedUserId) ? 'Assigned' : 'Open';
       record.findingStatus = record.status;
-      if (!record.findingDetail || (!record.assignedRole && !record.assignedUserId) || !record.dueDate) {
+      if (!record.findingDetails.length || (!record.assignedRole && !record.assignedUserId) || !record.dueDate) {
         setAuditSavingState(false);
         return showToast(`กรุณากรอก รายละเอียดปัญหา, ตำแหน่งรับผิดชอบ และ กำหนดวันแก้ไข ของ ${item.ChecklistID} ให้ครบ`, 'warning');
       }
@@ -2504,11 +2509,13 @@ function findingCardHtml(row) {
   const statusCls = overdue ? 'status-overdue' : statusClass(row.Status);
   const sevCls = severityClass(row.Severity || row.Priority);
   const sevLabel = row.Severity || row.Priority || '-';
+  const sibling = findingSiblingInfo(row);
+  const siblingLabel = sibling ? ` · ปัญหาที่ ${sibling.pos}/${sibling.total} จากจุดตรวจนี้` : '';
   return `<article class="finding-card ${sevCls}${overdue ? ' overdue' : ''}">
     <div class="finding-head">
       <div class="finding-head-left">
         <span class="finding-id">${escapeHtml(row.FindingID)}</span>
-        <span class="finding-meta-line">${formatDate(row.FoundDate)} · ${escapeHtml(row.LineName || row.LineID || '-')} / ${escapeHtml(row.StationName || row.StationID || '-')} · ${escapeHtml(row.Category || '-')}</span>
+        <span class="finding-meta-line">${formatDate(row.FoundDate)} · ${escapeHtml(row.LineName || row.LineID || '-')} / ${escapeHtml(row.StationName || row.StationID || '-')} · ${escapeHtml(row.Category || '-')}${escapeHtml(siblingLabel)}</span>
       </div>
       <div class="finding-head-right">
         <span class="severity-chip ${sevCls}">${escapeHtml(sevLabel)}</span>
@@ -2527,11 +2534,33 @@ function findingCardHtml(row) {
   </article>`;
 }
 
+// A checklist item with multiple problems now splits into multiple Findings
+// sharing one RecordID — this tells the responder which one of the set they're
+// looking at, so they don't confuse their answer with a sibling problem's.
+function findingSiblingInfo(row) {
+  if (!row.RecordID) return null;
+  const siblings = state.findings.filter(f => f.RecordID === row.RecordID)
+    .sort((a, b) => String(a.FindingID).localeCompare(String(b.FindingID)));
+  if (siblings.length <= 1) return null;
+  const pos = siblings.findIndex(f => f.FindingID === row.FindingID) + 1;
+  return { pos, total: siblings.length };
+}
+
 function openFindingEditor(findingId) {
   const row = state.findings.find(item => item.FindingID === findingId);
   if (!row) return;
   state.editingFinding = row;
   $('#findingDialogTitle').textContent = `${row.FindingID} · ${row.ProblemDetail || ''}`;
+  const sibling = findingSiblingInfo(row);
+  const siblingNote = $('#findingSiblingNote');
+  if (siblingNote) {
+    if (sibling) {
+      siblingNote.textContent = `📌 ปัญหาที่ ${sibling.pos} จาก ${sibling.total} ข้อ ที่พบในจุดตรวจเดียวกัน — ตอบเฉพาะปัญหานี้`;
+      siblingNote.classList.remove('hidden');
+    } else {
+      siblingNote.classList.add('hidden');
+    }
+  }
   $('#editFindingId').value = row.FindingID;
   renderViewOnlyPhotoGallery('#viewBeforePhoto', row.BeforePhotoURL);
   $('#editRootCause').value = row.RootCause || '';
@@ -4020,6 +4049,59 @@ function setDefaultDates() {
 }
 
 function fileToBase64(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1] || ''); reader.onerror = () => reject(new Error('อ่านไฟล์ไม่สำเร็จ')); reader.readAsDataURL(file); }); }
+
+// Multiple problems in one NG checklist item, each in its own textarea —
+// each non-empty item becomes a separate Finding on the backend (saveAudit),
+// instead of forcing the auditor to number them inside one long box.
+function fieldValues(root, field) { return $$(`[data-field="${field}"]`, root).map(el => el.value.trim()).filter(Boolean); }
+
+function addFindingDetailItem(card, value = '') {
+  const list = $('[data-field="findingDetailList"]', card);
+  if (!list) return;
+  const item = document.createElement('div');
+  item.className = 'finding-detail-item';
+  item.innerHTML = `<span class="finding-detail-index"></span><textarea data-field="findingDetailItem" rows="2" placeholder="อธิบายปัญหาที่พบ"></textarea><button type="button" class="finding-detail-remove" data-remove-finding-detail aria-label="ลบปัญหานี้">×</button>`;
+  list.appendChild(item);
+  $('textarea', item).value = value;
+  wireFindingDetailItem(card, item);
+  renumberFindingDetailItems(card);
+  updateAuditSaveButtonState();
+  return item;
+}
+
+function wireFindingDetailItem(card, item) {
+  const textarea = $('textarea', item);
+  textarea.addEventListener('input', updateAuditSaveButtonState);
+  const removeBtn = $('[data-remove-finding-detail]', item);
+  if (!removeBtn) return;
+  removeBtn.addEventListener('click', () => {
+    item.remove();
+    renumberFindingDetailItems(card);
+    updateAuditSaveButtonState();
+    saveAuditDraft();
+  });
+}
+
+function renumberFindingDetailItems(card) {
+  const items = $$('.finding-detail-item', card);
+  items.forEach((item, i) => {
+    const indexEl = $('.finding-detail-index', item);
+    if (indexEl) indexEl.textContent = String(i + 1);
+    const removeBtn = $('[data-remove-finding-detail]', item);
+    if (removeBtn) removeBtn.hidden = items.length <= 1;
+  });
+}
+
+function clearFindingDetailItems(card) {
+  const list = $('[data-field="findingDetailList"]', card);
+  if (list) list.innerHTML = '';
+}
+
+function setFindingDetailItems(card, items) {
+  clearFindingDetailItems(card);
+  const values = items && items.length ? items : [''];
+  values.forEach(value => addFindingDetailItem(card, value));
+}
 function fieldValue(root, field) { const element = $(`[data-field="${field}"]`, root); return element ? element.value.trim() : ''; }
 
 // --- Audit Draft (localStorage) ---
@@ -4033,7 +4115,7 @@ function saveAuditDraft() {
     const id = card.dataset.checklistId;
     if (state.auditAnswers[id]?.result === 'NG') {
       ngData[id] = {
-        findingDetail: fieldValue(card, 'findingDetail'),
+        findingDetails: fieldValues(card, 'findingDetailItem'),
         correctiveAction: fieldValue(card, 'correctiveAction'),
         assignedRole: getSelectedRoles(card).join(','),
         dueDate: fieldValue(card, 'dueDate'),
@@ -4094,7 +4176,8 @@ async function restoreAuditDraft(draft) {
     if (answer.result === 'NG' && draft.ngData?.[id]) {
       const ng = draft.ngData[id];
       const set = (field, val) => { const el = $(`[data-field="${field}"]`, card); if (el && val) { el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); } };
-      set('findingDetail', ng.findingDetail);
+      if (ng.findingDetails?.length) setFindingDetailItems(card, ng.findingDetails);
+      else if (ng.findingDetail) setFindingDetailItems(card, [ng.findingDetail]); // legacy single-field drafts
       set('correctiveAction', ng.correctiveAction);
       set('assignedRole', ng.assignedRole);
       set('dueDate', ng.dueDate);
