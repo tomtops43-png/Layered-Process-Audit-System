@@ -278,7 +278,7 @@
     <form id="findingForm" method="dialog">
       <div class="modal-head"><div><p class="eyebrow">แก้ไข Finding</p><h3 id="findingDialogTitle">-</h3></div><button type="button" class="icon-button" id="closeFindingDialog">×</button></div>
       <input id="editFindingId" type="hidden">
-      <p id="assignedFindingHelp" class="required-note hidden">กรอก สาเหตุที่แท้จริง, แนวทางแก้ไข และแนบรูปหลังแก้ไขให้ครบ จากนั้นกดส่งให้ตรวจยืนยัน</p>
+      <p id="assignedFindingHelp" class="required-note hidden">กรอก สาเหตุที่แท้จริง, แนวทางแก้ไข และแนบรูปหลังแก้ไขให้ครบ จากนั้นกดส่งให้ตรวจยืนยัน (หากต้องการแค่บันทึกข้อมูล/แก้ไขรูปโดยยังไม่ส่งตรวจ ให้กด "บันทึกการแก้ไข" แทน)</p>
       <p id="verifierFindingHelp" class="required-note hidden">ตรวจสอบ สาเหตุที่แท้จริง, แนวทางแก้ไข และรูปหลังแก้ไข หากถูกต้องให้ปิด Finding หากไม่ถูกต้องให้ใส่เหตุผลแล้วกด Reject</p>
       <div class="form-grid">
         <label>สาเหตุที่แท้จริง (Root Cause)<textarea id="editRootCause" rows="3"></textarea></label>
@@ -308,7 +308,7 @@
       </div>
       <div id="editBeforePhotoPreview" class="photo-link"></div>
       <div id="editPhotoPreview" class="photo-link"></div>
-      <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelFindingEdit">ยกเลิก</button><button type="button" class="btn btn-outline hidden" id="rejectFindingButton">Reject Finding</button><button type="button" class="btn btn-secondary hidden" id="approveFindingButton">Close Finding</button><button type="button" class="btn btn-primary hidden" id="submitVerificationButton">ส่งให้ตรวจยืนยัน</button></div>
+      <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelFindingEdit">ยกเลิก</button><button type="button" class="btn btn-outline hidden" id="rejectFindingButton">Reject Finding</button><button type="button" class="btn btn-secondary hidden" id="approveFindingButton">Close Finding</button><button type="button" class="btn btn-outline hidden" id="saveFindingButton" title="บันทึกข้อมูล/รูปภาพโดยไม่เปลี่ยนสถานะ Finding">บันทึกการแก้ไข</button><button type="button" class="btn btn-primary hidden" id="submitVerificationButton">ส่งให้ตรวจยืนยัน</button></div>
     </form>
   </dialog>
 

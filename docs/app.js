@@ -193,6 +193,7 @@ function bindEvents() {
   $('#submitVerificationButton').addEventListener('click', submitFindingForVerification);
   $('#approveFindingButton').addEventListener('click', () => verifyFinding('Approve'));
   $('#rejectFindingButton').addEventListener('click', () => verifyFinding('Reject'));
+  $('#saveFindingButton').addEventListener('click', saveFindingEdits);
   document.addEventListener('click', event => {
     const trigger = event.target.closest('[data-photo-url]');
     if (!trigger || event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -2531,6 +2532,7 @@ function openFindingEditor(findingId) {
   $('#approveFindingButton').classList.toggle('hidden', isLeaderOrUser || !canVerify || !hasPermission(closePermission));
   $('#rejectFindingButton').classList.toggle('hidden', isLeaderOrUser || !canVerify);
   $('#submitVerificationButton').classList.toggle('hidden', !canSubmit);
+  $('#saveFindingButton').classList.toggle('hidden', !canEditFollowUp);
   $('#editRootCause').disabled = !canEditFollowUp;
   $('#editCorrectiveAction').disabled = !canEditFollowUp;
   $('#editActionRemark').disabled = !canEditFollowUp;
@@ -2728,6 +2730,25 @@ function findingKeptExistingBeforePhotos() {
   const removed = state.findingBeforePhotoRemovals ? Array.from(state.findingBeforePhotoRemovals) : [];
   return String(state.editingFinding?.BeforePhotoURL || '').split(',').map(u => u.trim()).filter(Boolean)
     .filter(u => !removed.includes(u));
+}
+
+// Lightweight save — persists field/photo edits (e.g. a Before Photo attached
+// retroactively) via updateFinding without submitting for verification or
+// touching Status. Separate from submitFindingForVerification on purpose: that
+// one is "respond to this Finding" and requires Root Cause/Corrective Action/
+// After Photo; this one is just "save what I changed."
+async function saveFindingEdits() {
+  const findingId = $('#editFindingId').value;
+  await runFindingWorkflow('updateFinding', {
+    findingId,
+    rootCause: $('#editRootCause').value.trim(),
+    correctiveAction: $('#editCorrectiveAction').value.trim(),
+    rootCauseCategory: ($('#editRootCauseCategoryVal') || {}).value || '',
+    actionRemark: $('#editActionRemark').value.trim()
+  }, {
+    loadingMessage: 'กำลังบันทึกการแก้ไข...',
+    successMessage: 'บันทึกการแก้ไข Finding สำเร็จ'
+  });
 }
 
 async function submitFindingForVerification() {
