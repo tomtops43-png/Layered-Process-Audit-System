@@ -139,13 +139,32 @@ label{display:flex;flex-direction:column;gap:7px;font-size:.88rem;font-weight:70
 .plan-alert .btn-sm{padding:6px 14px;font-size:.85rem;min-height:auto;white-space:nowrap}
 .save-bar{position:sticky;z-index:20;bottom:15px;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 18px;background:rgba(255,255,255,.96);border:1px solid var(--border);border-radius:13px;box-shadow:0 12px 35px rgba(11,41,72,.18);backdrop-filter:blur(8px)}
 .save-bar small{display:block;color:var(--muted);margin-top:3px}
-.finding-card{background:#fff;border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
-.finding-card.overdue{border-left:6px solid var(--red-dark)}
-.finding-summary{display:grid;grid-template-columns:1.2fr repeat(4,1fr) auto;gap:14px;align-items:center;padding:17px}
-.finding-id{font-weight:900;color:var(--navy)}
+.finding-card{background:#fff;border:1px solid var(--border);border-left:5px solid var(--gray-bg);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;transition:box-shadow .15s ease}
+.finding-card:hover{box-shadow:0 12px 32px rgba(18,60,105,.14)}
+.finding-card.sev-minor{border-left-color:var(--gray)}
+.finding-card.sev-medium{border-left-color:var(--orange)}
+.finding-card.sev-high{border-left-color:var(--red)}
+.finding-card.sev-critical{border-left-color:var(--red-dark)}
+.finding-card.overdue{border-left-color:var(--red-dark)}
+.finding-head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:12px;padding:20px 22px 0}
+.finding-head-left{display:flex;flex-direction:column;gap:5px;min-width:0}
+.finding-head-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.finding-id{font-size:1.05rem;font-weight:900;color:var(--navy);letter-spacing:.01em}
+.finding-meta-line{font-size:.82rem;color:var(--muted)}
 .data-label{display:block;color:var(--muted);font-size:.72rem;margin-bottom:4px}
-.finding-detail{padding:15px 17px;background:#f8fafb;border-top:1px solid var(--border);display:grid;grid-template-columns:1.5fr 1fr 1fr;gap:16px;font-size:.88rem}
-.finding-actions{display:flex;gap:9px;justify-content:flex-end;padding:12px 17px;border-top:1px solid var(--border)}
+.severity-chip{display:inline-flex;align-items:center;border-radius:99px;padding:6px 13px;font-size:.72rem;font-weight:800;white-space:nowrap;background:var(--gray-bg);color:var(--gray)}
+.severity-chip.sev-medium{background:var(--orange-bg);color:var(--orange)}
+.severity-chip.sev-high{background:var(--red-bg);color:var(--red)}
+.severity-chip.sev-critical{background:var(--red-dark);color:#fff}
+.finding-problem{padding:14px 22px 4px;font-size:1.08rem;font-weight:700;color:var(--text);line-height:1.55}
+.finding-meta-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:16px 22px;font-size:.86rem}
+.finding-corrective{padding:0 22px 16px;font-size:.9rem;line-height:1.55;border-top:1px solid var(--border);margin-top:2px;padding-top:14px}
+.finding-photos{display:flex;flex-wrap:wrap;gap:10px;padding:0 22px 18px}
+.finding-photo-thumb{display:flex;flex-direction:column;align-items:center;gap:5px;width:118px;text-decoration:none;cursor:pointer}
+.finding-photo-thumb img{width:118px;height:86px;object-fit:cover;border-radius:9px;border:1px solid var(--border);background:var(--gray-bg);transition:transform .15s ease}
+.finding-photo-thumb:hover img{transform:scale(1.03)}
+.finding-photo-thumb span{font-size:.72rem;font-weight:700;color:var(--muted)}
+.finding-actions{display:flex;gap:9px;justify-content:flex-end;padding:14px 22px;border-top:1px solid var(--border);background:#f8fafb}
 .status-badge{display:inline-flex;align-items:center;justify-content:center;border-radius:99px;padding:6px 10px;font-size:.75rem;font-weight:900;white-space:nowrap}
 .status-open,.status-ng{background:var(--red-bg);color:var(--red)}
 .status-on-going{background:var(--orange-bg);color:var(--orange)}
@@ -233,8 +252,7 @@ label{display:flex;flex-direction:column;gap:7px;font-size:.88rem;font-weight:70
 .audit-meta-grid{grid-template-columns:repeat(2,1fr)}
 .filter-grid{grid-template-columns:repeat(3,1fr)}
 .report-metrics{grid-template-columns:repeat(3,1fr)}
-.finding-summary{grid-template-columns:1.2fr repeat(2,1fr) auto}
-.finding-summary>div:nth-child(4),.finding-summary>div:nth-child(5){display:none}
+.finding-meta-grid{grid-template-columns:repeat(2,1fr)}
 }
 @media(max-width:780px){:root{--topbar:58px}
 .mobile-only{display:inline-grid;place-items:center}
@@ -254,9 +272,8 @@ label{display:flex;flex-direction:column;gap:7px;font-size:.88rem;font-weight:70
 .criteria-grid{grid-template-columns:1fr}
 .result-buttons{position:sticky;bottom:68px;background:#fff;padding-top:12px;border-top:1px solid var(--border)}
 .save-bar{bottom:75px;flex-direction:column;align-items:stretch}
-.finding-summary{grid-template-columns:1fr 1fr auto}
-.finding-summary>div:nth-child(n+4){display:none}
-.finding-detail{grid-template-columns:1fr}
+.finding-head{flex-direction:column}
+.finding-meta-grid{grid-template-columns:1fr}
 .near-due-item{grid-template-columns:1fr 1fr}
 .near-due-item>*:nth-child(3){display:none}
 .report-metrics{grid-template-columns:repeat(2,1fr)}
@@ -274,8 +291,6 @@ label{display:flex;flex-direction:column;gap:7px;font-size:.88rem;font-weight:70
 .metric-value{font-size:1.55rem}
 .filter-grid,.audit-meta-grid,.form-grid,.ng-fields .form-grid{grid-template-columns:1fr}
 .result-buttons{gap:6px}
-.finding-summary{grid-template-columns:1fr auto}
-.finding-summary>div:nth-child(n+3){display:none}
 .report-toolbar>*{width:100%}
 .report-toolbar label{min-width:0}
 .report-metrics{grid-template-columns:1fr 1fr}
@@ -347,10 +362,12 @@ textarea{line-height:1.45}
   .bar-chart{overflow-x:auto;max-width:100%;padding-bottom:8px}
   .bar-group{min-width:48px}
   .finding-card{border-radius:13px}
-  .finding-summary{grid-template-columns:1fr!important;gap:9px;padding:14px}
-  .finding-summary>div{display:block!important}
-  .finding-detail{padding:14px;line-height:1.45}
-  .finding-actions{padding:12px 14px}
+  .finding-head{flex-direction:column;padding:16px 16px 0}
+  .finding-problem{padding:12px 16px 4px;font-size:1rem}
+  .finding-meta-grid{grid-template-columns:1fr;gap:10px;padding:14px 16px}
+  .finding-corrective{padding:14px 16px}
+  .finding-photos{padding:0 16px 16px}
+  .finding-actions{padding:12px 16px}
   .photo-link a{display:inline-flex;align-items:center;min-height:36px;margin:2px 8px 2px 0}
   .table-wrap{overflow-x:auto;border-radius:12px;-webkit-overflow-scrolling:touch}
   .data-table{font-size:.86rem;min-width:720px}

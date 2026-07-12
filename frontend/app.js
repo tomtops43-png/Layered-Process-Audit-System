@@ -2454,13 +2454,53 @@ async function loadMoreFindings(button) {
 function renderFindings() {
   const container = $('#findingsList');
   if (!state.findings.length) return container.innerHTML = emptyHtml('ไม่พบ Finding ตามเงื่อนไข');
-  container.innerHTML = state.findings.map(row => `<article class="finding-card ${String(row.OverdueFlag).toLowerCase() === 'yes' ? 'overdue' : ''}"><div class="finding-summary"><div><span class="finding-id">${escapeHtml(row.FindingID)}</span><span class="data-label">${formatDate(row.FoundDate)} · ${escapeHtml(row.Category || '-')} · ${escapeHtml(row.Severity || row.Priority || '-')}</span></div><div><span class="data-label">Line</span>${escapeHtml(row.LineName || row.LineID || '-')}</div><div><span class="data-label">Station</span>${escapeHtml(row.StationName || row.StationID || '-')}</div><div><span class="data-label">เปิดโดย</span>${escapeHtml(row.AuditorName || row.CreatedByName || '-')}<span class="table-subtext">${escapeHtml(row.AuditorRole || '')}</span></div><div><span class="data-label">รับผิดชอบโดย</span>${escapeHtml(formatFindingAssignment(row))}<span class="table-subtext">${escapeHtml(formatFindingAssignmentMode(row))}</span></div><div><span class="data-label">Due Date</span>${formatDate(row.DueDate)}</div><div><span class="status-badge ${String(row.OverdueFlag).toLowerCase() === 'yes' ? 'status-overdue' : statusClass(row.Status)}">${String(row.OverdueFlag).toLowerCase() === 'yes' ? `Overdue ${number(row.DaysOverdue)}d` : escapeHtml(row.Status || '-')}</span></div></div><div class="finding-detail"><div><span class="data-label">Problem Detail</span>${escapeHtml(row.ProblemDetail || '-')}</div><div><span class="data-label">Corrective Action</span>${escapeHtml(row.CorrectiveAction || '-')}</div><div class="photo-link"><span class="data-label">Photo</span>${photoLinks(row)}</div></div><div class="finding-actions"><button class="btn btn-outline" data-edit-finding="${escapeAttr(row.FindingID)}">เปิด Finding</button></div></article>`).join('');
+  container.innerHTML = state.findings.map(findingCardHtml).join('');
   const hasMore = number(state.findingsTotal) > state.findings.length;
   if (hasMore) {
     container.innerHTML += `<div style="text-align:center;padding:12px"><button class="btn btn-outline" id="loadMoreFindingsBtn">โหลดเพิ่ม (แสดง ${state.findings.length} จาก ${number(state.findingsTotal)})</button></div>`;
     $('#loadMoreFindingsBtn').addEventListener('click', event => loadMoreFindings(event.target));
   }
   $$('[data-edit-finding]', container).forEach(button => button.addEventListener('click', () => openFindingEditor(button.dataset.editFinding)));
+}
+
+// Card layout tuned for readability at a distance — this list doubles as the
+// slide shown on-screen during the Leader's morning meeting, so the problem
+// text and status are the visual headline, everything else is secondary.
+function severityClass(severity) {
+  const value = String(severity || '').toLowerCase();
+  if (value === 'critical') return 'sev-critical';
+  if (value === 'major' || value === 'high') return 'sev-high';
+  if (value === 'medium') return 'sev-medium';
+  return 'sev-minor';
+}
+
+function findingCardHtml(row) {
+  const overdue = String(row.OverdueFlag).toLowerCase() === 'yes';
+  const statusLabel = overdue ? `เกิน Due ${number(row.DaysOverdue)} วัน` : (row.Status || '-');
+  const statusCls = overdue ? 'status-overdue' : statusClass(row.Status);
+  const sevCls = severityClass(row.Severity || row.Priority);
+  const sevLabel = row.Severity || row.Priority || '-';
+  return `<article class="finding-card ${sevCls}${overdue ? ' overdue' : ''}">
+    <div class="finding-head">
+      <div class="finding-head-left">
+        <span class="finding-id">${escapeHtml(row.FindingID)}</span>
+        <span class="finding-meta-line">${formatDate(row.FoundDate)} · ${escapeHtml(row.LineName || row.LineID || '-')} / ${escapeHtml(row.StationName || row.StationID || '-')} · ${escapeHtml(row.Category || '-')}</span>
+      </div>
+      <div class="finding-head-right">
+        <span class="severity-chip ${sevCls}">${escapeHtml(sevLabel)}</span>
+        <span class="status-badge ${statusCls}">${escapeHtml(statusLabel)}</span>
+      </div>
+    </div>
+    <div class="finding-problem">${escapeHtml(row.ProblemDetail || '-')}</div>
+    <div class="finding-meta-grid">
+      <div><span class="data-label">เปิดโดย</span>${escapeHtml(row.AuditorName || row.CreatedByName || '-')}<span class="table-subtext">${escapeHtml(row.AuditorRole || '')}</span></div>
+      <div><span class="data-label">รับผิดชอบโดย</span>${escapeHtml(formatFindingAssignment(row))}<span class="table-subtext">${escapeHtml(formatFindingAssignmentMode(row))}</span></div>
+      <div><span class="data-label">Due Date</span>${formatDate(row.DueDate)}</div>
+    </div>
+    ${row.CorrectiveAction ? `<div class="finding-corrective"><span class="data-label">แนวทางแก้ไข</span>${escapeHtml(row.CorrectiveAction)}</div>` : ''}
+    ${findingPhotoGallery(row)}
+    <div class="finding-actions"><button class="btn btn-outline" data-edit-finding="${escapeAttr(row.FindingID)}">เปิด Finding</button></div>
+  </article>`;
 }
 
 function openFindingEditor(findingId) {
@@ -3820,21 +3860,19 @@ function tableHtml(headers, rows, extraClass = '') {
   return `<table class="data-table${extraClass ? ' ' + extraClass : ''}"><thead><tr>${headers.map(header => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${escapeHtml(String(cell ?? '-'))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
 
-function photoLinks(row) {
-  const links = [];
-  if (row.BeforePhotoURL) {
-    row.BeforePhotoURL.split(',').map(u => u.trim()).filter(Boolean).forEach((u, i, arr) => {
-      const label = arr.length > 1 ? `Before ${i + 1}` : 'Before';
-      links.push(`<a href="${escapeAttr(u)}" data-photo-url="${escapeAttr(u)}" class="photo-link-trigger" rel="noopener">${label}</a>`);
+// Inline thumbnails (not bare "Before/After" text links) so a Finding's evidence
+// is visible at a glance in the list — the point when this is projected in a meeting.
+function findingPhotoGallery(row) {
+  const items = [];
+  const addPhotos = (urlCsv, label) => {
+    String(urlCsv || '').split(',').map(u => u.trim()).filter(Boolean).forEach((u, i, arr) => {
+      const caption = arr.length > 1 ? `${label} ${i + 1}` : label;
+      items.push(`<a href="${escapeAttr(u)}" data-photo-url="${escapeAttr(u)}" class="finding-photo-thumb photo-link-trigger" rel="noopener"><img src="${escapeAttr(driveThumbnailUrl_(u, 300))}" alt="${escapeAttr(caption)}" loading="lazy"><span>${escapeHtml(caption)}</span></a>`);
     });
-  }
-  if (row.AfterPhotoURL) {
-    row.AfterPhotoURL.split(',').map(u => u.trim()).filter(Boolean).forEach((u, i, arr) => {
-      const label = arr.length > 1 ? `After ${i + 1}` : 'After';
-      links.push(`<a href="${escapeAttr(u)}" data-photo-url="${escapeAttr(u)}" class="photo-link-trigger" rel="noopener">${label}</a>`);
-    });
-  }
-  return links.length ? links.join(' · ') : '-';
+  };
+  addPhotos(row.BeforePhotoURL, 'Before');
+  addPhotos(row.AfterPhotoURL, 'After');
+  return items.length ? `<div class="finding-photos">${items.join('')}</div>` : '';
 }
 
 // Opens Before/After photo links inline instead of letting them navigate to
