@@ -630,6 +630,7 @@ async function changeProdPlan() {
 }
 
 async function loadLeaderDashboard() {
+  loadFindingShiftDigest('ldShiftDigest', 'ldShiftDigestPic');
   const today = localDateInput(new Date());
   const role = state.user.Role;
   const rolesToFetch = role === 'Supervisor' ? ['Supervisor', 'Leader'] : ['Leader'];
@@ -891,8 +892,8 @@ function shiftFindingRowHtml(f) {
   </div>`;
 }
 
-function renderMgrShiftDigest(digest) {
-  const el = $('#mgrShiftDigest');
+function renderMgrShiftDigest(digest, containerId = 'mgrShiftDigest') {
+  const el = $(`#${containerId}`);
   if (!el) return;
   if (!digest) { el.innerHTML = emptyHtml('ไม่มีข้อมูล'); return; }
   const sections = [
@@ -919,27 +920,27 @@ function renderMgrShiftDigest(digest) {
   }).join('');
 }
 
-function populateShiftDigestPicFilter() {
-  const select = $('#mgrShiftDigestPic');
+function populateShiftDigestPicFilter(selectId = 'mgrShiftDigestPic') {
+  const select = $(`#${selectId}`);
   if (!select) return;
   const picUsers = (state.masterData.users || [])
     .filter(u => (!u.ActiveStatus || String(u.ActiveStatus).toLowerCase() === 'active') && u.Role && !EXCLUDED_ASSIGNABLE_ROLES.has(u.Role))
     .slice()
     .sort((a, b) => String(a.FullName || '').localeCompare(String(b.FullName || ''), 'th'))
     .map(u => ({ UserID: u.UserID, PicLabel: `${u.FullName || u.Username} (${u.Role})` }));
-  populateSelect('#mgrShiftDigestPic', picUsers, 'UserID', 'PicLabel', 'ผู้รับผิดชอบ: ทั้งหมด');
+  populateSelect(`#${selectId}`, picUsers, 'UserID', 'PicLabel', 'ผู้รับผิดชอบ: ทั้งหมด');
 }
 
-async function loadFindingShiftDigest() {
-  const el = $('#mgrShiftDigest');
+async function loadFindingShiftDigest(containerId = 'mgrShiftDigest', selectId = 'mgrShiftDigestPic') {
+  const el = $(`#${containerId}`);
   if (!el) return;
   el.innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   try {
     if (!(state.masterData.users || []).length) await ensureMasterDataLoaded(false);
-    populateShiftDigestPicFilter();
-    const picUserId = $('#mgrShiftDigestPic')?.value || '';
+    populateShiftDigestPicFilter(selectId);
+    const picUserId = $(`#${selectId}`)?.value || '';
     const digest = await apiCall('getFindingShiftDigest', picUserId ? { picUserId } : {});
-    renderMgrShiftDigest(digest);
+    renderMgrShiftDigest(digest, containerId);
   } catch (error) {
     el.innerHTML = emptyHtml(error.message || 'โหลด Finding ไม่สำเร็จ');
   }
@@ -1016,10 +1017,26 @@ function startAuditFromDashboard(lineId, stationId, role) {
   });
 }
 
-function openFindingForEdit(findingId) {
-  navigateTo('findings').then(() => {
-    setTimeout(() => openFindingEditor(findingId), 800);
+// navigateTo('findings') kicks off loadFindings() without awaiting it (intentionally,
+// so master data and the finding list load in parallel) — on a cold first load that
+// call can take longer than any fixed delay, so poll for the row instead of guessing.
+function waitForFindingLoaded(findingId, timeoutMs = 6000) {
+  return new Promise(resolve => {
+    const start = Date.now();
+    const check = () => {
+      if (state.findings.some(f => f.FindingID === findingId)) return resolve(true);
+      if (Date.now() - start >= timeoutMs) return resolve(false);
+      setTimeout(check, 150);
+    };
+    check();
   });
+}
+
+async function openFindingForEdit(findingId) {
+  await navigateTo('findings');
+  const found = await waitForFindingLoaded(findingId);
+  if (found) { openFindingEditor(findingId); return; }
+  showToast('โหลดข้อมูล Finding ยังไม่เสร็จ กรุณากดใหม่อีกครั้ง', 'warning');
 }
 
 // ===== Director Dashboard =====
