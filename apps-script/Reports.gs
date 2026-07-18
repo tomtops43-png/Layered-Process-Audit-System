@@ -61,6 +61,9 @@ function getMonthlyReport(payload, currentUser) {
     return jsonResponse(true, 'Monthly report loaded.', {
       Period: period, TotalAudit: audits.length, TotalOK: totalOk, TotalNG: totalNg, TotalNA: totalNa,
       NGRate: checked ? Number((totalNg * 100 / checked).toFixed(2)) : 0,
+      // TotalFinding can exceed TotalNG — one NG checklist point can split into several
+      // Findings (multi-problem entries), so this is "items tracked", not "points failed".
+      TotalFinding: findings.length,
       OpenFinding: findings.filter(function (row) { return !isClosedStatus_(row.Status); }).length,
       ClosedFinding: findings.filter(function (row) { return isClosedStatus_(row.Status); }).length,
       OverdueAction: findings.filter(function (row) { return valuesEqual_(row.OverdueFlag, 'Yes'); }).length,
