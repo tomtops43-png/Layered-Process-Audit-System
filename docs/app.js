@@ -1153,6 +1153,11 @@ function renderDirKPIs(data) {
     return `<div class="dir-mini-bar-wrap"><div class="dir-mini-bar" style="height:${barH}px;background:${color}" title="${role}: ${pct}%"></div><div class="dir-mini-bar-label">${role.slice(0,3)}</div></div>`;
   }).join('');
 
+  const overdue = data.overdueSummary || { total: 0, bySeverity: [] };
+  const overdueCls = overdue.total > 0 ? 'red' : 'green';
+  const overdueChips = (overdue.bySeverity || []).map(s =>
+    `<span class="severity-chip ${severityClass(s.severity)}">${escapeHtml(s.severity)}: ${s.count}</span>`).join('');
+
   $('#dirKPIs').innerHTML = `
     <div class="dir-kpi-card">
       <div class="dir-kpi-label">Overall Compliance</div>
@@ -1172,6 +1177,12 @@ function renderDirKPIs(data) {
       <div class="dir-kpi-value">${compliance}%</div>
       <div class="dir-mini-bars">${miniBars}</div>
       <div class="dir-target-note">Leader / Supervisor / Manager</div>
+    </div>
+    <div class="dir-kpi-card">
+      <div class="dir-kpi-label">Overdue Finding</div>
+      <div class="dir-kpi-value ${overdueCls}">${overdue.total}</div>
+      <div class="dir-target-note">${overdue.total > 0 ? '⚠️ ต้องเร่งติดตาม' : '✅ ไม่มีค้างเกิน Due'}</div>
+      <div class="dir-overdue-chips">${overdueChips}</div>
     </div>`;
 }
 

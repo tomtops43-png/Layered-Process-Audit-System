@@ -75,9 +75,25 @@ function getDirectorDashboardData(payload, currentUser) {
 
     var rangeStart = currMonths[0].month;
     var prevStart = prevMonths.length ? prevMonths[0].month : '';
-    var allFindingRows = getCachedFindingRows_();
+    var allFindingRows = getCachedFindingRows_().map(refreshOverdueForRead_);
     var currFindings = allFindingRows.filter(function(f) { var fm=normalizeFindingPeriod_(f.PeriodMonth||f.FoundDate); return fm>=rangeStart; });
     var prevFindingRows = prevStart ? allFindingRows.filter(function(f) { var fm=normalizeFindingPeriod_(f.PeriodMonth||f.FoundDate); return fm>=prevStart&&fm<rangeStart; }) : [];
+
+    // Overdue snapshot is "right now", not scoped to the selected month range —
+    // an overdue Finding from 3 months ago is still overdue today.
+    var overdueRows = allFindingRows.filter(function(f) { return valuesEqual_(f.OverdueFlag, 'Yes') && !isClosedStatus_(f.Status); });
+    var overdueBySeverityMap = {};
+    overdueRows.forEach(function(f) {
+      var sev = cleanString_(f.Severity || f.Priority) || 'Minor';
+      overdueBySeverityMap[sev] = (overdueBySeverityMap[sev] || 0) + 1;
+    });
+    var severityOrder = { critical: 1, major: 2, high: 2, medium: 3, minor: 4 };
+    var overdueSummary = {
+      total: overdueRows.length,
+      bySeverity: Object.keys(overdueBySeverityMap).sort(function(a, b) {
+        return (severityOrder[a.toLowerCase()] || 99) - (severityOrder[b.toLowerCase()] || 99) || a.localeCompare(b);
+      }).map(function(sev) { return { severity: sev, count: overdueBySeverityMap[sev] }; })
+    };
 
     function resolutionRate(findings) {
       var closed = findings.filter(function(f){ return isClosedStatus_(f.Status) && cleanString_(f.DueDate); });
@@ -125,6 +141,7 @@ function getDirectorDashboardData(payload, currentUser) {
     var dirResult = {
       monthlyCompliance:monthlyCompliance, sparklineData:sparklineData,
       chronicFindings:chronicFindings, layerSummary:layerSummary, lines:lines,
+      overdueSummary:overdueSummary,
       overallKPIs:{
         compliance:curr.compliance, prevCompliance:prev.compliance,
         resolutionRate:resolutionRate(currFindings), prevResolutionRate:resolutionRate(prevFindingRows),

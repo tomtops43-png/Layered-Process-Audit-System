@@ -531,7 +531,8 @@ textarea{line-height:1.45}
 .dir-period-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:7px;padding:6px 13px;font-size:.78rem;font-weight:800;cursor:pointer;transition:.15s}
 .dir-period-btn.active{background:#fff;color:#0b2948}
 .dir-ts{font-size:.72rem;opacity:.65;white-space:nowrap}
-.dir-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px}
+.dir-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px}
+.dir-overdue-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .dir-kpi-card{background:#fff;border-radius:var(--radius);border:1px solid var(--border);box-shadow:var(--shadow);padding:20px;position:relative;overflow:hidden}
 .dir-kpi-label{font-size:.75rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
 .dir-kpi-value{font-size:2.4rem;font-weight:900;line-height:1;margin-bottom:4px}
