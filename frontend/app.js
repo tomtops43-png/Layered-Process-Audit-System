@@ -63,6 +63,7 @@ const state = {
   meetingCarryOver: [],
   meetingCanCreate: false,
   meetingCanManage: false,
+  meetingTvIndex: 0,
   editingMeetingPost: null,
   adminUsers: [],
   adminMasterLists: [],
@@ -184,6 +185,16 @@ function bindEvents() {
     if (rule) openAuditRuleEditor(rule);
   });
   $('#addMeetingPostButton').addEventListener('click', () => openMeetingEditor());
+  $('#meetingTvButton').addEventListener('click', openMeetingTv);
+  document.addEventListener('keydown', event => {
+    if ($('#meetingTv').classList.contains('hidden') || document.querySelector('dialog[open]')) return;
+    if (['ArrowRight', ' ', 'PageDown', 'Enter'].includes(event.key)) { event.preventDefault(); meetingTvStep(1); }
+    else if (['ArrowLeft', 'PageUp'].includes(event.key)) { event.preventDefault(); meetingTvStep(-1); }
+    else if (event.key === 'Escape') closeMeetingTv();
+  });
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement && !$('#meetingTv').classList.contains('hidden')) closeMeetingTv();
+  });
   $('#loadMeetingPostsButton').addEventListener('click', () => loadMeetingBoard());
   $('#meetingDate').addEventListener('change', () => loadMeetingBoard());
   $('#meetingForm').addEventListener('submit', event => { event.preventDefault(); saveMeetingPostFromForm(); });
@@ -299,12 +310,12 @@ async function apiCall(action, payload = {}) {
     if (!response.ok) throw new Error(`เซิร์ฟเวอร์ตอบกลับ HTTP ${response.status}`);
     const result = await response.json();
     if (!result.success) {
-      const message = result.message || 'ไม่สามารถดำเนินการได้';
-      if (isTokenError(message) && action !== 'login') {
+      const rawMessage = result.message || 'ไม่สามารถดำเนินการได้';
+      if (isTokenError(rawMessage) && action !== 'login') {
         logout(false);
         showToast('Session หมดอายุ กรุณาเข้าสู่ระบบใหม่', 'warning');
       }
-      throw new Error(message);
+      throw new Error(translateApiMessage(rawMessage));
     }
     return result.data || {};
   });
@@ -2665,7 +2676,7 @@ async function deleteMeetingPostAction() {
   }
 }
 
-async function setMeetingPostStatus(button, postId, status) {
+async function setMeetingPostStatus(button, postId, status, fromTv = false) {
   if (button) button.disabled = true;
   try {
     const data = await apiCall('updateMeetingPostStatus', { postId, status });
@@ -2674,10 +2685,115 @@ async function setMeetingPostStatus(button, postId, status) {
       state[key] = state[key].map(p => p.PostID === postId ? { ...p, ...updated } : p);
     });
     renderMeetingBoard();
+    if (fromTv && ['Discussed', 'Closed'].includes(status)) meetingTvStep(1);
+    else if (!$('#meetingTv').classList.contains('hidden')) renderMeetingTv();
   } catch (error) {
     if (button) button.disabled = false;
     showToast(error.message, 'error');
   }
+}
+
+// ===== TV / presentation mode =====
+// Full-screen slide deck for projecting the board during the pre-shift meeting:
+// slide 0 is the agenda, then one big-type slide per topic (carry-overs last).
+function meetingTvDeck() {
+  return state.meetingPosts.map(row => ({ row, carry: false }))
+    .concat(state.meetingCarryOver.map(row => ({ row, carry: true })));
+}
+
+function openMeetingTv() {
+  if (!meetingTvDeck().length) return showToast('ยังไม่มีหัวข้อบนบอร์ดสำหรับนำเสนอ', 'warning');
+  state.meetingTvIndex = 0;
+  $('#meetingTv').classList.remove('hidden');
+  document.body.classList.add('mtg-tv-open');
+  renderMeetingTv();
+  if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+}
+
+function closeMeetingTv() {
+  $('#meetingTv').classList.add('hidden');
+  document.body.classList.remove('mtg-tv-open');
+  if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+}
+
+function meetingTvStep(delta) {
+  const total = meetingTvDeck().length;
+  state.meetingTvIndex = Math.max(0, Math.min(state.meetingTvIndex + delta, total));
+  renderMeetingTv();
+}
+
+function meetingTvStatusDone(row) {
+  return ['discussed', 'closed'].includes(String(row.Status || '').toLowerCase());
+}
+
+function renderMeetingTv() {
+  const container = $('#meetingTv');
+  const deck = meetingTvDeck();
+  const total = deck.length;
+  const index = Math.max(0, Math.min(state.meetingTvIndex, total));
+  state.meetingTvIndex = index;
+  const discussed = deck.filter(item => meetingTvStatusDone(item.row)).length;
+  const dateLabel = formatDate($('#meetingDate').value || localDateInput(new Date()));
+  let body = '';
+  if (index === 0) {
+    body = `<div class="mtg-tv-agenda">
+      <p class="mtg-tv-eyebrow">MORNING MEETING · ${escapeHtml(dateLabel)}</p>
+      <h1 class="mtg-tv-title">หัวข้อประชุมวันนี้</h1>
+      <ol class="mtg-tv-list">${deck.map((item, i) => {
+        const done = meetingTvStatusDone(item.row);
+        const cat = meetingCategoryMeta(item.row.Category);
+        return `<li><button class="mtg-tv-item${done ? ' done' : ''}" data-tv-goto="${i + 1}">
+          <span class="mtg-tv-item-icon">${done ? '✅' : cat.icon}</span>
+          <span class="mtg-tv-item-text">${escapeHtml(item.row.Topic || '-')}</span>
+          ${item.carry ? '<span class="mtg-tv-item-carry">⏳ ค้าง</span>' : ''}
+        </button></li>`;
+      }).join('')}</ol>
+    </div>`;
+  } else {
+    const { row, carry } = deck[index - 1];
+    const st = String(row.Status || 'Open').toLowerCase();
+    const cat = meetingCategoryMeta(row.Category);
+    const priority = String(row.Priority || 'ปกติ');
+    const photos = String(row.PhotoURL || '').split(',').map(u => u.trim()).filter(Boolean);
+    const actions = [];
+    if (state.meetingCanCreate && st === 'open') actions.push(`<button class="mtg-tv-action mtg-tv-action-primary" data-mtg-status="Discussed" data-mtg-id="${escapeAttr(row.PostID)}">✓ คุยแล้ว — ไปหัวข้อถัดไป</button>`);
+    if (state.meetingCanCreate && st === 'discussed') actions.push(`<button class="mtg-tv-action" data-mtg-status="Closed" data-mtg-id="${escapeAttr(row.PostID)}">จบเรื่อง</button>`);
+    body = `<div class="mtg-tv-slide">
+      <div class="mtg-tv-chips">
+        ${isMeetingPinned(row) ? '<span class="mtg-tv-chip">📌 ปักหมุด</span>' : ''}
+        <span class="mtg-tv-chip mtg-tv-cat ${cat.cls}">${cat.icon} ${escapeHtml(row.Category || 'ทั่วไป')}</span>
+        ${priority === 'ด่วน' ? '<span class="mtg-tv-chip mtg-tv-urgent">ด่วน</span>' : priority === 'สำคัญ' ? '<span class="mtg-tv-chip mtg-tv-important">สำคัญ</span>' : ''}
+        ${carry ? `<span class="mtg-tv-chip mtg-tv-carrychip">⏳ ค้างจาก ${formatDate(row.MeetingDate)}</span>` : ''}
+        ${st !== 'open' ? `<span class="mtg-tv-chip mtg-tv-donechip">${st === 'closed' ? '✔ จบเรื่อง' : '✓ คุยแล้ว'}</span>` : ''}
+      </div>
+      <div class="mtg-tv-topic">${escapeHtml(row.Topic || '-')}</div>
+      ${row.Detail ? `<div class="mtg-tv-detail">${escapeHtml(row.Detail)}</div>` : ''}
+      ${photos.length ? `<div class="mtg-tv-photos">${photos.map((u, i) => `<img src="${escapeAttr(driveThumbnailUrl_(u, 1000))}" data-photo-url="${escapeAttr(u)}" alt="รูปที่ ${i + 1}" loading="lazy">`).join('')}</div>` : ''}
+      <div class="mtg-tv-slide-meta">${escapeHtml(row.LineName || row.LineID || 'ทุกไลน์')}${row.Shift ? ' · กะ ' + escapeHtml(row.Shift) : ''} · ลงโดย ${escapeHtml(row.CreatedByName || '-')}${row.DiscussedBy ? ' · คุยแล้วโดย ' + escapeHtml(row.DiscussedBy) : ''}</div>
+      ${actions.length ? `<div class="mtg-tv-actions">${actions.join('')}</div>` : ''}
+    </div>`;
+  }
+  container.innerHTML = `
+    <div class="mtg-tv-top">
+      <span class="mtg-tv-brand">📣 Meeting ก่อนเข้างาน</span>
+      <span class="mtg-tv-progress${discussed >= total ? ' all-done' : ''}">คุยแล้ว ${discussed}/${total}</span>
+      <button class="mtg-tv-close" id="meetingTvClose" aria-label="ปิดโหมด TV">✕ ปิด</button>
+    </div>
+    <div class="mtg-tv-body">${body}</div>
+    <div class="mtg-tv-nav">
+      <button class="mtg-tv-navbtn" id="meetingTvPrev" ${index === 0 ? 'disabled' : ''}>‹ ก่อนหน้า</button>
+      <span class="mtg-tv-counter">${index === 0 ? 'สารบัญ' : `${index} / ${total}`}</span>
+      <button class="mtg-tv-navbtn" id="meetingTvNext" ${index >= total ? 'disabled' : ''}>ถัดไป ›</button>
+    </div>`;
+  $('#meetingTvClose').addEventListener('click', closeMeetingTv);
+  $('#meetingTvPrev').addEventListener('click', () => meetingTvStep(-1));
+  $('#meetingTvNext').addEventListener('click', () => meetingTvStep(1));
+  $$('[data-tv-goto]', container).forEach(btn => btn.addEventListener('click', () => {
+    state.meetingTvIndex = Number(btn.dataset.tvGoto);
+    renderMeetingTv();
+  }));
+  $$('[data-mtg-status]', container).forEach(btn =>
+    btn.addEventListener('click', () => setMeetingPostStatus(btn, btn.dataset.mtgId, btn.dataset.mtgStatus, true)));
 }
 
 async function loadFindings(force = false) {
@@ -4481,6 +4597,49 @@ function normalizeEditableStatus(status) { const options = ['Open', 'Assigned', 
 function number(value) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0; }
 function emptyHtml(message) { return `<div class="empty-state">${escapeHtml(message)}</div>`; }
 function isTokenError(message) { return /token|expired|authentication|session/i.test(message); }
+
+// Translate backend (English) error messages to Thai before showing them to users.
+// Pattern rules run first (messages with dynamic parts), then exact matches.
+const API_MESSAGE_PATTERNS = [
+  [/^Unknown action: (.+)$/, m => `เซิร์ฟเวอร์ยังเป็นเวอร์ชันเก่า ไม่รู้จักคำสั่ง "${m[1]}" — กรุณาแจ้งผู้ดูแลระบบให้ Deploy เวอร์ชันใหม่`],
+  [/^Permission denied for action: (.+)$/, m => `คุณไม่มีสิทธิ์ใช้งานส่วนนี้ (${m[1]})`],
+  [/^Permission denied: (.+)$/, m => `คุณไม่มีสิทธิ์ดำเนินการนี้ (${m[1]})`],
+  [/^Line access denied: (.*)$/, m => `คุณไม่มีสิทธิ์เข้าถึง Line ${m[1] || 'นี้'}`],
+  [/^Missing required field\(s\): (.+)$/, m => `กรุณากรอกข้อมูลให้ครบ: ${m[1]}`],
+  [/^Required sheet not found: (.+)$/, m => `ไม่พบชีทข้อมูล "${m[1]}" ในระบบ กรุณาแจ้งผู้ดูแลระบบ`],
+  [/^Unsupported fileType: (.+)$/, m => `ประเภทไฟล์ไม่รองรับ (${m[1]})`],
+  [/^(.+FOLDER_ID) is not configured in Settings\.$/, m => `ยังไม่ได้ตั้งค่าโฟลเดอร์เก็บไฟล์ (${m[1]}) กรุณาแจ้งผู้ดูแลระบบ`],
+  [/^Meeting post not found: (.+)$/, m => `ไม่พบหัวข้อประชุม ${m[1]} (อาจถูกลบไปแล้ว)`],
+  [/^Invalid meetingDate: (.+)$/, m => `วันที่ประชุมไม่ถูกต้อง (${m[1]})`],
+  [/^Invalid status: (.+)$/, m => `สถานะไม่ถูกต้อง (${m[1]})`]
+];
+const API_MESSAGE_EXACT = {
+  'Invalid or expired authentication token.': 'Session หมดอายุ กรุณาเข้าสู่ระบบใหม่',
+  'Invalid username or password.': 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง',
+  'Too many failed login attempts. Please try again in 10 minutes.': 'เข้าสู่ระบบผิดหลายครั้งเกินไป กรุณารอ 10 นาทีแล้วลองใหม่',
+  'User account is unavailable.': 'บัญชีผู้ใช้ถูกปิดใช้งานหรือไม่พร้อมใช้งาน',
+  'User role is not valid.': 'Role ของผู้ใช้ไม่ถูกต้อง กรุณาแจ้งผู้ดูแลระบบ',
+  'You do not have permission to edit this post.': 'คุณไม่มีสิทธิ์แก้ไขหัวข้อนี้ (แก้ไขได้เฉพาะหัวข้อที่ตัวเองสร้าง)',
+  'You do not have permission to delete this post.': 'คุณไม่มีสิทธิ์ลบหัวข้อนี้ (ลบได้เฉพาะหัวข้อที่ตัวเองสร้าง)',
+  'You do not have permission to update this post.': 'คุณไม่มีสิทธิ์อัปเดตหัวข้อนี้',
+  'You do not have permission to upload to this finding.': 'คุณไม่มีสิทธิ์อัปโหลดไฟล์ใน Finding นี้',
+  'Topic is required.': 'กรุณากรอกหัวข้อ',
+  'File exceeds the 10 MB upload limit.': 'ไฟล์ใหญ่เกิน 10 MB กรุณาย่อรูปหรือเลือกไฟล์ใหม่',
+  'Uploaded file is empty.': 'ไฟล์ที่อัปโหลดว่างเปล่า กรุณาเลือกไฟล์ใหม่',
+  'base64Data is invalid.': 'ไฟล์เสียหาย กรุณาลองอัปโหลดใหม่',
+  'Unexpected server error.': 'เกิดข้อผิดพลาดที่เซิร์ฟเวอร์ กรุณาลองใหม่อีกครั้ง',
+  'Request body is required.': 'คำขอไม่ถูกต้อง กรุณารีเฟรชหน้าเว็บแล้วลองใหม่',
+  'Invalid JSON request body.': 'คำขอไม่ถูกต้อง กรุณารีเฟรชหน้าเว็บแล้วลองใหม่'
+};
+function translateApiMessage(message) {
+  const text = String(message || '');
+  if (API_MESSAGE_EXACT[text]) return API_MESSAGE_EXACT[text];
+  for (const [pattern, build] of API_MESSAGE_PATTERNS) {
+    const match = text.match(pattern);
+    if (match) return build(match);
+  }
+  return text;
+}
 function readStoredJson(key) { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (_) { return null; } }
 function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]); }
 function escapeAttr(value) { return escapeHtml(value); }

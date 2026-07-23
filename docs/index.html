@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#123c69">
   <meta name="description" content="Layered Process Audit System สำหรับติดตามการตรวจและปิด Finding">
   <title>Layered Process Audit System</title>
-  <link rel="stylesheet" href="style.css?v=20260723-meeting">
+  <link rel="stylesheet" href="style.css?v=20260723-tv">
 </head>
 <body>
   <div id="loginView" class="login-view">
@@ -155,7 +155,7 @@
       </section>
 
       <section id="page-meeting" class="page">
-        <div class="page-heading"><div><p class="eyebrow">ประชุมก่อนเข้างาน</p><h2>Meeting ก่อนเข้างาน</h2><p class="page-helper">บอร์ดแจ้งปัญหา ข่าวสาร และเรื่องที่ต้องคุยก่อนเริ่มกะ — ลงหัวข้อล่วงหน้า แล้วเปิดหน้านี้ไล่คุยตอนประชุม</p></div><button id="addMeetingPostButton" class="btn btn-primary hidden">+ เพิ่มหัวข้อ</button></div>
+        <div class="page-heading"><div><p class="eyebrow">ประชุมก่อนเข้างาน</p><h2>Meeting ก่อนเข้างาน</h2><p class="page-helper">บอร์ดแจ้งปัญหา ข่าวสาร และเรื่องที่ต้องคุยก่อนเริ่มกะ — ลงหัวข้อล่วงหน้า แล้วเปิดหน้านี้ไล่คุยตอนประชุม</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button id="meetingTvButton" class="btn btn-outline">📺 โหมด TV</button><button id="addMeetingPostButton" class="btn btn-primary hidden">+ เพิ่มหัวข้อ</button></div></div>
         <article class="panel filters-panel">
           <div class="form-grid filter-grid">
             <label>วันที่ประชุม<input id="meetingDate" type="date"></label>
@@ -295,6 +295,8 @@
 
   </div>
 
+  <div id="meetingTv" class="mtg-tv hidden" role="dialog" aria-label="โหมดนำเสนอประชุมก่อนเข้างาน"></div>
+
   <div id="loadingOverlay" class="loading-overlay hidden" role="status" aria-live="polite"><div class="loader"></div><strong id="loadingText">กำลังโหลด...</strong></div>
   <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
@@ -414,6 +416,6 @@
   </dialog>
 
   <script src="config.js" defer></script>
-  <script src="app.js?v=20260723-meeting" defer></script>
+  <script src="app.js?v=20260723-tv" defer></script>
 </body>
 </html>

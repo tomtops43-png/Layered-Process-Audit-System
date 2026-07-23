@@ -629,3 +629,56 @@ textarea{line-height:1.45}
   .meeting-card .finding-photos{padding:12px 16px 0}
   .mtg-actions{padding:12px 16px;display:grid;grid-template-columns:1fr;gap:9px}
 }
+
+/* ===== Meeting TV / presentation mode ===== */
+body.mtg-tv-open{overflow:hidden}
+.mtg-tv{position:fixed;inset:0;z-index:1200;background:linear-gradient(160deg,var(--navy-2) 0%,#0e3355 100%);color:#fff;display:flex;flex-direction:column}
+.mtg-tv.hidden{display:none}
+.mtg-tv-top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 28px;border-bottom:1px solid rgba(255,255,255,.14)}
+.mtg-tv-brand{font-weight:900;font-size:1.05rem;letter-spacing:.02em}
+.mtg-tv-progress{font-weight:800;font-size:1rem;background:rgba(255,255,255,.12);border-radius:99px;padding:7px 18px}
+.mtg-tv-progress.all-done{background:var(--green);color:#fff}
+.mtg-tv-close{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:9px;padding:8px 16px;font-weight:800;font-size:.9rem;cursor:pointer}
+.mtg-tv-close:hover{background:rgba(255,255,255,.22)}
+.mtg-tv-body{flex:1;overflow-y:auto;display:flex;flex-direction:column;justify-content:center;padding:3vh 6vw}
+.mtg-tv-eyebrow{font-size:.95rem;font-weight:800;letter-spacing:.14em;color:#9fc3e2;margin:0 0 8px}
+.mtg-tv-title{font-size:clamp(1.8rem,4vw,3rem);font-weight:900;margin:0 0 3vh}
+.mtg-tv-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px;counter-reset:tvitem}
+.mtg-tv-item{display:flex;align-items:center;gap:16px;width:100%;text-align:left;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:14px 22px;color:#fff;font-size:clamp(1.05rem,2.2vw,1.55rem);font-weight:700;cursor:pointer;transition:background .15s ease}
+.mtg-tv-item:hover{background:rgba(255,255,255,.16)}
+.mtg-tv-item.done{opacity:.55}
+.mtg-tv-item.done .mtg-tv-item-text{text-decoration:line-through}
+.mtg-tv-item-icon{font-size:1.3em;flex-shrink:0}
+.mtg-tv-item-text{flex:1;line-height:1.4}
+.mtg-tv-item-carry{font-size:.7em;font-weight:800;background:rgba(255,255,255,.16);border-radius:99px;padding:4px 12px;white-space:nowrap}
+.mtg-tv-slide{display:flex;flex-direction:column;gap:2.2vh;max-width:1300px;margin:0 auto;width:100%}
+.mtg-tv-chips{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.mtg-tv-chip{display:inline-flex;align-items:center;gap:6px;border-radius:99px;padding:8px 18px;font-size:clamp(.85rem,1.6vw,1.1rem);font-weight:800;background:rgba(255,255,255,.14);color:#fff;white-space:nowrap}
+.mtg-tv-cat.mtg-cat-problem{background:var(--red)}
+.mtg-tv-cat.mtg-cat-news{background:var(--blue)}
+.mtg-tv-cat.mtg-cat-safety{background:var(--orange)}
+.mtg-tv-cat.mtg-cat-quality{background:var(--green)}
+.mtg-tv-urgent{background:var(--red-dark)}
+.mtg-tv-important{background:var(--orange)}
+.mtg-tv-carrychip{background:rgba(255,255,255,.2)}
+.mtg-tv-donechip{background:var(--green)}
+.mtg-tv-topic{font-size:clamp(1.9rem,4.6vw,3.8rem);font-weight:900;line-height:1.25}
+.mtg-tv-detail{font-size:clamp(1.15rem,2.3vw,1.8rem);line-height:1.6;color:#dbe7f3;white-space:pre-line}
+.mtg-tv-photos{display:flex;gap:14px;flex-wrap:wrap}
+.mtg-tv-photos img{height:26vh;max-width:44vw;object-fit:cover;border-radius:12px;border:2px solid rgba(255,255,255,.25);cursor:zoom-in}
+.mtg-tv-slide-meta{font-size:clamp(.85rem,1.6vw,1.05rem);color:#9fc3e2;font-weight:600}
+.mtg-tv-actions{display:flex;gap:12px;flex-wrap:wrap}
+.mtg-tv-action{border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:12px;padding:14px 28px;font-size:clamp(1rem,1.9vw,1.3rem);font-weight:800;cursor:pointer}
+.mtg-tv-action:hover{background:rgba(255,255,255,.22)}
+.mtg-tv-action-primary{background:var(--green);border-color:var(--green)}
+.mtg-tv-action-primary:hover{background:#1a9a59}
+.mtg-tv-nav{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 28px;border-top:1px solid rgba(255,255,255,.14)}
+.mtg-tv-navbtn{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:10px;padding:12px 26px;font-size:1rem;font-weight:800;cursor:pointer}
+.mtg-tv-navbtn:hover:not(:disabled){background:rgba(255,255,255,.22)}
+.mtg-tv-navbtn:disabled{opacity:.35;cursor:default}
+.mtg-tv-counter{font-weight:800;font-size:1rem;color:#9fc3e2}
+@media (max-width:640px){
+  .mtg-tv-top,.mtg-tv-nav{padding:12px 16px}
+  .mtg-tv-body{padding:2vh 5vw}
+  .mtg-tv-photos img{height:20vh;max-width:80vw}
+}
