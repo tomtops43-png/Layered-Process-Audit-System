@@ -2836,6 +2836,37 @@ function meetingTvStatusDone(row) {
   return ['discussed', 'closed'].includes(String(row.Status || '').toLowerCase());
 }
 
+// One Finding rendered full-fat for the TV: problem, root cause, corrective
+// action, due date, and Before/After photos (tap a photo for the lightbox).
+function meetingTvFindingRowHtml(f) {
+  const s = String(f.Severity || f.Priority || '').toLowerCase();
+  const sev = s === 'critical' ? '🔴' : s === 'major' ? '🟠' : '🟡';
+  const overdue = String(f.OverdueFlag || '').toLowerCase() === 'yes';
+  const photos = [];
+  const addPhotos = (csv, label) => String(csv || '').split(',').map(u => u.trim()).filter(Boolean).forEach((u, i, arr) => {
+    const caption = arr.length > 1 ? `${label} ${i + 1}` : label;
+    photos.push(`<a href="${escapeAttr(u)}" data-photo-url="${escapeAttr(u)}" class="mtg-tv-fd-photo"><img src="${escapeAttr(driveThumbnailUrl_(u, 600))}" alt="${escapeAttr(caption)}" loading="lazy"><span>${escapeHtml(caption)}</span></a>`);
+  });
+  addPhotos(f.BeforePhotoURL, 'Before');
+  addPhotos(f.AfterPhotoURL, 'After');
+  const metaParts = [`${escapeHtml(f.LineName || f.LineID || '-')} / ${escapeHtml(f.StationName || f.StationID || '-')}`];
+  if (f.Category) metaParts.push(escapeHtml(f.Category));
+  const pic = f.AssignmentDisplay || f.PICName || f.AssignedToName || f.ResponsiblePerson;
+  if (pic && pic !== '-') metaParts.push(`ผู้รับผิดชอบ ${escapeHtml(pic)}`);
+  if (f.DueDate) metaParts.push(`Due ${formatDate(f.DueDate)}${overdue ? ` ⚠️ เกิน ${Number(f.DaysOverdue) || 0} วัน` : ''}`);
+  return `<div class="mtg-tv-fd-row${overdue ? ' mtg-tv-fd-overdue' : ''}">
+    <div class="mtg-tv-fd-top">
+      <span class="mtg-tv-fd-sev">${sev}</span>
+      <div class="mtg-tv-fd-name">${escapeHtml(f.ProblemDetail || f.FindingID)}</div>
+      <span class="mtg-tv-fd-status">${escapeHtml(f.Status || 'Open')}</span>
+    </div>
+    <div class="mtg-tv-fd-meta">${metaParts.join(' · ')}</div>
+    ${f.RootCause ? `<div class="mtg-tv-fd-extra">🔍 สาเหตุ: ${escapeHtml(f.RootCause)}</div>` : ''}
+    ${f.CorrectiveAction ? `<div class="mtg-tv-fd-extra">🛠 แนวทางแก้ไข: ${escapeHtml(f.CorrectiveAction)}</div>` : ''}
+    ${photos.length ? `<div class="mtg-tv-fd-photos">${photos.join('')}</div>` : ''}
+  </div>`;
+}
+
 // Final TV slide: the same Finding shift digest shown on the Meeting page,
 // restyled in big type so the meeting can run through open Findings on-screen.
 function meetingTvFindingSlideHtml() {
@@ -2845,10 +2876,6 @@ function meetingTvFindingSlideHtml() {
     { key: 'yesterday', label: '📅 เมื่อวาน' },
     { key: 'sevenDaysAgo', label: '📅 7 วันก่อน' }
   ];
-  const sevIcon = f => {
-    const s = String(f.Severity || f.Priority || '').toLowerCase();
-    return s === 'critical' ? '🔴' : s === 'major' ? '🟠' : '🟡';
-  };
   const bodyHtml = sections.map(s => {
     const bucket = digest[s.key] || {};
     const groups = bucket.shiftGroups || [];
@@ -2857,14 +2884,7 @@ function meetingTvFindingSlideHtml() {
       ? '<div class="mtg-tv-fd-empty">✅ ไม่มี Finding เปิด</div>'
       : groups.map(g => `
         <div class="mtg-tv-fd-shift">🕐 ${escapeHtml(g.shift)} <span>${g.count} รายการ</span></div>
-        ${g.findings.map(f => `<div class="mtg-tv-fd-row">
-          <span class="mtg-tv-fd-sev">${sevIcon(f)}</span>
-          <div class="mtg-tv-fd-info">
-            <div class="mtg-tv-fd-name">${escapeHtml(f.ProblemDetail || f.FindingID)}</div>
-            <div class="mtg-tv-fd-meta">${escapeHtml(f.LineName || f.LineID || '-')} / ${escapeHtml(f.StationName || f.StationID || '-')}${f.PICName ? ' · ผู้รับผิดชอบ ' + escapeHtml(f.PICName) : ''}</div>
-          </div>
-          <span class="mtg-tv-fd-status">${escapeHtml(f.Status || 'Open')}</span>
-        </div>`).join('')}`).join('');
+        ${g.findings.map(meetingTvFindingRowHtml).join('')}`).join('');
     return `<div class="mtg-tv-fd-day"><div class="mtg-tv-fd-day-title">${escapeHtml(s.label)}${dateLabel ? ` (${dateLabel})` : ''} — ${bucket.totalCount || 0} Finding</div>${rows}</div>`;
   }).join('');
   return `<div class="mtg-tv-slide tv-anim-${meetingTvDir}">

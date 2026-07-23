@@ -767,10 +767,18 @@ body.mtg-tv-open{overflow:hidden}
 .mtg-tv-fd-day-title{font-weight:900;font-size:clamp(1.05rem,2.1vw,1.55rem);color:#9fc3e2}
 .mtg-tv-fd-shift{font-weight:800;font-size:clamp(.9rem,1.7vw,1.2rem);color:#dbe7f3;margin-top:4px}
 .mtg-tv-fd-shift span{background:rgba(255,255,255,.14);border-radius:99px;padding:3px 12px;font-size:.85em;margin-left:8px}
-.mtg-tv-fd-row{display:flex;align-items:center;gap:14px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:12px 18px}
+.mtg-tv-fd-row{display:flex;flex-direction:column;gap:8px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:14px 18px}
+.mtg-tv-fd-row.mtg-tv-fd-overdue{border-color:rgba(211,41,41,.7);background:rgba(211,41,41,.14)}
+.mtg-tv-fd-top{display:flex;align-items:center;gap:14px}
+.mtg-tv-fd-extra{font-size:clamp(.9rem,1.7vw,1.2rem);line-height:1.55;color:#dbe7f3;white-space:pre-line}
+.mtg-tv-fd-photos{display:flex;gap:12px;flex-wrap:wrap;margin-top:4px}
+.mtg-tv-fd-photo{display:flex;flex-direction:column;align-items:center;gap:4px;text-decoration:none}
+.mtg-tv-fd-photo img{height:18vh;max-width:34vw;object-fit:cover;border-radius:10px;border:2px solid rgba(255,255,255,.25);cursor:zoom-in;transition:transform .25s ease}
+.mtg-tv-fd-photo img:hover{transform:scale(1.05)}
+.mtg-tv-fd-photo span{font-size:.75rem;font-weight:800;color:#9fc3e2}
 .mtg-tv-fd-sev{font-size:1.35em;flex-shrink:0}
 .mtg-tv-fd-info{flex:1;min-width:0}
-.mtg-tv-fd-name{font-size:clamp(1rem,1.9vw,1.45rem);font-weight:800;line-height:1.4}
+.mtg-tv-fd-name{flex:1;font-size:clamp(1.05rem,2.1vw,1.6rem);font-weight:800;line-height:1.4}
 .mtg-tv-fd-meta{font-size:clamp(.78rem,1.4vw,1rem);color:#9fc3e2;margin-top:2px}
 .mtg-tv-fd-status{font-weight:800;font-size:clamp(.8rem,1.5vw,1.05rem);background:rgba(255,255,255,.14);border-radius:99px;padding:6px 16px;white-space:nowrap}
 .mtg-tv-fd-empty{color:#9fc3e2;font-size:clamp(.95rem,1.8vw,1.3rem);font-weight:700;padding:6px 2px}
