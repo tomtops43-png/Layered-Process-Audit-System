@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#123c69">
   <meta name="description" content="Layered Process Audit System สำหรับติดตามการตรวจและปิด Finding">
   <title>Layered Process Audit System</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20260723-meeting">
 </head>
 <body>
   <div id="loginView" class="login-view">
@@ -41,6 +41,7 @@
       <div class="sidebar-head"><strong>เมนูหลัก</strong><button id="closeMenuButton" class="icon-button mobile-only" aria-label="ปิดเมนู">×</button></div>
       <nav id="mainNav" class="main-nav">
         <button data-page="dashboard" class="nav-item active"><span>▦</span>Dashboard</button>
+        <button data-page="meeting" data-permission-any="meeting.view" class="nav-item"><span>📣</span>Meeting ก่อนเข้างาน</button>
         <button data-page="audit" class="nav-item"><span>✓</span>ตรวจ LPA <b id="auditNavBadge" class="nav-badge hidden">0</b></button>
         <button data-page="audit-plan" data-permission-any="audit.plan.view" class="nav-item"><span>▣</span>LPA Schedule Rules</button>
         <button data-page="findings" class="nav-item"><span>!</span>Finding Tracking <b id="findingNavBadge" class="nav-badge hidden">0</b></button>
@@ -151,6 +152,19 @@
           <article class="panel"><div class="panel-title"><h3>Action ใกล้ Due Date ภายใน 7 วัน</h3></div><div id="nearDueList" class="responsive-list"></div></article>
           <article class="panel"><div class="panel-title"><h3>📝 ผลการตรวจล่าสุด</h3></div><div id="todayAuditsList" class="responsive-list"></div></article>
         </div>
+      </section>
+
+      <section id="page-meeting" class="page">
+        <div class="page-heading"><div><p class="eyebrow">ประชุมก่อนเข้างาน</p><h2>Meeting ก่อนเข้างาน</h2><p class="page-helper">บอร์ดแจ้งปัญหา ข่าวสาร และเรื่องที่ต้องคุยก่อนเริ่มกะ — ลงหัวข้อล่วงหน้า แล้วเปิดหน้านี้ไล่คุยตอนประชุม</p></div><button id="addMeetingPostButton" class="btn btn-primary hidden">+ เพิ่มหัวข้อ</button></div>
+        <article class="panel filters-panel">
+          <div class="form-grid filter-grid">
+            <label>วันที่ประชุม<input id="meetingDate" type="date"></label>
+            <label>Line<select id="meetingLine"><option value="">ทั้งหมด</option></select></label>
+            <label>ประเภท<select id="meetingCategory"><option value="">ทั้งหมด</option><option value="ปัญหา">🔴 ปัญหา</option><option value="ข่าวสาร">📢 ข่าวสาร</option><option value="ความปลอดภัย">⚠️ ความปลอดภัย</option><option value="คุณภาพ">🎯 คุณภาพ</option><option value="ทั่วไป">📋 ทั่วไป</option></select></label>
+          </div>
+          <button id="loadMeetingPostsButton" class="btn btn-secondary">แสดงบอร์ด</button>
+        </article>
+        <div id="meetingBoard" class="meeting-board"><div class="empty-state">กำลังโหลดบอร์ดประชุม...</div></div>
       </section>
 
       <section id="page-audit" class="page">
@@ -365,6 +379,26 @@
     </form>
   </dialog>
 
+  <dialog id="meetingDialog" class="modal">
+    <form id="meetingForm" method="dialog">
+      <div class="modal-head"><div><p class="eyebrow">MORNING MEETING</p><h3 id="meetingDialogTitle">เพิ่มหัวข้อประชุม</h3></div><button type="button" class="icon-button" id="closeMeetingDialog">×</button></div>
+      <input id="meetingPostId" type="hidden">
+      <div class="form-grid">
+        <label>วันที่ประชุม *<input id="meetingPostDate" type="date" required></label>
+        <label>กะ<select id="meetingPostShift"><option value="">ไม่ระบุ</option></select></label>
+        <label>Line<select id="meetingPostLine"><option value="ALL">ทุกไลน์ (ALL)</option></select><small class="field-help">เลือก "ทุกไลน์" ถ้าเป็นประกาศทั้งโรงงาน</small></label>
+        <label>ประเภท *<select id="meetingPostCategory" required><option value="ปัญหา">🔴 ปัญหา</option><option value="ข่าวสาร">📢 ข่าวสาร</option><option value="ความปลอดภัย">⚠️ ความปลอดภัย</option><option value="คุณภาพ">🎯 คุณภาพ</option><option value="ทั่วไป" selected>📋 ทั่วไป</option></select></label>
+        <label>ความสำคัญ<select id="meetingPostPriority"><option value="ปกติ" selected>ปกติ</option><option value="สำคัญ">สำคัญ</option><option value="ด่วน">ด่วน</option></select></label>
+        <label class="check-label hidden" id="meetingPostPinnedField"><input id="meetingPostPinned" type="checkbox"> 📌 ปักหมุด (แสดงทุกวันจนกว่าจะจบเรื่อง)</label>
+        <label class="full-width">หัวข้อ *<input id="meetingPostTopic" required maxlength="200" placeholder="เช่น เครื่อง XX มีปัญหา / ประกาศเรื่อง..."></label>
+        <label class="full-width">รายละเอียด<textarea id="meetingPostDetail" rows="4" placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)"></textarea></label>
+        <label class="full-width">รูปประกอบ (เลือกได้หลายรูป)<input id="meetingPostPhoto" type="file" accept="image/*" multiple></label>
+        <div id="meetingPhotoPreview" class="photo-link full-width"></div>
+      </div>
+      <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelMeetingPost">ยกเลิก</button><button type="button" class="btn btn-outline hidden" id="deleteMeetingPostButton">🗑 ลบหัวข้อ</button><button type="submit" class="btn btn-primary" id="saveMeetingPostButton">บันทึกหัวข้อ</button></div>
+    </form>
+  </dialog>
+
   <!-- Production Plan Check-in Dialog -->
   <dialog id="prodPlanDialog" class="modal">
     <div class="modal-head">
@@ -380,6 +414,6 @@
   </dialog>
 
   <script src="config.js" defer></script>
-  <script src="app.js?v=20260627-noshift2" defer></script>
+  <script src="app.js?v=20260723-meeting" defer></script>
 </body>
 </html>

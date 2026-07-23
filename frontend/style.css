@@ -590,3 +590,42 @@ textarea{line-height:1.45}
 .prod-plan-shift-opt.active{border-color:var(--blue);background:var(--cyan)}
 .prod-plan-shift-label{font-size:.95rem;font-weight:800;color:var(--text)}
 .prod-plan-shift-sub{font-size:.72rem;color:var(--muted)}
+
+/* ===== Morning Meeting Board ===== */
+.meeting-board{display:flex;flex-direction:column;gap:14px}
+.mtg-progress{background:var(--cyan);border:1px solid var(--border);border-radius:10px;padding:10px 16px;font-weight:800;color:var(--navy);font-size:.9rem}
+.mtg-progress-done{background:var(--green-bg);color:var(--green)}
+.meeting-card{background:#fff;border:1px solid var(--border);border-left:5px solid var(--gray);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;transition:box-shadow .15s ease}
+.meeting-card:hover{box-shadow:0 12px 32px rgba(18,60,105,.14)}
+.meeting-card.mtg-cat-problem{border-left-color:var(--red)}
+.meeting-card.mtg-cat-news{border-left-color:var(--blue)}
+.meeting-card.mtg-cat-safety{border-left-color:var(--orange)}
+.meeting-card.mtg-cat-quality{border-left-color:var(--green)}
+.meeting-card.mtg-cat-general{border-left-color:var(--gray)}
+.meeting-card.mtg-discussed{opacity:.82}
+.meeting-card.mtg-done{opacity:.6}
+.meeting-card.mtg-done .mtg-topic{text-decoration:line-through}
+.mtg-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 22px 0;flex-wrap:wrap}
+.mtg-head-left{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mtg-pin{font-size:1rem}
+.mtg-cat-chip{display:inline-flex;align-items:center;gap:4px;border-radius:99px;padding:5px 12px;font-size:.74rem;font-weight:800;white-space:nowrap;background:var(--gray-bg);color:var(--gray)}
+.mtg-cat-chip.mtg-cat-problem{background:var(--red-bg);color:var(--red)}
+.mtg-cat-chip.mtg-cat-news{background:var(--cyan);color:var(--blue)}
+.mtg-cat-chip.mtg-cat-safety{background:var(--orange-bg);color:var(--orange)}
+.mtg-cat-chip.mtg-cat-quality{background:var(--green-bg);color:var(--green)}
+.mtg-priority{display:inline-flex;align-items:center;border-radius:99px;padding:5px 12px;font-size:.72rem;font-weight:900;white-space:nowrap}
+.mtg-priority-urgent{background:var(--red-dark);color:#fff}
+.mtg-priority-important{background:var(--orange-bg);color:var(--orange)}
+.mtg-carry-chip{display:inline-flex;align-items:center;border-radius:99px;padding:5px 12px;font-size:.72rem;font-weight:800;background:var(--gray-bg);color:var(--muted)}
+.mtg-topic{padding:10px 22px 0;font-size:1.05rem;font-weight:800;color:var(--text);line-height:1.5}
+.mtg-detail{padding:6px 22px 0;color:var(--text);font-size:.9rem;line-height:1.6;white-space:pre-line}
+.meeting-card .finding-photos{padding:12px 22px 0}
+.mtg-meta{padding:10px 22px 14px;font-size:.78rem;color:var(--muted)}
+.mtg-actions{display:flex;gap:9px;justify-content:flex-end;padding:12px 22px;border-top:1px solid var(--border);background:#f8fafb;flex-wrap:wrap}
+.mtg-carry-section{margin-top:8px;border-top:2px dashed var(--border);padding-top:14px;display:flex;flex-direction:column;gap:14px}
+.mtg-carry-title{font-weight:800;color:var(--muted);font-size:.9rem}
+@media (max-width:640px){
+  .mtg-head,.mtg-topic,.mtg-detail,.mtg-meta{padding-left:16px;padding-right:16px}
+  .meeting-card .finding-photos{padding:12px 16px 0}
+  .mtg-actions{padding:12px 16px;display:grid;grid-template-columns:1fr;gap:9px}
+}

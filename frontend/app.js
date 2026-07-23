@@ -59,6 +59,11 @@ const state = {
   todayAudits: [],
   report: null,
   editingFinding: null,
+  meetingPosts: [],
+  meetingCarryOver: [],
+  meetingCanCreate: false,
+  meetingCanManage: false,
+  editingMeetingPost: null,
   adminUsers: [],
   adminMasterLists: [],
   editingUser: null,
@@ -79,7 +84,8 @@ const PERMISSION_CATALOG = [
   'findings.update.line', 'findings.update.assigned', 'findings.verify', 'findings.close.minor',
   'findings.close.major', 'findings.close.critical', 'dashboard.view', 'dashboard.view.all',
   'reports.view', 'reports.export', 'checklist.view', 'checklist.manage',
-  'audit.plan.view', 'audit.plan.manage', 'audit.plan.generate', 'audit.plan.refresh'
+  'audit.plan.view', 'audit.plan.manage', 'audit.plan.generate', 'audit.plan.refresh',
+  'meeting.view', 'meeting.create', 'meeting.update.own', 'meeting.manage'
 ];
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -177,6 +183,13 @@ function bindEvents() {
     const rule = state.auditRules.find(item => String(item.RuleID) === button.dataset.ruleId);
     if (rule) openAuditRuleEditor(rule);
   });
+  $('#addMeetingPostButton').addEventListener('click', () => openMeetingEditor());
+  $('#loadMeetingPostsButton').addEventListener('click', () => loadMeetingBoard());
+  $('#meetingDate').addEventListener('change', () => loadMeetingBoard());
+  $('#meetingForm').addEventListener('submit', event => { event.preventDefault(); saveMeetingPostFromForm(); });
+  $('#closeMeetingDialog').addEventListener('click', () => $('#meetingDialog').close());
+  $('#cancelMeetingPost').addEventListener('click', () => $('#meetingDialog').close());
+  $('#deleteMeetingPostButton').addEventListener('click', deleteMeetingPostAction);
   $('#findingLine').addEventListener('change', () => populateStationSelect('#findingStation', $('#findingLine').value, true));
   $('#checklistLine').addEventListener('change', () => populateStationSelect('#checklistStation', $('#checklistLine').value, false));
   $('#applyFindingFilters').addEventListener('click', loadFindings);
@@ -949,7 +962,7 @@ async function loadFindingShiftDigest(containerId = 'mgrShiftDigest', selectId =
 /** Viewer role (morning-meeting account): sidebar trimmed to Dashboard + Finding Tracking only.
  * Only ever ADDS 'hidden' to other nav items — never removes it, so it can't
  * undo applyPermissionVisibility()'s permission-based hiding for other roles. */
-const VIEWER_ALLOWED_PAGES_ = new Set(['dashboard', 'findings']);
+const VIEWER_ALLOWED_PAGES_ = new Set(['dashboard', 'findings', 'meeting']);
 function applyViewerAccountRestrictions() {
   const isViewer = state.user?.Role === 'Viewer';
   if (isViewer) {
@@ -2451,6 +2464,222 @@ async function uploadFile(file, relatedType, relatedId, fileType, manageLoading 
   }
 }
 
+// ===== Morning Meeting Board =====
+// Pre-shift meeting board: Leaders post problems/news/announcements ahead of
+// the meeting, then the team opens this page and ticks topics off as discussed.
+const MEETING_CATEGORY_META = {
+  'ปัญหา': { icon: '🔴', cls: 'mtg-cat-problem' },
+  'ข่าวสาร': { icon: '📢', cls: 'mtg-cat-news' },
+  'ความปลอดภัย': { icon: '⚠️', cls: 'mtg-cat-safety' },
+  'คุณภาพ': { icon: '🎯', cls: 'mtg-cat-quality' },
+  'ทั่วไป': { icon: '📋', cls: 'mtg-cat-general' }
+};
+
+function meetingCategoryMeta(category) {
+  return MEETING_CATEGORY_META[String(category || '').trim()] || MEETING_CATEGORY_META['ทั่วไป'];
+}
+
+function isMeetingPinned(row) {
+  return ['yes', 'true', '1'].includes(String(row?.Pinned || '').toLowerCase());
+}
+
+async function loadMeetingBoard() {
+  const dateInput = $('#meetingDate');
+  if (!dateInput.value) dateInput.value = localDateInput(new Date());
+  const payload = { meetingDate: dateInput.value };
+  const lineId = optionalFilterValue($('#meetingLine').value);
+  const category = optionalFilterValue($('#meetingCategory').value);
+  if (lineId) payload.lineId = lineId;
+  if (category) payload.category = category;
+  const container = $('#meetingBoard');
+  container.innerHTML = '<div class="empty-state">กำลังโหลดบอร์ดประชุม...</div>';
+  try {
+    const data = await apiCall('getMeetingPosts', payload);
+    state.meetingPosts = data.posts || [];
+    state.meetingCarryOver = data.carryOver || [];
+    state.meetingCanCreate = Boolean(data.canCreate);
+    state.meetingCanManage = Boolean(data.canManage);
+    $('#addMeetingPostButton').classList.toggle('hidden', !state.meetingCanCreate);
+    renderMeetingBoard();
+  } catch (error) {
+    container.innerHTML = emptyHtml(error.message);
+    showToast(error.message, 'error');
+  }
+}
+
+function renderMeetingBoard() {
+  const container = $('#meetingBoard');
+  const posts = state.meetingPosts;
+  const carryOver = state.meetingCarryOver;
+  const discussed = posts.filter(p => ['discussed', 'closed'].includes(String(p.Status || '').toLowerCase())).length;
+  const progress = posts.length
+    ? `<div class="mtg-progress${discussed >= posts.length ? ' mtg-progress-done' : ''}">คุยแล้ว ${discussed} จาก ${posts.length} หัวข้อ${discussed >= posts.length ? ' ✅' : ''}</div>`
+    : '';
+  const todayHtml = posts.length
+    ? posts.map(row => meetingPostCardHtml(row, false)).join('')
+    : emptyHtml(state.meetingCanCreate ? 'ยังไม่มีหัวข้อสำหรับวันนี้ กด "+ เพิ่มหัวข้อ" เพื่อลงเรื่องที่จะคุย' : 'ยังไม่มีหัวข้อสำหรับวันนี้');
+  const carryHtml = carryOver.length
+    ? `<div class="mtg-carry-section"><div class="mtg-carry-title">⏳ ค้างจากวันก่อน (${carryOver.length})</div>${carryOver.map(row => meetingPostCardHtml(row, true)).join('')}</div>`
+    : '';
+  container.innerHTML = `${progress}${todayHtml}${carryHtml}`;
+  $$('[data-mtg-edit]', container).forEach(btn => btn.addEventListener('click', () => openMeetingEditor(btn.dataset.mtgEdit)));
+  $$('[data-mtg-status]', container).forEach(btn => btn.addEventListener('click', () => setMeetingPostStatus(btn, btn.dataset.mtgId, btn.dataset.mtgStatus)));
+}
+
+function meetingPostCardHtml(row, isCarry) {
+  const cat = meetingCategoryMeta(row.Category);
+  const status = String(row.Status || 'Open').toLowerCase();
+  const statusMeta = status === 'closed' ? { label: 'จบเรื่อง', cls: 'status-closed' } :
+    status === 'discussed' ? { label: 'คุยแล้ว', cls: 'status-ok' } : { label: 'รอคุย', cls: 'status-open' };
+  const priority = String(row.Priority || 'ปกติ');
+  const priorityChip = priority === 'ด่วน' ? '<span class="mtg-priority mtg-priority-urgent">ด่วน</span>' :
+    priority === 'สำคัญ' ? '<span class="mtg-priority mtg-priority-important">สำคัญ</span>' : '';
+  const canTick = state.meetingCanCreate;
+  const actions = [];
+  if (canTick && status === 'open') actions.push(`<button class="btn btn-secondary" data-mtg-status="Discussed" data-mtg-id="${escapeAttr(row.PostID)}">✓ คุยแล้ว</button>`);
+  if (canTick && status === 'discussed') actions.push(`<button class="btn btn-outline" data-mtg-status="Closed" data-mtg-id="${escapeAttr(row.PostID)}">จบเรื่อง</button>`);
+  if (canTick && status !== 'open') actions.push(`<button class="btn btn-ghost" data-mtg-status="Open" data-mtg-id="${escapeAttr(row.PostID)}">↩ รอคุย</button>`);
+  if (row.CanEdit) actions.push(`<button class="btn btn-outline" data-mtg-edit="${escapeAttr(row.PostID)}">แก้ไข</button>`);
+  const metaParts = [
+    `${formatDate(row.MeetingDate)}${row.Shift ? ' · กะ ' + escapeHtml(row.Shift) : ''}`,
+    escapeHtml(row.LineName || row.LineID || 'ทุกไลน์'),
+    `ลงโดย ${escapeHtml(row.CreatedByName || '-')}`
+  ];
+  if (row.DiscussedBy) metaParts.push(`คุยแล้วโดย ${escapeHtml(row.DiscussedBy)}`);
+  return `<article class="meeting-card ${cat.cls}${status === 'closed' ? ' mtg-done' : ''}${status === 'discussed' ? ' mtg-discussed' : ''}">
+    <div class="mtg-head">
+      <div class="mtg-head-left">
+        ${isMeetingPinned(row) ? '<span class="mtg-pin" title="ปักหมุด">📌</span>' : ''}
+        <span class="mtg-cat-chip ${cat.cls}">${cat.icon} ${escapeHtml(row.Category || 'ทั่วไป')}</span>
+        ${priorityChip}
+        ${isCarry ? `<span class="mtg-carry-chip">ค้างจาก ${formatDate(row.MeetingDate)}</span>` : ''}
+      </div>
+      <span class="status-badge ${statusMeta.cls}">${statusMeta.label}</span>
+    </div>
+    <div class="mtg-topic">${escapeHtml(row.Topic || '-')}</div>
+    ${row.Detail ? `<div class="mtg-detail">${escapeHtml(row.Detail)}</div>` : ''}
+    ${meetingPhotoGallery(row.PhotoURL)}
+    <div class="mtg-meta">${metaParts.join(' · ')}</div>
+    ${actions.length ? `<div class="mtg-actions">${actions.join('')}</div>` : ''}
+  </article>`;
+}
+
+function meetingPhotoGallery(urlCsv) {
+  const items = String(urlCsv || '').split(',').map(u => u.trim()).filter(Boolean).map((u, i) =>
+    `<a href="${escapeAttr(u)}" data-photo-url="${escapeAttr(u)}" class="finding-photo-thumb photo-link-trigger" rel="noopener"><img src="${escapeAttr(driveThumbnailUrl_(u, 300))}" alt="รูปที่ ${i + 1}" loading="lazy"><span>รูปที่ ${i + 1}</span></a>`);
+  return items.length ? `<div class="finding-photos">${items.join('')}</div>` : '';
+}
+
+function findMeetingPost(postId) {
+  return state.meetingPosts.find(p => p.PostID === postId) ||
+    state.meetingCarryOver.find(p => p.PostID === postId) || null;
+}
+
+function openMeetingEditor(postId = '') {
+  const row = postId ? findMeetingPost(postId) : null;
+  state.editingMeetingPost = row;
+  $('#meetingDialogTitle').textContent = row ? `แก้ไขหัวข้อ ${row.PostID}` : 'เพิ่มหัวข้อประชุม';
+  $('#meetingPostId').value = row ? row.PostID : '';
+  $('#meetingPostDate').value = row ? String(row.MeetingDate || '').slice(0, 10) : ($('#meetingDate').value || localDateInput(new Date()));
+  $('#meetingPostShift').value = row ? (row.Shift || '') : '';
+  const lineValue = row && row.LineID && String(row.LineID).toUpperCase() !== 'ALL' ? row.LineID : '';
+  $('#meetingPostLine').value = lineValue;
+  $('#meetingPostCategory').value = row ? (row.Category || 'ทั่วไป') : 'ทั่วไป';
+  $('#meetingPostPriority').value = row ? (row.Priority || 'ปกติ') : 'ปกติ';
+  $('#meetingPostPinnedField').classList.toggle('hidden', !state.meetingCanManage);
+  $('#meetingPostPinned').checked = row ? isMeetingPinned(row) : false;
+  $('#meetingPostTopic').value = row ? (row.Topic || '') : '';
+  $('#meetingPostDetail').value = row ? (row.Detail || '') : '';
+  $('#meetingPostPhoto').value = '';
+  $('#meetingPhotoPreview').innerHTML = row && row.PhotoURL ? meetingPhotoGallery(row.PhotoURL) : '';
+  $('#deleteMeetingPostButton').classList.toggle('hidden', !row);
+  $('#meetingDialog').showModal();
+}
+
+async function uploadMeetingPhoto(file, postId) {
+  try {
+    return await uploadFile(file, 'MeetingPost', postId, 'Evidence', false);
+  } catch (error) {
+    // Fall back to the always-configured Before Photo folder when EVIDENCE_FOLDER_ID is not set
+    if (/EVIDENCE_FOLDER_ID/.test(error.message)) return uploadFile(file, 'MeetingPost', postId, 'BeforePhoto', false);
+    throw error;
+  }
+}
+
+async function saveMeetingPostFromForm() {
+  const topic = $('#meetingPostTopic').value.trim();
+  if (!topic) return showToast('กรุณากรอกหัวข้อ', 'warning');
+  const postId = $('#meetingPostId').value;
+  const payload = {
+    meetingDate: $('#meetingPostDate').value || localDateInput(new Date()),
+    shift: $('#meetingPostShift').value,
+    lineId: $('#meetingPostLine').value || 'ALL',
+    category: $('#meetingPostCategory').value,
+    priority: $('#meetingPostPriority').value,
+    topic,
+    detail: $('#meetingPostDetail').value.trim(),
+    pinned: $('#meetingPostPinned').checked
+  };
+  if (postId) payload.postId = postId;
+  const files = Array.from($('#meetingPostPhoto').files || []);
+  showLoading('กำลังบันทึกหัวข้อประชุม...');
+  try {
+    const data = await apiCall('saveMeetingPost', payload);
+    const savedId = data.post?.PostID || postId;
+    if (files.length && savedId) {
+      const uploadedUrls = [];
+      for (let i = 0; i < files.length; i++) {
+        $('#loadingText').textContent = `กำลังอัปโหลดรูป ${i + 1}/${files.length}...`;
+        const upload = await uploadMeetingPhoto(files[i], savedId);
+        if (upload?.DriveFileURL) uploadedUrls.push(upload.DriveFileURL);
+      }
+      if (uploadedUrls.length) {
+        const existing = String(data.post?.PhotoURL || '').split(',').map(u => u.trim()).filter(Boolean);
+        await apiCall('saveMeetingPost', { postId: savedId, photoUrl: existing.concat(uploadedUrls).join(', ') });
+      }
+    }
+    $('#meetingDialog').close();
+    showToast(postId ? 'แก้ไขหัวข้อแล้ว' : 'เพิ่มหัวข้อลงบอร์ดแล้ว', 'success');
+    await loadMeetingBoard();
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+async function deleteMeetingPostAction() {
+  const postId = $('#meetingPostId').value;
+  if (!postId) return;
+  if (!confirm('ลบหัวข้อนี้ออกจากบอร์ดประชุม?')) return;
+  showLoading('กำลังลบหัวข้อ...');
+  try {
+    await apiCall('deleteMeetingPost', { postId });
+    $('#meetingDialog').close();
+    showToast('ลบหัวข้อแล้ว', 'success');
+    await loadMeetingBoard();
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+async function setMeetingPostStatus(button, postId, status) {
+  if (button) button.disabled = true;
+  try {
+    const data = await apiCall('updateMeetingPostStatus', { postId, status });
+    const updated = data.post || {};
+    ['meetingPosts', 'meetingCarryOver'].forEach(key => {
+      state[key] = state[key].map(p => p.PostID === postId ? { ...p, ...updated } : p);
+    });
+    renderMeetingBoard();
+  } catch (error) {
+    if (button) button.disabled = false;
+    showToast(error.message, 'error');
+  }
+}
+
 async function loadFindings(force = false) {
   const payload = {
     lineId: optionalFilterValue($('#findingLine').value), stationId: optionalFilterValue($('#findingStation').value),
@@ -3597,6 +3826,14 @@ function populateAllMasterSelects() {
     .filter(row => String(row.ListType || '').toLowerCase() === 'shift')
     .sort((a, b) => Number(a.SortOrder || 0) - Number(b.SortOrder || 0));
   populateSelect('#auditShift', shifts, 'ListValue', 'DisplayText', 'เลือก Shift');
+  // Meeting board: filter shows every line; the post form only shows lines the user can post to
+  populateSelect('#meetingLine', allLines, 'LineID', 'LineName', 'ทั้งหมด');
+  const meetingLineAccess = JSON.parse(localStorage.getItem('lpa_line_access') || '[]');
+  const meetingHasAllLines = state.user?.Role === 'Admin' || meetingLineAccess.some(la => la.LineID === 'ALL');
+  const meetingPostableLines = meetingHasAllLines ? allLines :
+    allLines.filter(l => meetingLineAccess.some(la => String(la.LineID) === String(l.LineID)));
+  populateSelect('#meetingPostLine', meetingPostableLines, 'LineID', 'LineName', 'ทุกไลน์ (ALL)');
+  populateSelect('#meetingPostShift', shifts, 'ListValue', 'DisplayText', 'ไม่ระบุ');
   // Supervisor/Manager: no shift — hide and clear the field
   const role = state.user?.Role || '';
   const shiftLabel = $('#auditShiftLabel');
@@ -3839,6 +4076,11 @@ async function navigateTo(page) {
     if (draft) restoreAuditDraft(draft);
   }
   if (page === 'dashboard') loadDashboard(false);
+  if (page === 'meeting') {
+    // Board and master data are independent GAS calls — run them in parallel
+    loadMeetingBoard();
+    try { await ensureMasterDataLoaded(false); } catch (_) { return; }
+  }
   if (['audit', 'audit-plan', 'findings', 'checklist', 'admin'].includes(page)) {
     if (page === 'findings') {
       // Run master data + findings in parallel — they are independent GAS calls
@@ -4015,6 +4257,8 @@ function applyPermissionVisibility() {
   $('#addUserButton').classList.toggle('hidden', !hasPermission('users.create'));
   $('#exportCsvButton').classList.toggle('hidden', !hasPermission('reports.export'));
   $('#addAuditRuleButton').classList.toggle('hidden', !hasPermission('audit.plan.manage'));
+  $('#addMeetingPostButton').classList.toggle('hidden', !hasPermission('meeting.create'));
+  $('#meetingPostPinnedField').classList.toggle('hidden', !hasPermission('meeting.manage'));
   $('#shiftManagementPanel').classList.toggle('hidden', String(state.user?.Role || '').toLowerCase() !== 'admin');
 }
 

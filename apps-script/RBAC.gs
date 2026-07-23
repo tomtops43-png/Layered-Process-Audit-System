@@ -147,8 +147,12 @@ function hasApiAccess_(user, action) {
     saveProductionPlan: ['audit.plan.view', 'audit.leader.create', 'audit.supervisor.create', 'audit.manager.create'],
     getDirectorDashboardData: ['dashboard.view.all'],
     getMonthlyReport: ['reports.view'], exportReportCsv: ['reports.export'],
+    getMeetingPosts: ['meeting.view'],
+    saveMeetingPost: ['meeting.create', 'meeting.update.own', 'meeting.manage'],
+    deleteMeetingPost: ['meeting.update.own', 'meeting.manage'],
+    updateMeetingPostStatus: ['meeting.create', 'meeting.update.own', 'meeting.manage'],
     uploadFile: ['findings.update.assigned', 'findings.update.line', 'findings.verify', 'findings.view.all',
-      'audit.manager.create', 'audit.supervisor.create', 'audit.engineer.create', 'audit.leader.create']
+      'audit.manager.create', 'audit.supervisor.create', 'audit.engineer.create', 'audit.leader.create', 'meeting.create']
   };
   if (['getCurrentUser', 'getMasterData'].indexOf(action) !== -1) return true;
   if (!actionPermissions[action]) return false;

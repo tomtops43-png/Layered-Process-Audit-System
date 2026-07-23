@@ -21,6 +21,7 @@ var SHEET_NAMES = {
   REPORT_LOGS: 'ReportLogs',
   AUDIT_PLAN: 'AuditPlan',
   AUDIT_PLAN_RULES: 'AuditPlanRules',
+  MEETING_POSTS: 'MeetingPosts',
   LISTS: 'DO_NOT_DELETE_Lists',
   ROLE_PERMISSIONS: 'RolePermissions',
   USER_PERMISSIONS: 'UserPermissions',
@@ -41,6 +42,7 @@ SHEET_HEADERS[SHEET_NAMES.SETTINGS] = ['SettingKey', 'SettingValue', 'Descriptio
 SHEET_HEADERS[SHEET_NAMES.REPORT_LOGS] = ['ReportID', 'PeriodMonth', 'ReportTitle', 'TotalAudit', 'TotalOK', 'TotalNG', 'NGRate', 'OpenFinding', 'ClosedFinding', 'OverdueAction', 'ReportFileURL', 'GeneratedBy', 'GeneratedAt', 'SentTo', 'Remark'];
 SHEET_HEADERS[SHEET_NAMES.AUDIT_PLAN] = ['PlanID', 'PeriodType', 'PeriodKey', 'DueDate', 'DueTime', 'RequiredRole', 'RequiredUserID', 'RequiredUserName', 'LineID', 'LineName', 'StationID', 'StationName', 'AuditLayer', 'Frequency', 'Status', 'CompletedAuditID', 'CompletedAt', 'SubmittedAt', 'IsLate', 'LateReason', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'];
 SHEET_HEADERS[SHEET_NAMES.AUDIT_PLAN_RULES] = ['RuleID', 'AssignmentMode', 'RequiredRole', 'RequiredUserID', 'RequiredUserName', 'LineID', 'LineName', 'StationID', 'StationName', 'Frequency', 'DayOfWeek', 'DayOfMonth', 'DueTime', 'ActiveStatus', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'];
+SHEET_HEADERS[SHEET_NAMES.MEETING_POSTS] = ['PostID', 'MeetingDate', 'Shift', 'LineID', 'LineName', 'Category', 'Priority', 'Topic', 'Detail', 'PhotoURL', 'Status', 'Pinned', 'DiscussedAt', 'DiscussedBy', 'CreatedAt', 'CreatedBy', 'CreatedByName', 'UpdatedAt', 'UpdatedBy'];
 SHEET_HEADERS[SHEET_NAMES.LISTS] = ['ListType', 'ListValue', 'DisplayText', 'SortOrder', 'ActiveStatus'];
 SHEET_HEADERS[SHEET_NAMES.ROLE_PERMISSIONS] = ['Role', 'PermissionKey', 'Allowed', 'Description', 'UpdatedAt', 'UpdatedBy'];
 SHEET_HEADERS[SHEET_NAMES.USER_PERMISSIONS] = ['UserID', 'PermissionKey', 'Allowed', 'Reason', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'];
