@@ -800,3 +800,17 @@ body.mtg-tv-open{overflow:hidden}
 .mtg-fd-photos{padding:0}
 .mtg-fd-actions{display:flex;justify-content:flex-end}
 @media (max-width:640px){.mtg-fd-name{min-width:0}}
+
+/* ===== Photo lightbox prev/next navigation ===== */
+.photo-lightbox-inner{position:relative}
+.photo-lightbox-nav{position:absolute;top:50%;transform:translateY(-50%);width:54px;height:54px;border-radius:50%;border:none;background:rgba(0,0,0,.55);color:#fff;font-size:2rem;font-weight:800;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2;transition:background .15s ease,transform .15s ease}
+.photo-lightbox-prev{left:14px}
+.photo-lightbox-next{right:14px}
+.photo-lightbox-nav:hover{background:rgba(0,0,0,.82);transform:translateY(-50%) scale(1.1)}
+.photo-lightbox-nav:active{transform:translateY(-50%) scale(.95)}
+.photo-lightbox-counter{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.62);color:#fff;font-weight:800;font-size:.9rem;border-radius:99px;padding:6px 18px;z-index:2}
+@media (max-width:640px){
+  .photo-lightbox-nav{width:44px;height:44px;font-size:1.6rem}
+  .photo-lightbox-prev{left:8px}
+  .photo-lightbox-next{right:8px}
+}

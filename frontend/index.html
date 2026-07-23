@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#123c69">
   <meta name="description" content="Layered Process Audit System สำหรับติดตามการตรวจและปิด Finding">
   <title>Layered Process Audit System</title>
-  <link rel="stylesheet" href="style.css?v=20260723-digest3">
+  <link rel="stylesheet" href="style.css?v=20260723-lightbox">
 </head>
 <body>
   <div id="loginView" class="login-view">
@@ -348,7 +348,10 @@
   <dialog id="photoLightbox" class="photo-lightbox">
     <div class="photo-lightbox-inner">
       <button type="button" class="icon-button photo-lightbox-close" id="closePhotoLightbox">×</button>
+      <button type="button" class="photo-lightbox-nav photo-lightbox-prev hidden" id="photoLightboxPrev" aria-label="รูปก่อนหน้า">‹</button>
       <img id="photoLightboxImage" src="" alt="รูปภาพ">
+      <button type="button" class="photo-lightbox-nav photo-lightbox-next hidden" id="photoLightboxNext" aria-label="รูปถัดไป">›</button>
+      <div id="photoLightboxCounter" class="photo-lightbox-counter hidden"></div>
     </div>
   </dialog>
 
@@ -430,6 +433,6 @@
   </dialog>
 
   <script src="config.js" defer></script>
-  <script src="app.js?v=20260723-digest3" defer></script>
+  <script src="app.js?v=20260723-lightbox" defer></script>
 </body>
 </html>

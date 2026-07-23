@@ -223,9 +223,19 @@ function bindEvents() {
     const trigger = event.target.closest('[data-photo-url]');
     if (!trigger || event.defaultPrevented || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
-    openPhotoLightbox(trigger.dataset.photoUrl);
+    // Collect every photo in the same gallery so the lightbox can page through them
+    const siblings = trigger.parentElement ? $$('[data-photo-url]', trigger.parentElement) : [];
+    const triggers = siblings.length ? siblings : [trigger];
+    openPhotoLightbox(triggers.map(t => t.dataset.photoUrl), Math.max(0, triggers.indexOf(trigger)));
   });
   $('#closePhotoLightbox').addEventListener('click', closePhotoLightbox);
+  $('#photoLightboxPrev').addEventListener('click', () => stepPhotoLightbox(-1));
+  $('#photoLightboxNext').addEventListener('click', () => stepPhotoLightbox(1));
+  document.addEventListener('keydown', event => {
+    if (!$('#photoLightbox').open) return;
+    if (event.key === 'ArrowRight') { event.preventDefault(); stepPhotoLightbox(1); }
+    else if (event.key === 'ArrowLeft') { event.preventDefault(); stepPhotoLightbox(-1); }
+  });
   $('#photoLightbox').addEventListener('click', event => { if (event.target === event.currentTarget) closePhotoLightbox(); });
   $('#photoLightbox').addEventListener('close', () => { $('#photoLightboxImage').src = ''; });
   ['#editCloseRemark', '#editRejectReason'].forEach(selector => {
@@ -4534,10 +4544,33 @@ function findingPhotoGallery(row) {
 // Opens Before/After photo links inline instead of letting them navigate to
 // Google Drive. Delegated on document so it covers both the finding-card
 // list and the finding edit dialog's thumbnails without per-render binding.
-function openPhotoLightbox(url) {
-  if (!url) return;
-  $('#photoLightboxImage').src = driveThumbnailUrl_(url, 1920);
+// Accepts a whole gallery (array of URLs) so ‹ › buttons and arrow keys can
+// page through without closing and reopening the dialog.
+let photoLightboxUrls = [];
+let photoLightboxIndex = 0;
+
+function openPhotoLightbox(urls, index = 0) {
+  photoLightboxUrls = (Array.isArray(urls) ? urls : [urls]).filter(Boolean);
+  if (!photoLightboxUrls.length) return;
+  photoLightboxIndex = Math.min(Math.max(index, 0), photoLightboxUrls.length - 1);
+  renderPhotoLightbox();
   $('#photoLightbox').showModal();
+}
+
+function renderPhotoLightbox() {
+  const multi = photoLightboxUrls.length > 1;
+  $('#photoLightboxImage').src = driveThumbnailUrl_(photoLightboxUrls[photoLightboxIndex], 1920);
+  $('#photoLightboxPrev').classList.toggle('hidden', !multi);
+  $('#photoLightboxNext').classList.toggle('hidden', !multi);
+  const counter = $('#photoLightboxCounter');
+  counter.classList.toggle('hidden', !multi);
+  counter.textContent = `${photoLightboxIndex + 1} / ${photoLightboxUrls.length}`;
+}
+
+function stepPhotoLightbox(delta) {
+  if (photoLightboxUrls.length < 2) return;
+  photoLightboxIndex = (photoLightboxIndex + delta + photoLightboxUrls.length) % photoLightboxUrls.length;
+  renderPhotoLightbox();
 }
 
 function closePhotoLightbox() {
