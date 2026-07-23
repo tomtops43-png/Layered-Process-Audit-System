@@ -1,4 +1,4 @@
-:root{--navy:#123c69;--navy-2:#0b2948;--blue:#1769aa;--cyan:#e8f4fb;--bg:#f3f6f8;--surface:#fff;--text:#172331;--muted:#657383;--border:#d9e1e7;--green:#16824b;--green-bg:#e8f7ef;--red:#d32929;--red-dark:#8f1111;--red-bg:#fdeaea;--orange:#d56a00;--orange-bg:#fff1df;--gray:#68727c;--gray-bg:#edf0f2;--shadow:0 8px 24px rgba(18,60,105,.09);--radius:14px;--topbar:64px;--sidebar:238px;--safe-bottom:env(safe-area-inset-bottom,0px);--audit-sticky-footer-height:112px;--visual-viewport-height:100dvh}
+﻿:root{--navy:#123c69;--navy-2:#0b2948;--blue:#1769aa;--cyan:#e8f4fb;--bg:#f3f6f8;--surface:#fff;--text:#172331;--muted:#657383;--border:#d9e1e7;--green:#16824b;--green-bg:#e8f7ef;--red:#d32929;--red-dark:#8f1111;--red-bg:#fdeaea;--orange:#d56a00;--orange-bg:#fff1df;--gray:#68727c;--gray-bg:#edf0f2;--shadow:0 8px 24px rgba(18,60,105,.09);--radius:14px;--topbar:64px;--sidebar:238px;--safe-bottom:env(safe-area-inset-bottom,0px);--audit-sticky-footer-height:112px;--visual-viewport-height:100dvh}
 *{box-sizing:border-box}
 html{font-family:Arial,"Noto Sans Thai",Tahoma,sans-serif;color:var(--text);background:var(--bg);scroll-behavior:smooth}
 body{margin:0;min-height:100vh;min-height:100svh;min-height:100dvh;min-height:var(--visual-viewport-height)}
@@ -640,7 +640,7 @@ body.mtg-tv-open{overflow:hidden}
 .mtg-tv-progress.all-done{background:var(--green);color:#fff}
 .mtg-tv-close{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:9px;padding:8px 16px;font-weight:800;font-size:.9rem;cursor:pointer}
 .mtg-tv-close:hover{background:rgba(255,255,255,.22)}
-.mtg-tv-body{flex:1;overflow-y:auto;display:flex;flex-direction:column;justify-content:center;padding:3vh 6vw}
+.mtg-tv-body{flex:1;overflow-y:auto;display:flex;flex-direction:column;padding:3vh 6vw}
 .mtg-tv-eyebrow{font-size:.95rem;font-weight:800;letter-spacing:.14em;color:#9fc3e2;margin:0 0 8px}
 .mtg-tv-title{font-size:clamp(1.8rem,4vw,3rem);font-weight:900;margin:0 0 3vh}
 .mtg-tv-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px;counter-reset:tvitem}
@@ -651,7 +651,9 @@ body.mtg-tv-open{overflow:hidden}
 .mtg-tv-item-icon{font-size:1.3em;flex-shrink:0}
 .mtg-tv-item-text{flex:1;line-height:1.4}
 .mtg-tv-item-carry{font-size:.7em;font-weight:800;background:rgba(255,255,255,.16);border-radius:99px;padding:4px 12px;white-space:nowrap}
-.mtg-tv-slide{display:flex;flex-direction:column;gap:2.2vh;max-width:1300px;margin:0 auto;width:100%}
+.mtg-tv-slide{display:flex;flex-direction:column;gap:2.2vh;max-width:1300px;margin:auto;width:100%}
+.mtg-tv-agenda{margin:auto;width:100%;max-width:1100px}
+.mtg-tv-item-line{font-size:.68em;font-weight:600;color:#9fc3e2;display:block;margin-top:2px}
 .mtg-tv-chips{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .mtg-tv-chip{display:inline-flex;align-items:center;gap:6px;border-radius:99px;padding:8px 18px;font-size:clamp(.85rem,1.6vw,1.1rem);font-weight:800;background:rgba(255,255,255,.14);color:#fff;white-space:nowrap}
 .mtg-tv-cat.mtg-cat-problem{background:var(--red)}

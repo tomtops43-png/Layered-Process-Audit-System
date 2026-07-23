@@ -2742,9 +2742,12 @@ function renderMeetingTv() {
       <ol class="mtg-tv-list">${deck.map((item, i) => {
         const done = meetingTvStatusDone(item.row);
         const cat = meetingCategoryMeta(item.row.Category);
+        const priority = String(item.row.Priority || 'ปกติ');
+        const sub = [item.row.LineName || item.row.LineID || 'ทุกไลน์', item.row.Category || 'ทั่วไป', `ลงโดย ${item.row.CreatedByName || '-'}`].join(' · ');
         return `<li><button class="mtg-tv-item${done ? ' done' : ''}" data-tv-goto="${i + 1}">
           <span class="mtg-tv-item-icon">${done ? '✅' : cat.icon}</span>
-          <span class="mtg-tv-item-text">${escapeHtml(item.row.Topic || '-')}</span>
+          <span class="mtg-tv-item-text">${escapeHtml(item.row.Topic || '-')}<span class="mtg-tv-item-line">${escapeHtml(sub)}</span></span>
+          ${priority === 'ด่วน' ? '<span class="mtg-tv-chip mtg-tv-urgent">ด่วน</span>' : priority === 'สำคัญ' ? '<span class="mtg-tv-chip mtg-tv-important">สำคัญ</span>' : ''}
           ${item.carry ? '<span class="mtg-tv-item-carry">⏳ ค้าง</span>' : ''}
         </button></li>`;
       }).join('')}</ol>
@@ -2769,7 +2772,7 @@ function renderMeetingTv() {
       <div class="mtg-tv-topic">${escapeHtml(row.Topic || '-')}</div>
       ${row.Detail ? `<div class="mtg-tv-detail">${escapeHtml(row.Detail)}</div>` : ''}
       ${photos.length ? `<div class="mtg-tv-photos">${photos.map((u, i) => `<img src="${escapeAttr(driveThumbnailUrl_(u, 1000))}" data-photo-url="${escapeAttr(u)}" alt="รูปที่ ${i + 1}" loading="lazy">`).join('')}</div>` : ''}
-      <div class="mtg-tv-slide-meta">${escapeHtml(row.LineName || row.LineID || 'ทุกไลน์')}${row.Shift ? ' · กะ ' + escapeHtml(row.Shift) : ''} · ลงโดย ${escapeHtml(row.CreatedByName || '-')}${row.DiscussedBy ? ' · คุยแล้วโดย ' + escapeHtml(row.DiscussedBy) : ''}</div>
+      <div class="mtg-tv-slide-meta">📅 ${formatDate(row.MeetingDate)}${row.Shift ? ' · กะ ' + escapeHtml(row.Shift) : ''} · 🏭 ${escapeHtml(row.LineName || row.LineID || 'ทุกไลน์')} · ✍️ ลงโดย ${escapeHtml(row.CreatedByName || '-')}${row.DiscussedBy ? ' · ✓ คุยแล้วโดย ' + escapeHtml(row.DiscussedBy) : ''}${row.PostID ? ' · ' + escapeHtml(row.PostID) : ''}</div>
       ${actions.length ? `<div class="mtg-tv-actions">${actions.join('')}</div>` : ''}
     </div>`;
   }
