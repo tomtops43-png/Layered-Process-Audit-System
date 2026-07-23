@@ -148,6 +148,8 @@ function hasApiAccess_(user, action) {
     getDirectorDashboardData: ['dashboard.view.all'],
     getMonthlyReport: ['reports.view'], exportReportCsv: ['reports.export'],
     getMeetingPosts: ['meeting.view'],
+    acknowledgeMeetingPost: ['meeting.view'],
+    getMyPendingMeetingAcks: ['meeting.view'],
     saveMeetingPost: ['meeting.create', 'meeting.update.own', 'meeting.manage'],
     deleteMeetingPost: ['meeting.update.own', 'meeting.manage'],
     updateMeetingPostStatus: ['meeting.create', 'meeting.update.own', 'meeting.manage'],

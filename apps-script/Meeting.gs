@@ -6,16 +6,40 @@
 var MEETING_POST_STATUSES_ = ['Open', 'Discussed', 'Closed'];
 var MEETING_CARRY_OVER_DAYS_ = 7;
 
-/** Self-healing sheet creation so no manual setup run is required after deploy. */
-function ensureMeetingPostsSheet_() {
+/** Self-healing sheet creation (and header append for columns added later),
+ * so no manual setup run is required after deploy. */
+function ensureMeetingSheet_(sheetName) {
   var spreadsheet = getSpreadsheet_();
-  var sheet = spreadsheet.getSheetByName(SHEET_NAMES.MEETING_POSTS);
-  if (sheet) return sheet;
-  sheet = spreadsheet.insertSheet(SHEET_NAMES.MEETING_POSTS);
-  var headers = SHEET_HEADERS[SHEET_NAMES.MEETING_POSTS];
-  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-  sheet.setFrozenRows(1);
+  var headers = SHEET_HEADERS[sheetName];
+  var sheet = spreadsheet.getSheetByName(sheetName);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(sheetName);
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.setFrozenRows(1);
+    return sheet;
+  }
+  var existing = getHeaders_(sheet);
+  var missing = headers.filter(function (header) { return existing.indexOf(header) === -1; });
+  if (missing.length) sheet.getRange(1, existing.length + 1, 1, missing.length).setValues([missing]);
   return sheet;
+}
+
+function ensureMeetingPostsSheet_() { return ensureMeetingSheet_(SHEET_NAMES.MEETING_POSTS); }
+function ensureMeetingAcksSheet_() { return ensureMeetingSheet_(SHEET_NAMES.MEETING_ACKS); }
+
+/** Latest-ack map keyed by PostID, deduped per user. */
+function getMeetingAcksByPost_() {
+  var byPost = {};
+  getRowsAsObjects(SHEET_NAMES.MEETING_ACKS).forEach(function (row) {
+    var postId = cleanString_(row.PostID);
+    if (!postId) return;
+    if (!byPost[postId]) byPost[postId] = [];
+    var userKey = cleanString_(row.UserID).toLowerCase();
+    if (!byPost[postId].some(function (ack) { return cleanString_(ack.UserID).toLowerCase() === userKey; })) {
+      byPost[postId].push(row);
+    }
+  });
+  return byPost;
 }
 
 /** Factory-wide (ALL) posts are visible to everyone; line posts follow Line Access. */
@@ -70,9 +94,12 @@ function getMeetingPosts(payload, user) {
       }
     });
 
+    ensureMeetingAcksSheet_();
+    var ackByPost = getMeetingAcksByPost_();
     var decorate = function (row) {
       var copy = sanitizeForClient_(row);
       copy.CanEdit = canEditMeetingPost_(user, row);
+      decorateMeetingAckSummary_(copy, row, ackByPost, user);
       return copy;
     };
     posts.sort(meetingPostCompare_);
@@ -102,6 +129,43 @@ function meetingPostCompare_(a, b) {
   var priorityDiff = meetingPriorityRank_(a.Priority) - meetingPriorityRank_(b.Priority);
   if (priorityDiff) return priorityDiff;
   return cleanString_(a.CreatedAt).localeCompare(cleanString_(b.CreatedAt));
+}
+
+function decorateMeetingAckSummary_(copy, row, ackByPost, user) {
+  var requiredIds = csvList_(row.AckRequiredUserIDs);
+  var requiredNames = csvList_(row.AckRequiredNames);
+  copy.AckRequiredCount = requiredIds.length;
+  copy.AckedCount = 0;
+  copy.AckedNames = [];
+  copy.AckPendingNames = [];
+  copy.NeedsMyAck = false;
+  if (!requiredIds.length) return;
+  var ackedIds = {};
+  (ackByPost[cleanString_(row.PostID)] || []).forEach(function (ack) {
+    var key = cleanString_(ack.UserID).toLowerCase();
+    if (!ackedIds[key] && requiredIds.some(function (id) { return valuesEqual_(id, ack.UserID); })) {
+      ackedIds[key] = true;
+      copy.AckedNames.push(cleanString_(ack.UserName) || cleanString_(ack.UserID));
+    }
+  });
+  requiredIds.forEach(function (id, index) {
+    if (!ackedIds[cleanString_(id).toLowerCase()]) copy.AckPendingNames.push(requiredNames[index] || id);
+  });
+  copy.AckedCount = copy.AckedNames.length;
+  copy.NeedsMyAck = requiredIds.some(function (id) { return valuesEqual_(id, user.UserID); }) &&
+    !ackedIds[cleanString_(user.UserID).toLowerCase()];
+}
+
+/** Resolve selected UserIDs into stored CSV columns (IDs + display names). */
+function resolveMeetingAckUsers_(ackUserIds) {
+  var ids = Array.isArray(ackUserIds) ? ackUserIds.map(cleanString_).filter(Boolean) : csvList_(ackUserIds);
+  if (!ids.length) return { ids: '', names: '' };
+  var users = getCachedUserRows_();
+  var names = ids.map(function (id) {
+    var match = users.filter(function (u) { return valuesEqual_(u.UserID, id); })[0];
+    return match ? cleanString_(match.FullName || match.Username) || id : id;
+  });
+  return { ids: ids.join(', '), names: names.join(', ') };
 }
 
 function resolveMeetingLineName_(lineId, providedName) {
@@ -142,6 +206,11 @@ function saveMeetingPost(payload, user) {
       if (payload.pinned !== undefined && hasPermission_(user, 'meeting.manage')) {
         updates.Pinned = payload.pinned ? 'Yes' : 'No';
       }
+      if (payload.ackUserIds !== undefined) {
+        var resolvedAckUpdate = resolveMeetingAckUsers_(payload.ackUserIds);
+        updates.AckRequiredUserIDs = resolvedAckUpdate.ids;
+        updates.AckRequiredNames = resolvedAckUpdate.names;
+      }
       var updated = updateObjectById(SHEET_NAMES.MEETING_POSTS, 'PostID', postId, updates);
       return jsonResponse(true, 'Meeting post updated.', { post: sanitizeForClient_(updated) });
     }
@@ -152,6 +221,7 @@ function saveMeetingPost(payload, user) {
     if (!parseDate_(meetingDate)) return jsonResponse(false, 'Invalid meetingDate: ' + meetingDate, {});
     var lineId = cleanString_(payload.lineId);
     if (!isAllFilter_(lineId)) requireLineAccess_(user, lineId, 'view');
+    var resolvedAckCreate = resolveMeetingAckUsers_(payload.ackUserIds);
     var newPostId = generateId('MTG', SHEET_NAMES.MEETING_POSTS, 'PostID', getPeriodMonth(new Date()));
     var post = {
       PostID: newPostId, MeetingDate: meetingDate, Shift: cleanString_(payload.shift),
@@ -163,6 +233,7 @@ function saveMeetingPost(payload, user) {
       Status: 'Open',
       Pinned: payload.pinned && hasPermission_(user, 'meeting.manage') ? 'Yes' : 'No',
       DiscussedAt: '', DiscussedBy: '',
+      AckRequiredUserIDs: resolvedAckCreate.ids, AckRequiredNames: resolvedAckCreate.names,
       CreatedAt: timestamp, CreatedBy: user.UserID,
       CreatedByName: user.FullName || user.Username || user.UserID,
       UpdatedAt: timestamp, UpdatedBy: user.UserID
@@ -216,6 +287,60 @@ function updateMeetingPostStatus(payload, user) {
     }
     var updated = updateObjectById(SHEET_NAMES.MEETING_POSTS, 'PostID', postId, updates);
     return jsonResponse(true, 'Meeting post status updated.', { post: sanitizeForClient_(updated) });
+  } catch (error) {
+    return jsonResponse(false, safeErrorMessage_(error), {});
+  }
+}
+
+/** A required user presses "รับทราบ" — append-only so concurrent acks never clobber each other. */
+function acknowledgeMeetingPost(payload, user) {
+  try {
+    requireFields_(payload, ['postId']);
+    ensureMeetingAcksSheet_();
+    var postId = cleanString_(payload.postId);
+    var post = findById_(SHEET_NAMES.MEETING_POSTS, 'PostID', postId);
+    if (!post || valuesEqual_(post.Status, 'Deleted')) return jsonResponse(false, 'ไม่พบหัวข้อประชุมนี้ (อาจถูกลบไปแล้ว)', {});
+    var requiredIds = csvList_(post.AckRequiredUserIDs);
+    if (!requiredIds.some(function (id) { return valuesEqual_(id, user.UserID); })) {
+      return jsonResponse(false, 'หัวข้อนี้ไม่ได้กำหนดให้คุณต้องกดรับทราบ', {});
+    }
+    var already = getRowsAsObjects(SHEET_NAMES.MEETING_ACKS).some(function (row) {
+      return valuesEqual_(row.PostID, postId) && valuesEqual_(row.UserID, user.UserID);
+    });
+    if (!already) {
+      appendObject(SHEET_NAMES.MEETING_ACKS, {
+        PostID: postId, UserID: user.UserID,
+        UserName: user.FullName || user.Username || user.UserID,
+        AckedAt: formatDateTimeBangkok(new Date())
+      });
+    }
+    return jsonResponse(true, 'บันทึกการรับทราบแล้ว', { postId: postId, alreadyAcked: already });
+  } catch (error) {
+    return jsonResponse(false, safeErrorMessage_(error), {});
+  }
+}
+
+/** Posts (last 14 days) that still wait for the current user's acknowledgement —
+ * powers the nav badge and the dashboard reminder banner. */
+function getMyPendingMeetingAcks(payload, user) {
+  try {
+    requirePermission_(user, 'meeting.view');
+    ensureMeetingPostsSheet_();
+    ensureMeetingAcksSheet_();
+    var myAcked = {};
+    getRowsAsObjects(SHEET_NAMES.MEETING_ACKS).forEach(function (row) {
+      if (valuesEqual_(row.UserID, user.UserID)) myAcked[cleanString_(row.PostID)] = true;
+    });
+    var cutoff = new Date(Date.now() - 14 * 86400000);
+    var pending = getRowsAsObjects(SHEET_NAMES.MEETING_POSTS).filter(function (row) {
+      if (valuesEqual_(row.Status, 'Deleted')) return false;
+      if (myAcked[cleanString_(row.PostID)]) return false;
+      if (!csvList_(row.AckRequiredUserIDs).some(function (id) { return valuesEqual_(id, user.UserID); })) return false;
+      var postDate = parseDate_(dateOnly_(row.MeetingDate));
+      return Boolean(postDate) && postDate >= cutoff;
+    }).map(sanitizeForClient_);
+    pending.sort(function (a, b) { return cleanString_(b.MeetingDate).localeCompare(cleanString_(a.MeetingDate)); });
+    return jsonResponse(true, 'Pending acknowledgements loaded.', { pending: pending, count: pending.length });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }

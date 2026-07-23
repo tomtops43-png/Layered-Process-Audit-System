@@ -64,6 +64,7 @@ const state = {
   meetingCanCreate: false,
   meetingCanManage: false,
   meetingTvIndex: 0,
+  meetingPendingAcks: [],
   editingMeetingPost: null,
   adminUsers: [],
   adminMasterLists: [],
@@ -201,6 +202,7 @@ function bindEvents() {
   $('#closeMeetingDialog').addEventListener('click', () => $('#meetingDialog').close());
   $('#cancelMeetingPost').addEventListener('click', () => $('#meetingDialog').close());
   $('#deleteMeetingPostButton').addEventListener('click', deleteMeetingPostAction);
+  $('#meetingAckSearch').addEventListener('input', filterMeetingAckUsers);
   $('#findingLine').addEventListener('change', () => populateStationSelect('#findingStation', $('#findingLine').value, true));
   $('#checklistLine').addEventListener('change', () => populateStationSelect('#checklistStation', $('#checklistLine').value, false));
   $('#applyFindingFilters').addEventListener('click', loadFindings);
@@ -404,6 +406,8 @@ async function initializeAuthenticatedApp(validateSession = true) {
   applyViewerAccountRestrictions();
   showDashboardSkeleton();
   await navigateTo('dashboard');
+  // Meeting-ack reminders: toast once at login, badge + dashboard banner until acked
+  refreshMeetingAckNotifications(true);
   // Pre-warm GAS findings cache in background so Finding Tracking page loads fast on first visit
   setTimeout(() => apiCall('getFindings', {}).then(data => {
     if (!state.findingsCache) {
@@ -2535,6 +2539,20 @@ function renderMeetingBoard() {
   container.innerHTML = `${progress}${todayHtml}${carryHtml}`;
   $$('[data-mtg-edit]', container).forEach(btn => btn.addEventListener('click', () => openMeetingEditor(btn.dataset.mtgEdit)));
   $$('[data-mtg-status]', container).forEach(btn => btn.addEventListener('click', () => setMeetingPostStatus(btn, btn.dataset.mtgId, btn.dataset.mtgStatus)));
+  $$('[data-mtg-ack]', container).forEach(btn => btn.addEventListener('click', () => ackMeetingPost(btn, btn.dataset.mtgAck)));
+}
+
+function meetingAckSectionHtml(row) {
+  if (!row.AckRequiredCount) return '';
+  const done = row.AckedCount >= row.AckRequiredCount;
+  const acked = (row.AckedNames || []).join(', ');
+  const pending = (row.AckPendingNames || []).join(', ');
+  return `<div class="mtg-ack${done ? ' mtg-ack-done' : ''}">
+    <div class="mtg-ack-count">🙋 รับทราบแล้ว ${row.AckedCount}/${row.AckRequiredCount}${done ? ' ✅' : ''}</div>
+    ${acked ? `<div class="mtg-ack-names">✓ ${escapeHtml(acked)}</div>` : ''}
+    ${pending ? `<div class="mtg-ack-names mtg-ack-pending">⏳ ยังไม่รับทราบ: ${escapeHtml(pending)}</div>` : ''}
+    ${row.NeedsMyAck ? `<button class="btn btn-primary mtg-ack-btn" data-mtg-ack="${escapeAttr(row.PostID)}">✋ กดรับทราบ</button>` : ''}
+  </div>`;
 }
 
 function meetingPostCardHtml(row, isCarry) {
@@ -2570,6 +2588,7 @@ function meetingPostCardHtml(row, isCarry) {
     <div class="mtg-topic">${escapeHtml(row.Topic || '-')}</div>
     ${row.Detail ? `<div class="mtg-detail">${escapeHtml(row.Detail)}</div>` : ''}
     ${meetingPhotoGallery(row.PhotoURL)}
+    ${meetingAckSectionHtml(row)}
     <div class="mtg-meta">${metaParts.join(' · ')}</div>
     ${actions.length ? `<div class="mtg-actions">${actions.join('')}</div>` : ''}
   </article>`;
@@ -2601,6 +2620,7 @@ function openMeetingEditor(postId = '') {
   $('#meetingPostPinned').checked = row ? isMeetingPinned(row) : false;
   $('#meetingPostTopic').value = row ? (row.Topic || '') : '';
   $('#meetingPostDetail').value = row ? (row.Detail || '') : '';
+  populateMeetingAckUsers(row ? String(row.AckRequiredUserIDs || '').split(',').map(s => s.trim()).filter(Boolean) : []);
   $('#meetingPostPhoto').value = '';
   $('#meetingPhotoPreview').innerHTML = row && row.PhotoURL ? meetingPhotoGallery(row.PhotoURL) : '';
   $('#deleteMeetingPostButton').classList.toggle('hidden', !row);
@@ -2629,7 +2649,8 @@ async function saveMeetingPostFromForm() {
     priority: $('#meetingPostPriority').value,
     topic,
     detail: $('#meetingPostDetail').value.trim(),
-    pinned: $('#meetingPostPinned').checked
+    pinned: $('#meetingPostPinned').checked,
+    ackUserIds: $$('#meetingAckUserGroup input:checked').map(input => input.value)
   };
   if (postId) payload.postId = postId;
   const files = Array.from($('#meetingPostPhoto').files || []);
@@ -2674,6 +2695,80 @@ async function deleteMeetingPostAction() {
   } finally {
     hideLoading();
   }
+}
+
+function populateMeetingAckUsers(selectedIds = []) {
+  const group = $('#meetingAckUserGroup');
+  const selected = new Set(selectedIds.map(String));
+  const users = (state.masterData.users || [])
+    .filter(u => (!u.ActiveStatus || String(u.ActiveStatus).toLowerCase() === 'active') && u.Role !== 'Customer')
+    .sort((a, b) => String(a.FullName || '').localeCompare(String(b.FullName || ''), 'th'));
+  group.innerHTML = users.length
+    ? users.map(u => `<label class="checkbox-item"><input type="checkbox" value="${escapeAttr(u.UserID)}" ${selected.has(String(u.UserID)) ? 'checked' : ''}><span>${escapeHtml(u.FullName || u.Username)} <small>(${escapeHtml(u.Role || '')})</small></span></label>`).join('')
+    : '<div class="empty-state">กำลังโหลดรายชื่อผู้ใช้...</div>';
+  wireCheckboxChips(group);
+  $('#meetingAckSearch').value = '';
+  filterMeetingAckUsers();
+}
+
+function filterMeetingAckUsers() {
+  const query = $('#meetingAckSearch').value.trim().toLowerCase();
+  $$('#meetingAckUserGroup .checkbox-item').forEach(item => {
+    const match = !query || item.textContent.toLowerCase().includes(query) || item.querySelector('input').checked;
+    item.style.display = match ? '' : 'none';
+  });
+}
+
+async function ackMeetingPost(button, postId) {
+  if (button) { button.disabled = true; button.textContent = 'กำลังบันทึก...'; }
+  try {
+    await apiCall('acknowledgeMeetingPost', { postId });
+    showToast('รับทราบเรียบร้อย ✅', 'success');
+    state.meetingPendingAcks = state.meetingPendingAcks.filter(p => p.PostID !== postId);
+    renderMeetingAckBadgeAndBanner();
+    if ($('#page-meeting').classList.contains('active-page')) await loadMeetingBoard();
+    refreshMeetingAckNotifications(false);
+  } catch (error) {
+    if (button) { button.disabled = false; button.textContent = '✋ กดรับทราบ'; }
+    showToast(error.message, 'error');
+  }
+}
+
+async function refreshMeetingAckNotifications(notify = false) {
+  if (!state.user || !hasPermission('meeting.view')) return;
+  try {
+    const data = await apiCall('getMyPendingMeetingAcks', {});
+    state.meetingPendingAcks = data.pending || [];
+    renderMeetingAckBadgeAndBanner();
+    if (notify && state.meetingPendingAcks.length) {
+      showToast(`📣 มีเรื่องแจ้งจากที่ประชุม ${state.meetingPendingAcks.length} รายการ รอคุณกดรับทราบ`, 'warning', 8000);
+    }
+  } catch (_) { /* เงียบไว้ — แถบเตือนไม่ควรทำให้หน้าหลักพัง */ }
+}
+
+function renderMeetingAckBadgeAndBanner() {
+  const count = state.meetingPendingAcks.length;
+  const badge = $('#meetingNavBadge');
+  if (badge) {
+    badge.textContent = count;
+    badge.classList.toggle('hidden', !count);
+  }
+  const banner = $('#meetingAckBanner');
+  if (!banner) return;
+  if (!count) { banner.classList.add('hidden'); banner.innerHTML = ''; return; }
+  banner.classList.remove('hidden');
+  banner.innerHTML = `<div class="mtg-ack-banner-head">📣 มีเรื่องแจ้งจากที่ประชุมรอคุณกดรับทราบ (${count})</div>` +
+    state.meetingPendingAcks.map(p => `<div class="mtg-ack-banner-item">
+      <div class="mtg-ack-banner-text">
+        <strong>${escapeHtml(p.Topic || '-')}</strong>
+        <small>${formatDate(p.MeetingDate)} · ${escapeHtml(p.LineName || p.LineID || 'ทุกไลน์')} · ${escapeHtml(p.Category || 'ทั่วไป')} · ลงโดย ${escapeHtml(p.CreatedByName || '-')}</small>
+        ${p.Detail ? `<small class="mtg-ack-banner-detail">${escapeHtml(p.Detail)}</small>` : ''}
+      </div>
+      <button class="btn btn-primary" data-mtg-ack="${escapeAttr(p.PostID)}">✋ รับทราบ</button>
+    </div>`).join('') +
+    `<button class="btn btn-outline mtg-ack-banner-open" id="meetingAckBannerOpen">เปิดบอร์ดประชุม →</button>`;
+  $$('[data-mtg-ack]', banner).forEach(btn => btn.addEventListener('click', () => ackMeetingPost(btn, btn.dataset.mtgAck)));
+  $('#meetingAckBannerOpen').addEventListener('click', () => navigateTo('meeting'));
 }
 
 async function setMeetingPostStatus(button, postId, status, fromTv = false) {
@@ -2772,7 +2867,8 @@ function renderMeetingTv() {
       <div class="mtg-tv-topic">${escapeHtml(row.Topic || '-')}</div>
       ${row.Detail ? `<div class="mtg-tv-detail">${escapeHtml(row.Detail)}</div>` : ''}
       ${photos.length ? `<div class="mtg-tv-photos">${photos.map((u, i) => `<img src="${escapeAttr(driveThumbnailUrl_(u, 1000))}" data-photo-url="${escapeAttr(u)}" alt="รูปที่ ${i + 1}" loading="lazy">`).join('')}</div>` : ''}
-      <div class="mtg-tv-slide-meta">📅 ${formatDate(row.MeetingDate)}${row.Shift ? ' · กะ ' + escapeHtml(row.Shift) : ''} · 🏭 ${escapeHtml(row.LineName || row.LineID || 'ทุกไลน์')} · ✍️ ลงโดย ${escapeHtml(row.CreatedByName || '-')}${row.DiscussedBy ? ' · ✓ คุยแล้วโดย ' + escapeHtml(row.DiscussedBy) : ''}${row.PostID ? ' · ' + escapeHtml(row.PostID) : ''}</div>
+      <div class="mtg-tv-slide-meta">📅 ${formatDate(row.MeetingDate)}${row.Shift ? ' · กะ ' + escapeHtml(row.Shift) : ''} · 🏭 ${escapeHtml(row.LineName || row.LineID || 'ทุกไลน์')} · ✍️ ลงโดย ${escapeHtml(row.CreatedByName || '-')}${row.DiscussedBy ? ' · ✓ คุยแล้วโดย ' + escapeHtml(row.DiscussedBy) : ''}${row.AckRequiredCount ? ` · 🙋 รับทราบ ${row.AckedCount}/${row.AckRequiredCount}` : ''}${row.PostID ? ' · ' + escapeHtml(row.PostID) : ''}</div>
+      ${row.AckRequiredCount && (row.AckPendingNames || []).length ? `<div class="mtg-tv-slide-meta mtg-tv-ack-pending">⏳ ยังไม่รับทราบ: ${escapeHtml(row.AckPendingNames.join(', '))}</div>` : ''}
       ${actions.length ? `<div class="mtg-tv-actions">${actions.join('')}</div>` : ''}
     </div>`;
   }

@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#123c69">
   <meta name="description" content="Layered Process Audit System สำหรับติดตามการตรวจและปิด Finding">
   <title>Layered Process Audit System</title>
-  <link rel="stylesheet" href="style.css?v=20260723-tv2">
+  <link rel="stylesheet" href="style.css?v=20260723-ack">
 </head>
 <body>
   <div id="loginView" class="login-view">
@@ -41,7 +41,7 @@
       <div class="sidebar-head"><strong>เมนูหลัก</strong><button id="closeMenuButton" class="icon-button mobile-only" aria-label="ปิดเมนู">×</button></div>
       <nav id="mainNav" class="main-nav">
         <button data-page="dashboard" class="nav-item active"><span>▦</span>Dashboard</button>
-        <button data-page="meeting" data-permission-any="meeting.view" class="nav-item"><span>📣</span>Meeting ก่อนเข้างาน</button>
+        <button data-page="meeting" data-permission-any="meeting.view" class="nav-item"><span>📣</span>Meeting ก่อนเข้างาน <b id="meetingNavBadge" class="nav-badge hidden">0</b></button>
         <button data-page="audit" class="nav-item"><span>✓</span>ตรวจ LPA <b id="auditNavBadge" class="nav-badge hidden">0</b></button>
         <button data-page="audit-plan" data-permission-any="audit.plan.view" class="nav-item"><span>▣</span>LPA Schedule Rules</button>
         <button data-page="findings" class="nav-item"><span>!</span>Finding Tracking <b id="findingNavBadge" class="nav-badge hidden">0</b></button>
@@ -55,6 +55,7 @@
 
     <main class="main-content">
       <section id="page-dashboard" class="page active-page">
+        <div id="meetingAckBanner" class="mtg-ack-banner hidden"></div>
         <!-- Leader / Supervisor Dashboard -->
         <div id="leaderDashboard" class="hidden">
           <div id="ldHeader" class="ld-header"></div>
@@ -394,6 +395,12 @@
         <label class="check-label hidden" id="meetingPostPinnedField"><input id="meetingPostPinned" type="checkbox"> 📌 ปักหมุด (แสดงทุกวันจนกว่าจะจบเรื่อง)</label>
         <label class="full-width">หัวข้อ *<input id="meetingPostTopic" required maxlength="200" placeholder="เช่น เครื่อง XX มีปัญหา / ประกาศเรื่อง..."></label>
         <label class="full-width">รายละเอียด<textarea id="meetingPostDetail" rows="4" placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)"></textarea></label>
+        <div class="form-field full-width">
+          <span class="data-label">🙋 ผู้ที่ต้องกดรับทราบ (เลือกได้หลายคน — ไม่บังคับ)</span>
+          <small class="field-help">ระบบจะแจ้งเตือนบนหน้าจอของคนที่เลือก จนกว่าเขาจะกด "รับทราบ"</small>
+          <input id="meetingAckSearch" placeholder="พิมพ์ค้นหาชื่อ..." autocomplete="off" style="margin:8px 0">
+          <div class="checkbox-group mtg-ack-group" id="meetingAckUserGroup"></div>
+        </div>
         <label class="full-width">รูปประกอบ (เลือกได้หลายรูป)<input id="meetingPostPhoto" type="file" accept="image/*" multiple></label>
         <div id="meetingPhotoPreview" class="photo-link full-width"></div>
       </div>
@@ -416,6 +423,6 @@
   </dialog>
 
   <script src="config.js" defer></script>
-  <script src="app.js?v=20260723-tv2" defer></script>
+  <script src="app.js?v=20260723-ack" defer></script>
 </body>
 </html>

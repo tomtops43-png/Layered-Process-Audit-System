@@ -50,6 +50,8 @@ function doPost(e) {
       getLeaderDashboardBatch: function (user) { return getLeaderDashboardBatch(payload, user); },
       getFindingShiftDigest: function (user) { return getFindingShiftDigest(payload, user); },
       getMeetingPosts: function (user) { return getMeetingPosts(payload, user); },
+      acknowledgeMeetingPost: function (user) { return acknowledgeMeetingPost(payload, user); },
+      getMyPendingMeetingAcks: function (user) { return getMyPendingMeetingAcks(payload, user); },
       saveMeetingPost: function (user) { return saveMeetingPost(payload, user); },
       deleteMeetingPost: function (user) { return deleteMeetingPost(payload, user); },
       updateMeetingPostStatus: function (user) { return updateMeetingPostStatus(payload, user); },

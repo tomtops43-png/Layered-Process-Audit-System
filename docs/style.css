@@ -684,3 +684,26 @@ body.mtg-tv-open{overflow:hidden}
   .mtg-tv-body{padding:2vh 5vw}
   .mtg-tv-photos img{height:20vh;max-width:80vw}
 }
+
+/* ===== Meeting acknowledgement ===== */
+.mtg-ack{margin:12px 22px 0;padding:12px 16px;border:1px dashed var(--orange);border-radius:10px;background:var(--orange-bg);display:flex;flex-direction:column;gap:6px}
+.mtg-ack.mtg-ack-done{border-color:var(--green);background:var(--green-bg)}
+.mtg-ack-count{font-weight:800;font-size:.88rem;color:var(--text)}
+.mtg-ack-names{font-size:.8rem;color:var(--muted);line-height:1.5}
+.mtg-ack-pending{color:var(--orange);font-weight:600}
+.mtg-ack-btn{align-self:flex-start;margin-top:4px}
+.mtg-ack-group{max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;padding:10px;display:flex;flex-wrap:wrap;gap:8px}
+.mtg-ack-banner{background:#fff;border:2px solid var(--orange);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px 20px;margin-bottom:18px;display:flex;flex-direction:column;gap:12px}
+.mtg-ack-banner-head{font-weight:900;color:var(--orange);font-size:1rem}
+.mtg-ack-banner-item{display:flex;align-items:center;gap:14px;justify-content:space-between;border:1px solid var(--border);border-radius:10px;padding:12px 16px;background:#fffdf8}
+.mtg-ack-banner-text{display:flex;flex-direction:column;gap:3px;min-width:0}
+.mtg-ack-banner-text strong{font-size:.95rem;line-height:1.45}
+.mtg-ack-banner-text small{color:var(--muted);font-size:.76rem}
+.mtg-ack-banner-detail{white-space:pre-line;line-height:1.5}
+.mtg-ack-banner-open{align-self:flex-end}
+.mtg-tv-ack-pending{color:#ffcf99}
+@media (max-width:640px){
+  .mtg-ack{margin:12px 16px 0}
+  .mtg-ack-banner-item{flex-direction:column;align-items:stretch}
+  .mtg-ack-banner-item .btn{width:100%}
+}
