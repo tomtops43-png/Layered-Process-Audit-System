@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#123c69">
   <meta name="description" content="Layered Process Audit System สำหรับติดตามการตรวจและปิด Finding">
   <title>Layered Process Audit System</title>
-  <link rel="stylesheet" href="style.css?v=20260723-tvanim">
+  <link rel="stylesheet" href="style.css?v=20260723-digest">
 </head>
 <body>
   <div id="loginView" class="login-view">
@@ -166,6 +166,13 @@
           <button id="loadMeetingPostsButton" class="btn btn-secondary">แสดงบอร์ด</button>
         </article>
         <div id="meetingBoard" class="meeting-board"><div class="empty-state">กำลังโหลดบอร์ดประชุม...</div></div>
+        <div class="ld-section mtg-finding-section" data-permission-any="dashboard.view,dashboard.view.all">
+          <div class="ld-section-title mgr-shift-digest-title">
+            <span>📢 Finding จากการตรวจ LPA</span>
+            <select id="meetingShiftDigestPic" class="mgr-line-select-light" onchange="loadFindingShiftDigest('meetingShiftDigest','meetingShiftDigestPic')"><option value="">ผู้รับผิดชอบ: ทั้งหมด</option></select>
+          </div>
+          <div id="meetingShiftDigest"><div class="empty-state">กำลังโหลด Finding...</div></div>
+        </div>
       </section>
 
       <section id="page-audit" class="page">
@@ -423,6 +430,6 @@
   </dialog>
 
   <script src="config.js" defer></script>
-  <script src="app.js?v=20260723-tvanim" defer></script>
+  <script src="app.js?v=20260723-digest" defer></script>
 </body>
 </html>

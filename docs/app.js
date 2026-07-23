@@ -65,6 +65,7 @@ const state = {
   meetingCanManage: false,
   meetingTvIndex: 0,
   meetingPendingAcks: [],
+  meetingFindingDigest: null,
   editingMeetingPost: null,
   adminUsers: [],
   adminMasterLists: [],
@@ -968,6 +969,8 @@ async function loadFindingShiftDigest(containerId = 'mgrShiftDigest', selectId =
     populateShiftDigestPicFilter(selectId);
     const picUserId = $(`#${selectId}`)?.value || '';
     const digest = await apiCall('getFindingShiftDigest', picUserId ? { picUserId } : {});
+    // Meeting page keeps the digest around so TV mode can show it as a final slide
+    if (containerId === 'meetingShiftDigest') state.meetingFindingDigest = digest;
     renderMgrShiftDigest(digest, containerId);
   } catch (error) {
     el.innerHTML = emptyHtml(error.message || 'โหลด Finding ไม่สำเร็จ');
@@ -2799,8 +2802,16 @@ function meetingTvDeck() {
 // Direction of the last slide change — drives the enter animation (next = from right).
 let meetingTvDir = 'next';
 
+function tvHasFindingSlide() {
+  return Boolean(state.meetingFindingDigest) && hasAnyPermission(['dashboard.view', 'dashboard.view.all']);
+}
+
+function meetingTvTotalSlides() {
+  return meetingTvDeck().length + (tvHasFindingSlide() ? 1 : 0);
+}
+
 function openMeetingTv() {
-  if (!meetingTvDeck().length) return showToast('ยังไม่มีหัวข้อบนบอร์ดสำหรับนำเสนอ', 'warning');
+  if (!meetingTvTotalSlides()) return showToast('ยังไม่มีหัวข้อบนบอร์ดสำหรับนำเสนอ', 'warning');
   state.meetingTvIndex = 0;
   meetingTvDir = 'next';
   $('#meetingTv').classList.remove('hidden');
@@ -2816,9 +2827,8 @@ function closeMeetingTv() {
 }
 
 function meetingTvStep(delta) {
-  const total = meetingTvDeck().length;
   meetingTvDir = delta < 0 ? 'prev' : 'next';
-  state.meetingTvIndex = Math.max(0, Math.min(state.meetingTvIndex + delta, total));
+  state.meetingTvIndex = Math.max(0, Math.min(state.meetingTvIndex + delta, meetingTvTotalSlides()));
   renderMeetingTv();
 }
 
@@ -2826,10 +2836,47 @@ function meetingTvStatusDone(row) {
   return ['discussed', 'closed'].includes(String(row.Status || '').toLowerCase());
 }
 
+// Final TV slide: the same Finding shift digest shown on the Meeting page,
+// restyled in big type so the meeting can run through open Findings on-screen.
+function meetingTvFindingSlideHtml() {
+  const digest = state.meetingFindingDigest || {};
+  const sections = [
+    { key: 'today', label: '📅 วันนี้' },
+    { key: 'yesterday', label: '📅 เมื่อวาน' },
+    { key: 'sevenDaysAgo', label: '📅 7 วันก่อน' }
+  ];
+  const sevIcon = f => {
+    const s = String(f.Severity || f.Priority || '').toLowerCase();
+    return s === 'critical' ? '🔴' : s === 'major' ? '🟠' : '🟡';
+  };
+  const bodyHtml = sections.map(s => {
+    const bucket = digest[s.key] || {};
+    const groups = bucket.shiftGroups || [];
+    const dateLabel = bucket.date ? formatDate(bucket.date) : '';
+    const rows = !groups.length
+      ? '<div class="mtg-tv-fd-empty">✅ ไม่มี Finding เปิด</div>'
+      : groups.map(g => `
+        <div class="mtg-tv-fd-shift">🕐 ${escapeHtml(g.shift)} <span>${g.count} รายการ</span></div>
+        ${g.findings.map(f => `<div class="mtg-tv-fd-row">
+          <span class="mtg-tv-fd-sev">${sevIcon(f)}</span>
+          <div class="mtg-tv-fd-info">
+            <div class="mtg-tv-fd-name">${escapeHtml(f.ProblemDetail || f.FindingID)}</div>
+            <div class="mtg-tv-fd-meta">${escapeHtml(f.LineName || f.LineID || '-')} / ${escapeHtml(f.StationName || f.StationID || '-')}${f.PICName ? ' · ผู้รับผิดชอบ ' + escapeHtml(f.PICName) : ''}</div>
+          </div>
+          <span class="mtg-tv-fd-status">${escapeHtml(f.Status || 'Open')}</span>
+        </div>`).join('')}`).join('');
+    return `<div class="mtg-tv-fd-day"><div class="mtg-tv-fd-day-title">${escapeHtml(s.label)}${dateLabel ? ` (${dateLabel})` : ''} — ${bucket.totalCount || 0} Finding</div>${rows}</div>`;
+  }).join('');
+  return `<div class="mtg-tv-slide tv-anim-${meetingTvDir}">
+    <div class="mtg-tv-chips"><span class="mtg-tv-chip mtg-tv-cat mtg-cat-problem">📢 Finding จากการตรวจ LPA</span></div>
+    <div class="mtg-tv-fd-list">${bodyHtml}</div>
+  </div>`;
+}
+
 function renderMeetingTv() {
   const container = $('#meetingTv');
   const deck = meetingTvDeck();
-  const total = deck.length;
+  const total = meetingTvTotalSlides();
   const index = Math.max(0, Math.min(state.meetingTvIndex, total));
   state.meetingTvIndex = index;
   const discussed = deck.filter(item => meetingTvStatusDone(item.row)).length;
@@ -2850,8 +2897,13 @@ function renderMeetingTv() {
           ${priority === 'ด่วน' ? '<span class="mtg-tv-chip mtg-tv-urgent">ด่วน</span>' : priority === 'สำคัญ' ? '<span class="mtg-tv-chip mtg-tv-important">สำคัญ</span>' : ''}
           ${item.carry ? '<span class="mtg-tv-item-carry">⏳ ค้าง</span>' : ''}
         </button></li>`;
-      }).join('')}</ol>
+      }).join('')}${tvHasFindingSlide() ? `<li style="animation-delay:${Math.min(deck.length * 70, 700)}ms" class="mtg-tv-li"><button class="mtg-tv-item mtg-tv-item-finding" data-tv-goto="${deck.length + 1}">
+        <span class="mtg-tv-item-icon">📢</span>
+        <span class="mtg-tv-item-text">Finding จากการตรวจ LPA<span class="mtg-tv-item-line">วันนี้ ${(state.meetingFindingDigest?.today?.totalCount) || 0} รายการ · เมื่อวาน ${(state.meetingFindingDigest?.yesterday?.totalCount) || 0} รายการ</span></span>
+      </button></li>` : ''}</ol>
     </div>`;
+  } else if (index > deck.length) {
+    body = meetingTvFindingSlideHtml();
   } else {
     const { row, carry } = deck[index - 1];
     const st = String(row.Status || 'Open').toLowerCase();
@@ -4298,8 +4350,11 @@ async function navigateTo(page) {
   }
   if (page === 'dashboard') loadDashboard(false);
   if (page === 'meeting') {
-    // Board and master data are independent GAS calls — run them in parallel
+    // Board, Finding digest, and master data are independent GAS calls — run them in parallel
     loadMeetingBoard();
+    if (hasAnyPermission(['dashboard.view', 'dashboard.view.all'])) {
+      loadFindingShiftDigest('meetingShiftDigest', 'meetingShiftDigestPic');
+    }
     try { await ensureMasterDataLoaded(false); } catch (_) { return; }
   }
   if (['audit', 'audit-plan', 'findings', 'checklist', 'admin'].includes(page)) {
