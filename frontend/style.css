@@ -784,3 +784,19 @@ body.mtg-tv-open{overflow:hidden}
 .mtg-tv-fd-empty{color:#9fc3e2;font-size:clamp(.95rem,1.8vw,1.3rem);font-weight:700;padding:6px 2px}
 .mtg-tv-item-finding{border-color:rgba(255,255,255,.3);background:rgba(211,41,41,.18)}
 .mtg-tv-item-finding:hover{background:rgba(211,41,41,.3)}
+
+/* ===== Meeting board full-detail Finding cards ===== */
+.mtg-fd-card{background:#fff;border:1px solid var(--border);border-left:5px solid var(--gray);border-radius:12px;padding:14px 18px;display:flex;flex-direction:column;gap:8px;margin-top:8px;box-shadow:var(--shadow)}
+.mtg-fd-card.sev-minor{border-left-color:var(--gray)}
+.mtg-fd-card.sev-medium{border-left-color:var(--orange)}
+.mtg-fd-card.sev-high{border-left-color:var(--red)}
+.mtg-fd-card.sev-critical{border-left-color:var(--red-dark)}
+.mtg-fd-card.overdue{border-left-color:var(--red-dark);background:#fffafa}
+.mtg-fd-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.mtg-fd-sev{font-size:1.05rem;flex-shrink:0}
+.mtg-fd-name{flex:1;font-weight:800;font-size:.95rem;line-height:1.5;min-width:200px}
+.mtg-fd-meta{font-size:.78rem;color:var(--muted)}
+.mtg-fd-extra{font-size:.86rem;line-height:1.55;color:var(--text);white-space:pre-line}
+.mtg-fd-photos{padding:0}
+.mtg-fd-actions{display:flex;justify-content:flex-end}
+@media (max-width:640px){.mtg-fd-name{min-width:0}}

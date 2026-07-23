@@ -921,10 +921,46 @@ function shiftFindingRowHtml(f) {
   </div>`;
 }
 
+// Full-detail digest row for the Meeting board — same content as the TV slide
+// (root cause, corrective action, photos) in the light theme. The compact
+// shiftFindingRowHtml stays in use on the dashboards.
+function meetingFindingBoardRowHtml(f) {
+  const s = String(f.Severity || f.Priority || '').toLowerCase();
+  const sev = s === 'critical' ? '🔴' : s === 'major' ? '🟠' : '🟡';
+  const sevCls = severityClass(f.Severity || f.Priority);
+  const overdue = String(f.OverdueFlag || '').toLowerCase() === 'yes';
+  const statusLabel = overdue ? `เกิน Due ${Number(f.DaysOverdue) || 0} วัน` : (f.Status || 'Open');
+  const photos = [];
+  const addPhotos = (csv, label) => String(csv || '').split(',').map(u => u.trim()).filter(Boolean).forEach((u, i, arr) => {
+    const caption = arr.length > 1 ? `${label} ${i + 1}` : label;
+    photos.push(`<a href="${escapeAttr(u)}" data-photo-url="${escapeAttr(u)}" class="finding-photo-thumb photo-link-trigger" rel="noopener"><img src="${escapeAttr(driveThumbnailUrl_(u, 300))}" alt="${escapeAttr(caption)}" loading="lazy"><span>${escapeHtml(caption)}</span></a>`);
+  });
+  addPhotos(f.BeforePhotoURL, 'Before');
+  addPhotos(f.AfterPhotoURL, 'After');
+  const metaParts = [`${escapeHtml(f.LineName || f.LineID || '-')} / ${escapeHtml(f.StationName || f.StationID || '-')}`];
+  if (f.Category) metaParts.push(escapeHtml(f.Category));
+  const pic = f.AssignmentDisplay || f.PICName || f.AssignedToName || f.ResponsiblePerson;
+  if (pic && pic !== '-') metaParts.push(`ผู้รับผิดชอบ ${escapeHtml(pic)}`);
+  if (f.DueDate) metaParts.push(`Due ${formatDate(f.DueDate)}`);
+  return `<div class="mtg-fd-card ${sevCls}${overdue ? ' overdue' : ''}">
+    <div class="mtg-fd-top">
+      <span class="mtg-fd-sev">${sev}</span>
+      <div class="mtg-fd-name">${escapeHtml(f.ProblemDetail || f.FindingID)}</div>
+      <span class="status-badge ${overdue ? 'status-overdue' : statusClass(f.Status)}">${escapeHtml(statusLabel)}</span>
+    </div>
+    <div class="mtg-fd-meta">${metaParts.join(' · ')}</div>
+    ${f.RootCause ? `<div class="mtg-fd-extra">🔍 สาเหตุ: ${escapeHtml(f.RootCause)}</div>` : ''}
+    ${f.CorrectiveAction ? `<div class="mtg-fd-extra">🛠 แนวทางแก้ไข: ${escapeHtml(f.CorrectiveAction)}</div>` : ''}
+    ${photos.length ? `<div class="finding-photos mtg-fd-photos">${photos.join('')}</div>` : ''}
+    <div class="mtg-fd-actions"><button class="btn btn-outline btn-compact" onclick="openFindingForEdit('${escapeAttr(f.FindingID)}')">เปิด Finding</button></div>
+  </div>`;
+}
+
 function renderMgrShiftDigest(digest, containerId = 'mgrShiftDigest') {
   const el = $(`#${containerId}`);
   if (!el) return;
   if (!digest) { el.innerHTML = emptyHtml('ไม่มีข้อมูล'); return; }
+  const rowFn = containerId === 'meetingShiftDigest' ? meetingFindingBoardRowHtml : shiftFindingRowHtml;
   const sections = [
     { key: 'today', label: '📅 วันนี้' },
     { key: 'yesterday', label: '📅 เมื่อวาน' },
@@ -939,7 +975,7 @@ function renderMgrShiftDigest(digest, containerId = 'mgrShiftDigest') {
       : groups.map(g => `
         <div class="mgr-shift-group">
           <div class="mgr-shift-group-title">🕐 ${escapeHtml(g.shift)} <span class="mgr-shift-count">${g.count} รายการ</span></div>
-          ${g.findings.map(shiftFindingRowHtml).join('')}
+          ${g.findings.map(rowFn).join('')}
         </div>`).join('');
     return `
       <div class="mgr-shift-day">
