@@ -2796,9 +2796,13 @@ function meetingTvDeck() {
     .concat(state.meetingCarryOver.map(row => ({ row, carry: true })));
 }
 
+// Direction of the last slide change — drives the enter animation (next = from right).
+let meetingTvDir = 'next';
+
 function openMeetingTv() {
   if (!meetingTvDeck().length) return showToast('ยังไม่มีหัวข้อบนบอร์ดสำหรับนำเสนอ', 'warning');
   state.meetingTvIndex = 0;
+  meetingTvDir = 'next';
   $('#meetingTv').classList.remove('hidden');
   document.body.classList.add('mtg-tv-open');
   renderMeetingTv();
@@ -2813,6 +2817,7 @@ function closeMeetingTv() {
 
 function meetingTvStep(delta) {
   const total = meetingTvDeck().length;
+  meetingTvDir = delta < 0 ? 'prev' : 'next';
   state.meetingTvIndex = Math.max(0, Math.min(state.meetingTvIndex + delta, total));
   renderMeetingTv();
 }
@@ -2831,7 +2836,7 @@ function renderMeetingTv() {
   const dateLabel = formatDate($('#meetingDate').value || localDateInput(new Date()));
   let body = '';
   if (index === 0) {
-    body = `<div class="mtg-tv-agenda">
+    body = `<div class="mtg-tv-agenda tv-anim-${meetingTvDir}">
       <p class="mtg-tv-eyebrow">MORNING MEETING · ${escapeHtml(dateLabel)}</p>
       <h1 class="mtg-tv-title">หัวข้อประชุมวันนี้</h1>
       <ol class="mtg-tv-list">${deck.map((item, i) => {
@@ -2839,7 +2844,7 @@ function renderMeetingTv() {
         const cat = meetingCategoryMeta(item.row.Category);
         const priority = String(item.row.Priority || 'ปกติ');
         const sub = [item.row.LineName || item.row.LineID || 'ทุกไลน์', item.row.Category || 'ทั่วไป', `ลงโดย ${item.row.CreatedByName || '-'}`].join(' · ');
-        return `<li><button class="mtg-tv-item${done ? ' done' : ''}" data-tv-goto="${i + 1}">
+        return `<li style="animation-delay:${Math.min(i * 70, 700)}ms" class="mtg-tv-li"><button class="mtg-tv-item${done ? ' done' : ''}" data-tv-goto="${i + 1}">
           <span class="mtg-tv-item-icon">${done ? '✅' : cat.icon}</span>
           <span class="mtg-tv-item-text">${escapeHtml(item.row.Topic || '-')}<span class="mtg-tv-item-line">${escapeHtml(sub)}</span></span>
           ${priority === 'ด่วน' ? '<span class="mtg-tv-chip mtg-tv-urgent">ด่วน</span>' : priority === 'สำคัญ' ? '<span class="mtg-tv-chip mtg-tv-important">สำคัญ</span>' : ''}
@@ -2856,7 +2861,7 @@ function renderMeetingTv() {
     const actions = [];
     if (state.meetingCanCreate && st === 'open') actions.push(`<button class="mtg-tv-action mtg-tv-action-primary" data-mtg-status="Discussed" data-mtg-id="${escapeAttr(row.PostID)}">✓ คุยแล้ว — ไปหัวข้อถัดไป</button>`);
     if (state.meetingCanCreate && st === 'discussed') actions.push(`<button class="mtg-tv-action" data-mtg-status="Closed" data-mtg-id="${escapeAttr(row.PostID)}">จบเรื่อง</button>`);
-    body = `<div class="mtg-tv-slide">
+    body = `<div class="mtg-tv-slide tv-anim-${meetingTvDir}">
       <div class="mtg-tv-chips">
         ${isMeetingPinned(row) ? '<span class="mtg-tv-chip">📌 ปักหมุด</span>' : ''}
         <span class="mtg-tv-chip mtg-tv-cat ${cat.cls}">${cat.icon} ${escapeHtml(row.Category || 'ทั่วไป')}</span>
@@ -2888,6 +2893,7 @@ function renderMeetingTv() {
   $('#meetingTvPrev').addEventListener('click', () => meetingTvStep(-1));
   $('#meetingTvNext').addEventListener('click', () => meetingTvStep(1));
   $$('[data-tv-goto]', container).forEach(btn => btn.addEventListener('click', () => {
+    meetingTvDir = 'next';
     state.meetingTvIndex = Number(btn.dataset.tvGoto);
     renderMeetingTv();
   }));
