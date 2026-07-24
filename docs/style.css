@@ -814,3 +814,10 @@ body.mtg-tv-open{overflow:hidden}
   .photo-lightbox-prev{left:8px}
   .photo-lightbox-next{right:8px}
 }
+
+/* ===== Multi-slide posts (--- separators) ===== */
+.mtg-tv-sectionchip{background:rgba(255,255,255,.2)!important;color:#fff!important}
+.mtg-tv-slide-more{font-size:clamp(1rem,1.9vw,1.3rem);font-weight:800;color:#9fc3e2;margin-top:6px}
+.mtg-detail-slide{position:relative;padding:8px 0 8px 0;border-top:1px dashed var(--border)}
+.mtg-detail-slide:first-child{border-top:none;padding-top:0}
+.mtg-detail-slide-tag{display:inline-block;font-size:.68rem;font-weight:800;color:var(--muted);background:var(--gray-bg);border-radius:99px;padding:2px 10px;margin-bottom:5px}
