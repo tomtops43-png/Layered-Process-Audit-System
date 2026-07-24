@@ -2635,7 +2635,7 @@ function meetingPostCardHtml(row, isCarry) {
       <span class="status-badge ${statusMeta.cls}">${statusMeta.label}</span>
     </div>
     <div class="mtg-topic">${escapeHtml(row.Topic || '-')}</div>
-    ${meetingDetailHtml(row.Detail)}
+    ${meetingDetailHtml(row.Detail, meetingPhotoList(row).length)}
     ${meetingPhotoGallery(row.PhotoURL)}
     ${meetingAckSectionHtml(row)}
     <div class="mtg-meta">${metaParts.join(' · ')}</div>
@@ -2643,14 +2643,24 @@ function meetingPostCardHtml(row, isCarry) {
   </article>`;
 }
 
-// Board card detail: --- separators become slide dividers so the card mirrors
-// how the topic will page in TV mode.
-function meetingDetailHtml(detail) {
+// Board card detail: --- separators become slide dividers and [รูปN] markers
+// are stripped (shown instead as a "📷 รูปที่ N" tag) so the card mirrors how
+// the topic will page in TV mode.
+function meetingDetailHtml(detail, photoCount = 0) {
   const sections = meetingSlideSections(detail);
-  if (sections.length === 1) return sections[0] ? `<div class="mtg-detail">${escapeHtml(sections[0])}</div>` : '';
-  return `<div class="mtg-detail">${sections.map((s, i) =>
-    `<div class="mtg-detail-slide"><span class="mtg-detail-slide-tag">สไลด์ ${i + 1}</span>${escapeHtml(s)}</div>`
-  ).join('')}</div>`;
+  const render = (s, i, multi) => {
+    const refs = meetingExtractPhotoRefs(s).filter(n => n >= 0 && n < photoCount).map(n => n + 1);
+    const text = escapeHtml(meetingStripPhotoRefs(s));
+    const tag = multi ? `<span class="mtg-detail-slide-tag">สไลด์ ${i + 1}</span>` : '';
+    const pin = refs.length ? `<span class="mtg-detail-pin">📷 รูปที่ ${refs.join(', ')}</span>` : '';
+    if (!text && !tag && !pin) return '';
+    return multi ? `<div class="mtg-detail-slide">${tag}${pin}${text}</div>` : `${pin}${text}`;
+  };
+  if (sections.length === 1) {
+    const inner = render(sections[0], 0, false);
+    return inner ? `<div class="mtg-detail">${inner}</div>` : '';
+  }
+  return `<div class="mtg-detail">${sections.map((s, i) => render(s, i, true)).join('')}</div>`;
 }
 
 function meetingPhotoGallery(urlCsv) {
@@ -2862,15 +2872,47 @@ function meetingSlideSections(detail) {
   return parts.length ? parts : [''];
 }
 
+function meetingPhotoList(row) {
+  return String(row.PhotoURL || '').split(',').map(u => u.trim()).filter(Boolean);
+}
+
+// A [รูป1] / [ภาพ2] / [pic3] marker in a section pins that photo to that slide.
+const MEETING_PHOTO_MARKER = /\[\s*(?:รูปที่|รูป|ภาพ|pic|img|image)\s*(\d+)\s*\]/gi;
+function meetingExtractPhotoRefs(text) {
+  const idxs = [];
+  String(text || '').replace(MEETING_PHOTO_MARKER, (_, n) => { idxs.push(parseInt(n, 10) - 1); return ''; });
+  return idxs;
+}
+function meetingStripPhotoRefs(text) {
+  return String(text || '').replace(MEETING_PHOTO_MARKER, '').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 // Flatten the deck into one entry per slide — a post with N sections yields N.
+// Photos are pinned to whichever slide names them ([รูปN]); anything not named
+// falls to the last slide so existing posts keep all photos at the end.
 function meetingTvPostSlides() {
   const slides = [];
   meetingTvDeck().forEach((item, deckPos) => {
-    const sections = meetingSlideSections(item.row.Detail);
-    sections.forEach((sectionText, sectionIndex) => {
+    const rawSections = meetingSlideSections(item.row.Detail);
+    const allPhotos = meetingPhotoList(item.row);
+    const used = new Set();
+    const perSection = rawSections.map(text => {
+      const refs = meetingExtractPhotoRefs(text).filter(i => i >= 0 && i < allPhotos.length);
+      refs.forEach(i => used.add(i));
+      return { text: meetingStripPhotoRefs(text), photoIdx: refs };
+    });
+    const unused = allPhotos.map((_, i) => i).filter(i => !used.has(i));
+    if (perSection.length && unused.length) {
+      const last = perSection[perSection.length - 1];
+      last.photoIdx = last.photoIdx.concat(unused);
+    }
+    perSection.forEach((sec, sectionIndex) => {
+      const seen = new Set();
+      const dedup = sec.photoIdx.filter(i => !seen.has(i) && seen.add(i));
       slides.push({
-        row: item.row, carry: item.carry, deckPos, sectionText,
-        sectionIndex, sectionCount: sections.length, isLast: sectionIndex === sections.length - 1
+        row: item.row, carry: item.carry, deckPos, sectionText: sec.text,
+        sectionIndex, sectionCount: perSection.length, isLast: sectionIndex === perSection.length - 1,
+        photos: dedup.map(i => allPhotos[i])
       });
     });
   });
@@ -2978,7 +3020,7 @@ function meetingTvPostSlideHtml(slide) {
   const st = String(row.Status || 'Open').toLowerCase();
   const cat = meetingCategoryMeta(row.Category);
   const priority = String(row.Priority || 'ปกติ');
-  const photos = String(row.PhotoURL || '').split(',').map(u => u.trim()).filter(Boolean);
+  const photos = slide.photos || [];
   const actions = [];
   if (isLast && state.meetingCanCreate && st === 'open') actions.push(`<button class="mtg-tv-action mtg-tv-action-primary" data-mtg-status="Discussed" data-mtg-id="${escapeAttr(row.PostID)}">✓ คุยแล้ว — ไปหัวข้อถัดไป</button>`);
   if (isLast && state.meetingCanCreate && st === 'discussed') actions.push(`<button class="mtg-tv-action" data-mtg-status="Closed" data-mtg-id="${escapeAttr(row.PostID)}">จบเรื่อง</button>`);
@@ -2993,7 +3035,7 @@ function meetingTvPostSlideHtml(slide) {
       </div>
       <div class="mtg-tv-topic">${escapeHtml(row.Topic || '-')}</div>
       ${sectionText ? `<div class="mtg-tv-detail">${escapeHtml(sectionText)}</div>` : ''}
-      ${isLast && photos.length ? `<div class="mtg-tv-photos">${photos.map((u, i) => `<img src="${escapeAttr(driveThumbnailUrl_(u, 1000))}" data-photo-url="${escapeAttr(u)}" alt="รูปที่ ${i + 1}" loading="lazy">`).join('')}</div>` : ''}
+      ${photos.length ? `<div class="mtg-tv-photos">${photos.map((u, i) => `<img src="${escapeAttr(driveThumbnailUrl_(u, 1000))}" data-photo-url="${escapeAttr(u)}" alt="รูปที่ ${i + 1}" loading="lazy">`).join('')}</div>` : ''}
       ${!isLast ? '<div class="mtg-tv-slide-more">มีต่อสไลด์ถัดไป →</div>' : `
       <div class="mtg-tv-slide-meta">📅 ${formatDate(row.MeetingDate)}${row.Shift ? ' · กะ ' + escapeHtml(row.Shift) : ''} · 🏭 ${escapeHtml(row.LineName || row.LineID || 'ทุกไลน์')} · ✍️ ลงโดย ${escapeHtml(row.CreatedByName || '-')}${row.DiscussedBy ? ' · ✓ คุยแล้วโดย ' + escapeHtml(row.DiscussedBy) : ''}${row.AckRequiredCount ? ` · 🙋 รับทราบ ${row.AckedCount}/${row.AckRequiredCount}` : ''}${row.PostID ? ' · ' + escapeHtml(row.PostID) : ''}</div>
       ${row.AckRequiredCount && (row.AckPendingNames || []).length ? `<div class="mtg-tv-slide-meta mtg-tv-ack-pending">⏳ ยังไม่รับทราบ: ${escapeHtml(row.AckPendingNames.join(', '))}</div>` : ''}

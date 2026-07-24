@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#123c69">
   <meta name="description" content="Layered Process Audit System สำหรับติดตามการตรวจและปิด Finding">
   <title>Layered Process Audit System</title>
-  <link rel="stylesheet" href="style.css?v=20260724-slides">
+  <link rel="stylesheet" href="style.css?v=20260724-slidepics">
 </head>
 <body>
   <div id="loginView" class="login-view">
@@ -404,7 +404,7 @@
         <label>ความสำคัญ<select id="meetingPostPriority"><option value="ปกติ" selected>ปกติ</option><option value="สำคัญ">สำคัญ</option><option value="ด่วน">ด่วน</option></select></label>
         <label class="check-label hidden" id="meetingPostPinnedField"><input id="meetingPostPinned" type="checkbox"> 📌 ปักหมุด (แสดงทุกวันจนกว่าจะจบเรื่อง)</label>
         <label class="full-width">หัวข้อ *<input id="meetingPostTopic" required maxlength="200" placeholder="เช่น เครื่อง XX มีปัญหา / ประกาศเรื่อง..."></label>
-        <label class="full-width">รายละเอียด<textarea id="meetingPostDetail" rows="5" placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)&#10;&#10;พิมพ์ --- คั่นบรรทัด เพื่อแยกเป็นหลายสไลด์ตอนฉายจอ TV"></textarea><small class="field-help">💡 พิมพ์ <b>---</b> (ขีดสามตัว) ไว้บรรทัดเดียว เพื่อแบ่งเนื้อหาเป็นหลายสไลด์ในโหมด TV — หัวข้อเดิมจะค้างทุกสไลด์ รูปไปรวมสไลด์สุดท้าย</small></label>
+        <label class="full-width">รายละเอียด<textarea id="meetingPostDetail" rows="5" placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)&#10;&#10;พิมพ์ --- คั่นบรรทัด เพื่อแยกเป็นหลายสไลด์ตอนฉายจอ TV"></textarea><small class="field-help">💡 พิมพ์ <b>---</b> (ขีดสามตัว) ไว้บรรทัดเดียว เพื่อแบ่งเนื้อหาเป็นหลายสไลด์ในโหมด TV — หัวข้อเดิมจะค้างทุกสไลด์<br>📷 อยากให้รูปไหนอยู่สไลด์ไหน พิมพ์ <b>[รูป1]</b> <b>[รูป2]</b> ในช่วงนั้น (ดูเลขรูปได้จากใต้ภาพหลังอัปโหลด) — รูปที่ไม่ได้ระบุจะไปรวมสไลด์สุดท้าย</small></label>
         <div class="form-field full-width">
           <span class="data-label">🙋 ผู้ที่ต้องกดรับทราบ (เลือกได้หลายคน — ไม่บังคับ)</span>
           <small class="field-help">ระบบจะแจ้งเตือนบนหน้าจอของคนที่เลือก จนกว่าเขาจะกด "รับทราบ"</small>
@@ -433,6 +433,6 @@
   </dialog>
 
   <script src="config.js" defer></script>
-  <script src="app.js?v=20260724-slides" defer></script>
+  <script src="app.js?v=20260724-slidepics" defer></script>
 </body>
 </html>
