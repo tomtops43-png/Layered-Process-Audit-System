@@ -153,6 +153,7 @@ function hasApiAccess_(user, action) {
     saveMeetingPost: ['meeting.create', 'meeting.update.own', 'meeting.manage'],
     deleteMeetingPost: ['meeting.update.own', 'meeting.manage'],
     updateMeetingPostStatus: ['meeting.create', 'meeting.update.own', 'meeting.manage'],
+    convertMeetingSlideFile: ['meeting.create', 'meeting.update.own', 'meeting.manage'],
     uploadFile: ['findings.update.assigned', 'findings.update.line', 'findings.verify', 'findings.view.all',
       'audit.manager.create', 'audit.supervisor.create', 'audit.engineer.create', 'audit.leader.create', 'meeting.create']
   };

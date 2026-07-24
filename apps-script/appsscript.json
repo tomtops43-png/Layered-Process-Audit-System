@@ -1,6 +1,11 @@
 {
   "timeZone": "Asia/Bangkok",
-  "dependencies": {},
+  "dependencies": {
+    "enabledAdvancedServices": [
+      { "userSymbol": "Drive", "version": "v2", "serviceId": "drive" },
+      { "userSymbol": "Slides", "version": "v1", "serviceId": "slides" }
+    ]
+  },
   "exceptionLogging": "STACKDRIVER",
   "runtimeVersion": "V8",
   "webapp": {

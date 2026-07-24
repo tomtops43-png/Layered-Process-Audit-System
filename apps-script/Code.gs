@@ -55,6 +55,7 @@ function doPost(e) {
       saveMeetingPost: function (user) { return saveMeetingPost(payload, user); },
       deleteMeetingPost: function (user) { return deleteMeetingPost(payload, user); },
       updateMeetingPostStatus: function (user) { return updateMeetingPostStatus(payload, user); },
+      convertMeetingSlideFile: function (user) { return convertMeetingSlideFile(payload, user); },
       getMonthlyReport: function (user) { return getMonthlyReport(payload, user); },
       exportReportCsv: function (user) { return exportReportCsv(payload, user); },
       listUsers: function (user) { return listUsers(payload, user); },

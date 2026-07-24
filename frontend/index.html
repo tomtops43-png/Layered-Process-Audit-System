@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#123c69">
   <meta name="description" content="Layered Process Audit System สำหรับติดตามการตรวจและปิด Finding">
   <title>Layered Process Audit System</title>
-  <link rel="stylesheet" href="style.css?v=20260724-photomgr">
+  <link rel="stylesheet" href="style.css?v=20260724-pptimg">
 </head>
 <body>
   <div id="loginView" class="login-view">
@@ -416,7 +416,7 @@
           <input id="meetingPostPhoto" type="file" accept="image/*" multiple>
           <div id="meetingPhotoManager" class="mtg-photo-manager"></div>
         </div>
-        <label class="full-width">แนบไฟล์ PPT / PDF (ฝังตัวพรีวิวในจอ TV)<input id="meetingPostSlideFile" type="file" accept=".ppt,.pptx,.pdf,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"><small class="field-help">📊 รองรับ .pptx .ppt .pdf ไม่เกิน 10MB — จะฝังตัวพรีวิวให้เลื่อนดูสไลด์บนจอ TV ได้ (แนบได้ 1 ไฟล์ต่อหัวข้อ)</small></label>
+        <label class="full-width">แนบไฟล์ PPT / PDF (ฝังตัวพรีวิวในจอ TV)<input id="meetingPostSlideFile" type="file" accept=".ppt,.pptx,.pdf,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"><small class="field-help">📊 รองรับ .pptx .ppt .pdf ไม่เกิน 10MB (1 ไฟล์ต่อหัวข้อ) — PPT จะถูกแปลงเป็นรูปทีละหน้าเข้าเด็ค TV เป็นสไลด์จริง (ตอนบันทึกจะใช้เวลาสักครู่) · PDF จะฝังตัวพรีวิว</small></label>
         <div id="meetingSlideFileCurrent" class="full-width hidden"></div>
       </div>
       <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelMeetingPost">ยกเลิก</button><button type="button" class="btn btn-outline hidden" id="deleteMeetingPostButton">🗑 ลบหัวข้อ</button><button type="submit" class="btn btn-primary" id="saveMeetingPostButton">บันทึกหัวข้อ</button></div>
@@ -438,6 +438,6 @@
   </dialog>
 
   <script src="config.js" defer></script>
-  <script src="app.js?v=20260724-photomgr" defer></script>
+  <script src="app.js?v=20260724-pptimg" defer></script>
 </body>
 </html>

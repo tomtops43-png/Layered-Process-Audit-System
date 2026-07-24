@@ -313,7 +313,7 @@ function makeWorkerTimeout(ms) {
 }
 
 async function apiCall(action, payload = {}) {
-  const TIMEOUT_MS = (action === 'uploadFile' || action === 'saveAudit') ? 90000 : 45000;
+  const TIMEOUT_MS = (action === 'uploadFile' || action === 'saveAudit' || action === 'convertMeetingSlideFile') ? 90000 : 45000;
   const { promise: timeoutPromise, cancel: cancelTimeout } = makeWorkerTimeout(TIMEOUT_MS);
   const timeoutMsg = `ระบบใช้เวลานานเกินไป (${TIMEOUT_MS / 1000}s) กรุณาลองใหม่อีกครั้ง`;
   const fetchPromise = fetch(CONFIG.API_URL, {
@@ -2639,7 +2639,12 @@ function meetingPostCardHtml(row, isCarry) {
     <div class="mtg-topic">${escapeHtml(row.Topic || '-')}</div>
     ${meetingDetailHtml(row.Detail, meetingPhotoList(row).length)}
     ${meetingPhotoGallery(row.PhotoURL)}
-    ${row.SlideFileURL ? `<div class="mtg-doc"><a href="${escapeAttr(row.SlideFileURL)}" target="_blank" rel="noopener" class="btn btn-outline btn-compact">📊 เปิดสไลด์ PPT${row.SlideFileName ? ' · ' + escapeHtml(row.SlideFileName) : ''}</a></div>` : ''}
+    ${(() => {
+      const pptCount = String(row.SlideImageURLs || '').split(',').map(u => u.trim()).filter(Boolean).length;
+      if (pptCount) return `<div class="mtg-doc"><span class="mtg-doc-badge">📊 สไลด์ PPT ${pptCount} หน้า · ฉายในโหมด TV</span>${row.SlideFileURL ? ` <a href="${escapeAttr(row.SlideFileURL)}" target="_blank" rel="noopener" class="btn btn-outline btn-compact">เปิดไฟล์ต้นฉบับ</a>` : ''}</div>`;
+      if (row.SlideFileURL) return `<div class="mtg-doc"><a href="${escapeAttr(row.SlideFileURL)}" target="_blank" rel="noopener" class="btn btn-outline btn-compact">📊 เปิดสไลด์ PPT/PDF${row.SlideFileName ? ' · ' + escapeHtml(row.SlideFileName) : ''}</a></div>`;
+      return '';
+    })()}
     ${meetingAckSectionHtml(row)}
     <div class="mtg-meta">${metaParts.join(' · ')}</div>
     ${actions.length ? `<div class="mtg-actions">${actions.join('')}</div>` : ''}
@@ -2836,9 +2841,21 @@ async function saveMeetingPostFromForm() {
     if (slideFile && savedId) {
       $('#loadingText').textContent = 'กำลังอัปโหลดไฟล์สไลด์...';
       const up = await uploadMeetingDoc(slideFile, savedId);
-      if (up?.DriveFileURL) await apiCall('saveMeetingPost', { postId: savedId, slideFileUrl: up.DriveFileURL, slideFileName: slideFile.name });
+      if (up?.DriveFileURL) {
+        await apiCall('saveMeetingPost', { postId: savedId, slideFileUrl: up.DriveFileURL, slideFileName: slideFile.name, slideImageUrls: '' });
+        // PPT/PPTX get converted to one image per slide server-side; PDF stays as an embed.
+        if (/\.pptx?$/i.test(slideFile.name) && up.DriveFileID) {
+          $('#loadingText').textContent = 'กำลังแปลงสไลด์ PPT เป็นรูป... (อาจใช้เวลาสักครู่)';
+          try {
+            const conv = await apiCall('convertMeetingSlideFile', { postId: savedId, driveFileId: up.DriveFileID });
+            if (conv && conv.converted === false) showToast('แนบไฟล์แล้ว (ฝังตัวพรีวิว) — แปลงเป็นรูปได้เฉพาะ PPT/PPTX', 'info', 6000);
+          } catch (convErr) {
+            showToast('แนบไฟล์แล้ว แต่แปลงเป็นรูปไม่สำเร็จ: ' + convErr.message + ' — จะฝังตัวพรีวิวแทน', 'warning', 9000);
+          }
+        }
+      }
     } else if (removeSlide && savedId) {
-      await apiCall('saveMeetingPost', { postId: savedId, slideFileUrl: '', slideFileName: '' });
+      await apiCall('saveMeetingPost', { postId: savedId, slideFileUrl: '', slideFileName: '', slideImageUrls: '' });
     }
     clearMeetingPhotoItems();
     $('#meetingDialog').close();
@@ -3013,8 +3030,15 @@ function meetingTvPostSlides() {
       const dedup = sec.photoIdx.filter(i => !seen.has(i) && seen.add(i));
       return { row: item.row, carry: item.carry, deckPos, sectionText: sec.text, isDoc: false, photos: dedup.map(i => allPhotos[i]) };
     });
+    const pptImages = String(item.row.SlideImageURLs || '').split(',').map(u => u.trim()).filter(Boolean);
     const docUrl = String(item.row.SlideFileURL || '').trim();
-    if (docUrl) postSlides.push({ row: item.row, carry: item.carry, deckPos, isDoc: true, docUrl, docName: String(item.row.SlideFileName || '').trim() || 'สไลด์ PPT' });
+    if (pptImages.length) {
+      // Converted PPT: one native image slide per page.
+      pptImages.forEach((url, pi) => postSlides.push({ row: item.row, carry: item.carry, deckPos, isPpt: true, pptUrl: url, pptPage: pi + 1, pptTotal: pptImages.length }));
+    } else if (docUrl) {
+      // PDF / unconverted: fall back to the embedded Drive preview.
+      postSlides.push({ row: item.row, carry: item.carry, deckPos, isDoc: true, docUrl, docName: String(item.row.SlideFileName || '').trim() || 'สไลด์ PPT' });
+    }
     postSlides.forEach((s, sectionIndex) => {
       s.sectionIndex = sectionIndex;
       s.sectionCount = postSlides.length;
@@ -3131,7 +3155,9 @@ function meetingTvPostSlideHtml(slide) {
   if (isLast && state.meetingCanCreate && st === 'open') actions.push(`<button class="mtg-tv-action mtg-tv-action-primary" data-mtg-status="Discussed" data-mtg-id="${escapeAttr(row.PostID)}">✓ คุยแล้ว — ไปหัวข้อถัดไป</button>`);
   if (isLast && state.meetingCanCreate && st === 'discussed') actions.push(`<button class="mtg-tv-action" data-mtg-status="Closed" data-mtg-id="${escapeAttr(row.PostID)}">จบเรื่อง</button>`);
   let mid;
-  if (slide.isDoc) {
+  if (slide.isPpt) {
+    mid = `<div class="mtg-tv-ppt"><img src="${escapeAttr(driveThumbnailUrl_(slide.pptUrl, 1600))}" data-photo-url="${escapeAttr(slide.pptUrl)}" alt="สไลด์ PPT ${slide.pptPage}" loading="lazy"></div>`;
+  } else if (slide.isDoc) {
     const fileId = meetingDriveFileId(slide.docUrl);
     const previewUrl = fileId ? `https://drive.google.com/file/d/${fileId}/preview` : slide.docUrl;
     mid = `<div class="mtg-tv-embed"><iframe src="${escapeAttr(previewUrl)}" loading="lazy" allowfullscreen></iframe></div>
@@ -3146,6 +3172,7 @@ function meetingTvPostSlideHtml(slide) {
         <span class="mtg-tv-chip mtg-tv-cat ${cat.cls}">${cat.icon} ${escapeHtml(row.Category || 'ทั่วไป')}</span>
         ${priority === 'ด่วน' ? '<span class="mtg-tv-chip mtg-tv-urgent">ด่วน</span>' : priority === 'สำคัญ' ? '<span class="mtg-tv-chip mtg-tv-important">สำคัญ</span>' : ''}
         ${carry ? `<span class="mtg-tv-chip mtg-tv-carrychip">⏳ ค้างจาก ${formatDate(row.MeetingDate)}</span>` : ''}
+        ${slide.isPpt ? `<span class="mtg-tv-chip mtg-tv-sectionchip">📊 PPT ${slide.pptPage}/${slide.pptTotal}</span>` : ''}
         ${slide.isDoc ? '<span class="mtg-tv-chip mtg-tv-sectionchip">📊 สไลด์ PPT</span>' : ''}
         ${sectionCount > 1 ? `<span class="mtg-tv-chip mtg-tv-sectionchip">สไลด์ ${sectionIndex + 1}/${sectionCount}</span>` : ''}
         ${st !== 'open' ? `<span class="mtg-tv-chip mtg-tv-donechip">${st === 'closed' ? '✔ จบเรื่อง' : '✓ คุยแล้ว'}</span>` : ''}

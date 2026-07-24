@@ -211,8 +211,13 @@ function saveMeetingPost(payload, user) {
         updates.AckRequiredUserIDs = resolvedAckUpdate.ids;
         updates.AckRequiredNames = resolvedAckUpdate.names;
       }
-      if (payload.slideFileUrl !== undefined) updates.SlideFileURL = cleanString_(payload.slideFileUrl);
+      if (payload.slideFileUrl !== undefined) {
+        updates.SlideFileURL = cleanString_(payload.slideFileUrl);
+        // Clearing the file also drops any converted slide images.
+        if (!updates.SlideFileURL) updates.SlideImageURLs = '';
+      }
       if (payload.slideFileName !== undefined) updates.SlideFileName = cleanString_(payload.slideFileName);
+      if (payload.slideImageUrls !== undefined) updates.SlideImageURLs = cleanString_(payload.slideImageUrls);
       var updated = updateObjectById(SHEET_NAMES.MEETING_POSTS, 'PostID', postId, updates);
       return jsonResponse(true, 'Meeting post updated.', { post: sanitizeForClient_(updated) });
     }
@@ -237,6 +242,7 @@ function saveMeetingPost(payload, user) {
       DiscussedAt: '', DiscussedBy: '',
       AckRequiredUserIDs: resolvedAckCreate.ids, AckRequiredNames: resolvedAckCreate.names,
       SlideFileURL: cleanString_(payload.slideFileUrl), SlideFileName: cleanString_(payload.slideFileName),
+      SlideImageURLs: cleanString_(payload.slideImageUrls),
       CreatedAt: timestamp, CreatedBy: user.UserID,
       CreatedByName: user.FullName || user.Username || user.UserID,
       UpdatedAt: timestamp, UpdatedBy: user.UserID
@@ -321,6 +327,69 @@ function acknowledgeMeetingPost(payload, user) {
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
+}
+
+var MEETING_SLIDE_IMAGE_CAP_ = 40;
+
+/** Convert an uploaded PPT/PPTX (already on Drive) into one PNG per slide, so
+ * the deck shows real slides instead of an embedded viewer. Uses the Drive and
+ * Slides advanced services — enable both if this throws a "service" error. */
+function convertMeetingSlideFile(payload, user) {
+  try {
+    requirePermission_(user, 'meeting.create');
+    requireFields_(payload, ['postId', 'driveFileId']);
+    var post = findById_(SHEET_NAMES.MEETING_POSTS, 'PostID', cleanString_(payload.postId));
+    if (!post || valuesEqual_(post.Status, 'Deleted')) return jsonResponse(false, 'ไม่พบหัวข้อประชุมนี้ (อาจถูกลบไปแล้ว)', {});
+    if (!canEditMeetingPost_(user, post)) return jsonResponse(false, 'คุณไม่มีสิทธิ์แก้ไขหัวข้อนี้', {});
+    var fileId = cleanString_(payload.driveFileId);
+    var srcFile = DriveApp.getFileById(fileId);
+    var name = srcFile.getName();
+    var mime = cleanString_(srcFile.getMimeType());
+    var isPpt = /\.pptx?$/i.test(name) ||
+      mime === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+      mime === 'application/vnd.ms-powerpoint';
+    if (!isPpt) {
+      // PDF and other types keep the embedded-preview path (no image conversion).
+      return jsonResponse(true, 'ไฟล์นี้จะฝังตัวพรีวิวแทน (แปลงเป็นรูปได้เฉพาะ PPT/PPTX)', { images: [], converted: false });
+    }
+
+    var copied = Drive.Files.copy({ title: name + ' (converted)', mimeType: 'application/vnd.google-apps.presentation' }, fileId);
+    var presId = copied.id;
+    var images = [];
+    try {
+      var pres = Slides.Presentations.get(presId);
+      var slides = (pres.slides || []).slice(0, MEETING_SLIDE_IMAGE_CAP_);
+      var folder = getMeetingSlideImageFolder_(payload.postId);
+      slides.forEach(function (slide, i) {
+        var thumb = Slides.Presentations.Pages.getThumbnail(presId, slide.objectId, {
+          'thumbnailProperties.thumbnailSize': 'LARGE'
+        });
+        if (thumb && thumb.contentUrl) {
+          var blob = UrlFetchApp.fetch(thumb.contentUrl).getBlob()
+            .setName(cleanString_(payload.postId) + '_slide' + padNumber_(i + 1, 2) + '.png');
+          var pngFile = folder.createFile(blob);
+          try { pngFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (shareErr) {}
+          images.push(pngFile.getUrl());
+        }
+      });
+    } finally {
+      try { DriveApp.getFileById(presId).setTrashed(true); } catch (cleanupErr) {}
+    }
+
+    updateObjectById(SHEET_NAMES.MEETING_POSTS, 'PostID', payload.postId, {
+      SlideImageURLs: images.join(', '), UpdatedAt: formatDateTimeBangkok(new Date()), UpdatedBy: user.UserID
+    });
+    return jsonResponse(true, 'แปลงสไลด์ PPT เป็นรูปแล้ว ' + images.length + ' หน้า', { images: images, converted: true });
+  } catch (error) {
+    return jsonResponse(false, safeErrorMessage_(error), {});
+  }
+}
+
+function getMeetingSlideImageFolder_(postId) {
+  var folderId = cleanString_(getSetting('BEFORE_PHOTO_FOLDER_ID')) ||
+    cleanString_(getSetting('EVIDENCE_FOLDER_ID')) || cleanString_(getSetting('ATTACHMENT_FOLDER_ID'));
+  if (!folderId) throw new Error('ยังไม่ได้ตั้งค่าโฟลเดอร์เก็บไฟล์ กรุณาแจ้งผู้ดูแลระบบ');
+  return getOrCreateDriveSubfolder_(DriveApp.getFolderById(folderId), 'MeetingSlides_' + cleanString_(postId));
 }
 
 /** Posts (last 14 days) that still wait for the current user's acknowledgement —
