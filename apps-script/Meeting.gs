@@ -211,6 +211,8 @@ function saveMeetingPost(payload, user) {
         updates.AckRequiredUserIDs = resolvedAckUpdate.ids;
         updates.AckRequiredNames = resolvedAckUpdate.names;
       }
+      if (payload.slideFileUrl !== undefined) updates.SlideFileURL = cleanString_(payload.slideFileUrl);
+      if (payload.slideFileName !== undefined) updates.SlideFileName = cleanString_(payload.slideFileName);
       var updated = updateObjectById(SHEET_NAMES.MEETING_POSTS, 'PostID', postId, updates);
       return jsonResponse(true, 'Meeting post updated.', { post: sanitizeForClient_(updated) });
     }
@@ -234,6 +236,7 @@ function saveMeetingPost(payload, user) {
       Pinned: payload.pinned && hasPermission_(user, 'meeting.manage') ? 'Yes' : 'No',
       DiscussedAt: '', DiscussedBy: '',
       AckRequiredUserIDs: resolvedAckCreate.ids, AckRequiredNames: resolvedAckCreate.names,
+      SlideFileURL: cleanString_(payload.slideFileUrl), SlideFileName: cleanString_(payload.slideFileName),
       CreatedAt: timestamp, CreatedBy: user.UserID,
       CreatedByName: user.FullName || user.Username || user.UserID,
       UpdatedAt: timestamp, UpdatedBy: user.UserID

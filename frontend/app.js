@@ -66,6 +66,7 @@ const state = {
   meetingTvIndex: 0,
   meetingPendingAcks: [],
   meetingFindingDigest: null,
+  meetingPhotoItems: [],
   editingMeetingPost: null,
   adminUsers: [],
   adminMasterLists: [],
@@ -204,6 +205,7 @@ function bindEvents() {
   $('#cancelMeetingPost').addEventListener('click', () => $('#meetingDialog').close());
   $('#deleteMeetingPostButton').addEventListener('click', deleteMeetingPostAction);
   $('#meetingAckSearch').addEventListener('input', filterMeetingAckUsers);
+  $('#meetingPostPhoto').addEventListener('change', addMeetingPhotoFiles);
   $('#findingLine').addEventListener('change', () => populateStationSelect('#findingStation', $('#findingLine').value, true));
   $('#checklistLine').addEventListener('change', () => populateStationSelect('#checklistStation', $('#checklistLine').value, false));
   $('#applyFindingFilters').addEventListener('click', loadFindings);
@@ -2637,6 +2639,7 @@ function meetingPostCardHtml(row, isCarry) {
     <div class="mtg-topic">${escapeHtml(row.Topic || '-')}</div>
     ${meetingDetailHtml(row.Detail, meetingPhotoList(row).length)}
     ${meetingPhotoGallery(row.PhotoURL)}
+    ${row.SlideFileURL ? `<div class="mtg-doc"><a href="${escapeAttr(row.SlideFileURL)}" target="_blank" rel="noopener" class="btn btn-outline btn-compact">📊 เปิดสไลด์ PPT${row.SlideFileName ? ' · ' + escapeHtml(row.SlideFileName) : ''}</a></div>` : ''}
     ${meetingAckSectionHtml(row)}
     <div class="mtg-meta">${metaParts.join(' · ')}</div>
     ${actions.length ? `<div class="mtg-actions">${actions.join('')}</div>` : ''}
@@ -2691,9 +2694,95 @@ function openMeetingEditor(postId = '') {
   $('#meetingPostDetail').value = row ? (row.Detail || '') : '';
   populateMeetingAckUsers(row ? String(row.AckRequiredUserIDs || '').split(',').map(s => s.trim()).filter(Boolean) : []);
   $('#meetingPostPhoto').value = '';
-  $('#meetingPhotoPreview').innerHTML = row && row.PhotoURL ? meetingPhotoGallery(row.PhotoURL) : '';
+  clearMeetingPhotoItems();
+  state.meetingPhotoItems = row ? meetingPhotoList(row).map(url => ({ id: ++meetingPhotoSeq, type: 'url', url })) : [];
+  renderMeetingPhotoManager();
+  $('#meetingPostSlideFile').value = '';
+  renderMeetingSlideFileCurrent(row);
   $('#deleteMeetingPostButton').classList.toggle('hidden', !row);
   $('#meetingDialog').showModal();
+}
+
+// ===== Photo manager (reorder / remove / number) in the meeting form =====
+let meetingPhotoSeq = 0;
+
+function clearMeetingPhotoItems() {
+  (state.meetingPhotoItems || []).forEach(it => { if (it.objectUrl) URL.revokeObjectURL(it.objectUrl); });
+  state.meetingPhotoItems = [];
+}
+
+function addMeetingPhotoFiles(event) {
+  Array.from(event.target.files || []).forEach(file => {
+    state.meetingPhotoItems.push({ id: ++meetingPhotoSeq, type: 'file', file, objectUrl: URL.createObjectURL(file) });
+  });
+  event.target.value = '';
+  renderMeetingPhotoManager();
+}
+
+function renderMeetingPhotoManager() {
+  const wrap = $('#meetingPhotoManager');
+  if (!wrap) return;
+  const items = state.meetingPhotoItems || [];
+  if (!items.length) { wrap.innerHTML = '<div class="mtg-photo-empty">ยังไม่มีรูป — เลือกไฟล์ด้านบนเพื่อเพิ่ม</div>'; return; }
+  wrap.innerHTML = items.map((it, i) => {
+    const src = it.type === 'url' ? driveThumbnailUrl_(it.url, 200) : it.objectUrl;
+    return `<div class="mtg-photo-item" data-idx="${i}">
+      <div class="mtg-photo-num">รูปที่ ${i + 1}${it.type === 'file' ? ' <span class="mtg-photo-new">ใหม่</span>' : ''}</div>
+      <img src="${escapeAttr(src)}" alt="รูปที่ ${i + 1}">
+      <div class="mtg-photo-btns">
+        <button type="button" data-pmove="-1" ${i === 0 ? 'disabled' : ''} aria-label="เลื่อนซ้าย">◀</button>
+        <button type="button" data-pdel aria-label="ลบรูป">🗑</button>
+        <button type="button" data-pmove="1" ${i === items.length - 1 ? 'disabled' : ''} aria-label="เลื่อนขวา">▶</button>
+      </div>
+    </div>`;
+  }).join('');
+  $$('[data-pmove]', wrap).forEach(b => b.addEventListener('click', () => moveMeetingPhoto(Number(b.closest('[data-idx]').dataset.idx), Number(b.dataset.pmove))));
+  $$('[data-pdel]', wrap).forEach(b => b.addEventListener('click', () => removeMeetingPhoto(Number(b.closest('[data-idx]').dataset.idx))));
+}
+
+function moveMeetingPhoto(idx, dir) {
+  const items = state.meetingPhotoItems;
+  const j = idx + dir;
+  if (j < 0 || j >= items.length) return;
+  [items[idx], items[j]] = [items[j], items[idx]];
+  renderMeetingPhotoManager();
+}
+
+function removeMeetingPhoto(idx) {
+  const it = state.meetingPhotoItems[idx];
+  if (it && it.objectUrl) URL.revokeObjectURL(it.objectUrl);
+  state.meetingPhotoItems.splice(idx, 1);
+  renderMeetingPhotoManager();
+}
+
+function renderMeetingSlideFileCurrent(row) {
+  const el = $('#meetingSlideFileCurrent');
+  if (!el) return;
+  if (row && String(row.SlideFileURL || '').trim()) {
+    el.classList.remove('hidden');
+    el.innerHTML = `<label class="check-label"><input id="meetingRemoveSlideFile" type="checkbox"> ลบไฟล์ที่แนบไว้: <a href="${escapeAttr(row.SlideFileURL)}" target="_blank" rel="noopener">📊 ${escapeHtml(row.SlideFileName || 'สไลด์ PPT')}</a></label>`;
+  } else {
+    el.classList.add('hidden');
+    el.innerHTML = '';
+  }
+}
+
+function meetingDriveFileId(url) {
+  const text = String(url || '');
+  const m = text.match(/\/d\/([-\w]{20,})/) || text.match(/[?&]id=([-\w]{20,})/);
+  return m ? m[1] : '';
+}
+
+async function uploadMeetingDoc(file, postId) {
+  const base64Data = await fileToBase64(file);
+  const payload = { relatedType: 'MeetingPost', relatedId: postId, fileType: 'Attachment', fileName: file.name, mimeType: file.type || 'application/octet-stream', base64Data };
+  try {
+    return await apiCall('uploadFile', payload);
+  } catch (error) {
+    // Fall back to the always-configured Before Photo folder when ATTACHMENT_FOLDER_ID is unset
+    if (/FOLDER_ID/.test(error.message)) return apiCall('uploadFile', Object.assign({}, payload, { fileType: 'BeforePhoto' }));
+    throw error;
+  }
 }
 
 async function uploadMeetingPhoto(file, postId) {
@@ -2722,23 +2811,36 @@ async function saveMeetingPostFromForm() {
     ackUserIds: $$('#meetingAckUserGroup input:checked').map(input => input.value)
   };
   if (postId) payload.postId = postId;
-  const files = Array.from($('#meetingPostPhoto').files || []);
+  const photoItems = state.meetingPhotoItems || [];
+  const slideFile = ($('#meetingPostSlideFile').files || [])[0];
+  const removeSlide = $('#meetingRemoveSlideFile') && $('#meetingRemoveSlideFile').checked;
   showLoading('กำลังบันทึกหัวข้อประชุม...');
   try {
     const data = await apiCall('saveMeetingPost', payload);
     const savedId = data.post?.PostID || postId;
-    if (files.length && savedId) {
-      const uploadedUrls = [];
-      for (let i = 0; i < files.length; i++) {
-        $('#loadingText').textContent = `กำลังอัปโหลดรูป ${i + 1}/${files.length}...`;
-        const upload = await uploadMeetingPhoto(files[i], savedId);
-        if (upload?.DriveFileURL) uploadedUrls.push(upload.DriveFileURL);
-      }
-      if (uploadedUrls.length) {
-        const existing = String(data.post?.PhotoURL || '').split(',').map(u => u.trim()).filter(Boolean);
-        await apiCall('saveMeetingPost', { postId: savedId, photoUrl: existing.concat(uploadedUrls).join(', ') });
-      }
+    // Rebuild PhotoURL from the managed list order so reordering + removals stick.
+    const newFileCount = photoItems.filter(it => it.type === 'file').length;
+    let uploaded = 0;
+    const finalUrls = [];
+    for (const it of photoItems) {
+      if (it.type === 'url') { finalUrls.push(it.url); continue; }
+      $('#loadingText').textContent = `กำลังอัปโหลดรูป ${++uploaded}/${newFileCount}...`;
+      const upload = await uploadMeetingPhoto(it.file, savedId);
+      if (upload?.DriveFileURL) finalUrls.push(upload.DriveFileURL);
     }
+    const originalUrls = meetingPhotoList(data.post || {});
+    if (savedId && finalUrls.join(', ') !== originalUrls.join(', ')) {
+      await apiCall('saveMeetingPost', { postId: savedId, photoUrl: finalUrls.join(', ') });
+    }
+    // PPT / PDF slide file: upload a new one, or clear the existing one.
+    if (slideFile && savedId) {
+      $('#loadingText').textContent = 'กำลังอัปโหลดไฟล์สไลด์...';
+      const up = await uploadMeetingDoc(slideFile, savedId);
+      if (up?.DriveFileURL) await apiCall('saveMeetingPost', { postId: savedId, slideFileUrl: up.DriveFileURL, slideFileName: slideFile.name });
+    } else if (removeSlide && savedId) {
+      await apiCall('saveMeetingPost', { postId: savedId, slideFileUrl: '', slideFileName: '' });
+    }
+    clearMeetingPhotoItems();
     $('#meetingDialog').close();
     showToast(postId ? 'แก้ไขหัวข้อแล้ว' : 'เพิ่มหัวข้อลงบอร์ดแล้ว', 'success');
     await loadMeetingBoard();
@@ -2906,14 +3008,18 @@ function meetingTvPostSlides() {
       const last = perSection[perSection.length - 1];
       last.photoIdx = last.photoIdx.concat(unused);
     }
-    perSection.forEach((sec, sectionIndex) => {
+    const postSlides = perSection.map(sec => {
       const seen = new Set();
       const dedup = sec.photoIdx.filter(i => !seen.has(i) && seen.add(i));
-      slides.push({
-        row: item.row, carry: item.carry, deckPos, sectionText: sec.text,
-        sectionIndex, sectionCount: perSection.length, isLast: sectionIndex === perSection.length - 1,
-        photos: dedup.map(i => allPhotos[i])
-      });
+      return { row: item.row, carry: item.carry, deckPos, sectionText: sec.text, isDoc: false, photos: dedup.map(i => allPhotos[i]) };
+    });
+    const docUrl = String(item.row.SlideFileURL || '').trim();
+    if (docUrl) postSlides.push({ row: item.row, carry: item.carry, deckPos, isDoc: true, docUrl, docName: String(item.row.SlideFileName || '').trim() || 'สไลด์ PPT' });
+    postSlides.forEach((s, sectionIndex) => {
+      s.sectionIndex = sectionIndex;
+      s.sectionCount = postSlides.length;
+      s.isLast = sectionIndex === postSlides.length - 1;
+      slides.push(s);
     });
   });
   return slides;
@@ -3024,18 +3130,28 @@ function meetingTvPostSlideHtml(slide) {
   const actions = [];
   if (isLast && state.meetingCanCreate && st === 'open') actions.push(`<button class="mtg-tv-action mtg-tv-action-primary" data-mtg-status="Discussed" data-mtg-id="${escapeAttr(row.PostID)}">✓ คุยแล้ว — ไปหัวข้อถัดไป</button>`);
   if (isLast && state.meetingCanCreate && st === 'discussed') actions.push(`<button class="mtg-tv-action" data-mtg-status="Closed" data-mtg-id="${escapeAttr(row.PostID)}">จบเรื่อง</button>`);
+  let mid;
+  if (slide.isDoc) {
+    const fileId = meetingDriveFileId(slide.docUrl);
+    const previewUrl = fileId ? `https://drive.google.com/file/d/${fileId}/preview` : slide.docUrl;
+    mid = `<div class="mtg-tv-embed"><iframe src="${escapeAttr(previewUrl)}" loading="lazy" allowfullscreen></iframe></div>
+      <div class="mtg-tv-embed-hint">📊 ${escapeHtml(slide.docName)} · เลื่อนสไลด์ในตัวพรีวิว · <a href="${escapeAttr(slide.docUrl)}" target="_blank" rel="noopener">เปิดเต็มจอ ↗</a></div>`;
+  } else {
+    mid = `${sectionText ? `<div class="mtg-tv-detail">${escapeHtml(sectionText)}</div>` : ''}
+      ${photos.length ? `<div class="mtg-tv-photos">${photos.map((u, i) => `<img src="${escapeAttr(driveThumbnailUrl_(u, 1000))}" data-photo-url="${escapeAttr(u)}" alt="รูปที่ ${i + 1}" loading="lazy">`).join('')}</div>` : ''}`;
+  }
   return `<div class="mtg-tv-slide tv-anim-${meetingTvDir}">
       <div class="mtg-tv-chips">
         ${isMeetingPinned(row) ? '<span class="mtg-tv-chip">📌 ปักหมุด</span>' : ''}
         <span class="mtg-tv-chip mtg-tv-cat ${cat.cls}">${cat.icon} ${escapeHtml(row.Category || 'ทั่วไป')}</span>
         ${priority === 'ด่วน' ? '<span class="mtg-tv-chip mtg-tv-urgent">ด่วน</span>' : priority === 'สำคัญ' ? '<span class="mtg-tv-chip mtg-tv-important">สำคัญ</span>' : ''}
         ${carry ? `<span class="mtg-tv-chip mtg-tv-carrychip">⏳ ค้างจาก ${formatDate(row.MeetingDate)}</span>` : ''}
+        ${slide.isDoc ? '<span class="mtg-tv-chip mtg-tv-sectionchip">📊 สไลด์ PPT</span>' : ''}
         ${sectionCount > 1 ? `<span class="mtg-tv-chip mtg-tv-sectionchip">สไลด์ ${sectionIndex + 1}/${sectionCount}</span>` : ''}
         ${st !== 'open' ? `<span class="mtg-tv-chip mtg-tv-donechip">${st === 'closed' ? '✔ จบเรื่อง' : '✓ คุยแล้ว'}</span>` : ''}
       </div>
       <div class="mtg-tv-topic">${escapeHtml(row.Topic || '-')}</div>
-      ${sectionText ? `<div class="mtg-tv-detail">${escapeHtml(sectionText)}</div>` : ''}
-      ${photos.length ? `<div class="mtg-tv-photos">${photos.map((u, i) => `<img src="${escapeAttr(driveThumbnailUrl_(u, 1000))}" data-photo-url="${escapeAttr(u)}" alt="รูปที่ ${i + 1}" loading="lazy">`).join('')}</div>` : ''}
+      ${mid}
       ${!isLast ? '<div class="mtg-tv-slide-more">มีต่อสไลด์ถัดไป →</div>' : `
       <div class="mtg-tv-slide-meta">📅 ${formatDate(row.MeetingDate)}${row.Shift ? ' · กะ ' + escapeHtml(row.Shift) : ''} · 🏭 ${escapeHtml(row.LineName || row.LineID || 'ทุกไลน์')} · ✍️ ลงโดย ${escapeHtml(row.CreatedByName || '-')}${row.DiscussedBy ? ' · ✓ คุยแล้วโดย ' + escapeHtml(row.DiscussedBy) : ''}${row.AckRequiredCount ? ` · 🙋 รับทราบ ${row.AckedCount}/${row.AckRequiredCount}` : ''}${row.PostID ? ' · ' + escapeHtml(row.PostID) : ''}</div>
       ${row.AckRequiredCount && (row.AckPendingNames || []).length ? `<div class="mtg-tv-slide-meta mtg-tv-ack-pending">⏳ ยังไม่รับทราบ: ${escapeHtml(row.AckPendingNames.join(', '))}</div>` : ''}
@@ -3052,10 +3168,14 @@ function renderMeetingTv() {
   state.meetingTvIndex = index;
   // Progress counts topics discussed, not slides, so a multi-slide topic counts once.
   const discussed = deck.filter(item => meetingTvStatusDone(item.row)).length;
-  // First TV-slide (1-based) for each deck topic, so agenda clicks land on section 1.
+  // Derive per-topic first-slide index and slide count from the flat list, so
+  // extra slides (PPT embed) are counted correctly.
   const firstSlideByDeck = [];
-  let acc = 0;
-  deck.forEach((item, di) => { firstSlideByDeck[di] = acc + 1; acc += meetingSlideSections(item.row.Detail).length; });
+  const slideCountByDeck = [];
+  postSlides.forEach((s, i) => {
+    if (firstSlideByDeck[s.deckPos] === undefined) firstSlideByDeck[s.deckPos] = i + 1;
+    slideCountByDeck[s.deckPos] = (slideCountByDeck[s.deckPos] || 0) + 1;
+  });
   const dateLabel = formatDate($('#meetingDate').value || localDateInput(new Date()));
   let body = '';
   if (index === 0) {
@@ -3066,7 +3186,7 @@ function renderMeetingTv() {
         const done = meetingTvStatusDone(item.row);
         const cat = meetingCategoryMeta(item.row.Category);
         const priority = String(item.row.Priority || 'ปกติ');
-        const slideCount = meetingSlideSections(item.row.Detail).length;
+        const slideCount = slideCountByDeck[i] || 1;
         const sub = [item.row.LineName || item.row.LineID || 'ทุกไลน์', item.row.Category || 'ทั่วไป', `ลงโดย ${item.row.CreatedByName || '-'}`].join(' · ');
         return `<li style="animation-delay:${Math.min(i * 70, 700)}ms" class="mtg-tv-li"><button class="mtg-tv-item${done ? ' done' : ''}" data-tv-goto="${firstSlideByDeck[i]}">
           <span class="mtg-tv-item-icon">${done ? '✅' : cat.icon}</span>

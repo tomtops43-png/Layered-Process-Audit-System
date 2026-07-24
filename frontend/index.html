@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#123c69">
   <meta name="description" content="Layered Process Audit System สำหรับติดตามการตรวจและปิด Finding">
   <title>Layered Process Audit System</title>
-  <link rel="stylesheet" href="style.css?v=20260724-slidepics">
+  <link rel="stylesheet" href="style.css?v=20260724-photomgr">
 </head>
 <body>
   <div id="loginView" class="login-view">
@@ -411,8 +411,13 @@
           <input id="meetingAckSearch" placeholder="พิมพ์ค้นหาชื่อ..." autocomplete="off" style="margin:8px 0">
           <div class="checkbox-group mtg-ack-group" id="meetingAckUserGroup"></div>
         </div>
-        <label class="full-width">รูปประกอบ (เลือกได้หลายรูป)<input id="meetingPostPhoto" type="file" accept="image/*" multiple></label>
-        <div id="meetingPhotoPreview" class="photo-link full-width"></div>
+        <div class="form-field full-width">
+          <span class="data-label">รูปประกอบ (เลือกได้หลายรูป — กดลูกศร ◀ ▶ เพื่อสลับลำดับ เลขรูปจะเปลี่ยนตาม)</span>
+          <input id="meetingPostPhoto" type="file" accept="image/*" multiple>
+          <div id="meetingPhotoManager" class="mtg-photo-manager"></div>
+        </div>
+        <label class="full-width">แนบไฟล์ PPT / PDF (ฝังตัวพรีวิวในจอ TV)<input id="meetingPostSlideFile" type="file" accept=".ppt,.pptx,.pdf,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"><small class="field-help">📊 รองรับ .pptx .ppt .pdf ไม่เกิน 10MB — จะฝังตัวพรีวิวให้เลื่อนดูสไลด์บนจอ TV ได้ (แนบได้ 1 ไฟล์ต่อหัวข้อ)</small></label>
+        <div id="meetingSlideFileCurrent" class="full-width hidden"></div>
       </div>
       <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelMeetingPost">ยกเลิก</button><button type="button" class="btn btn-outline hidden" id="deleteMeetingPostButton">🗑 ลบหัวข้อ</button><button type="submit" class="btn btn-primary" id="saveMeetingPostButton">บันทึกหัวข้อ</button></div>
     </form>
@@ -433,6 +438,6 @@
   </dialog>
 
   <script src="config.js" defer></script>
-  <script src="app.js?v=20260724-slidepics" defer></script>
+  <script src="app.js?v=20260724-photomgr" defer></script>
 </body>
 </html>
