@@ -80,12 +80,16 @@ function setupRbac() {
       valuesEqual_(row.PermissionKey, 'findings.close.minor') &&
       cleanString_(row.Description).toLowerCase().indexOf('default leader permission') === 0 &&
       isAllowed_(row.Allowed);
-    if (isObsoleteLeaderDefault) {
+    // Customer must not see the internal pre-shift Meeting board — revoke any
+    // meeting.view granted by an earlier default before it was removed.
+    var isObsoleteCustomerMeeting = valuesEqual_(row.Role, 'Customer') &&
+      valuesEqual_(row.PermissionKey, 'meeting.view') && isAllowed_(row.Allowed);
+    if (isObsoleteLeaderDefault || isObsoleteCustomerMeeting) {
       upsertCompositeRow_(SHEET_NAMES.ROLE_PERMISSIONS, {
         Role: row.Role, PermissionKey: row.PermissionKey
       }, {
         Role: row.Role, PermissionKey: row.PermissionKey, Allowed: 'No',
-        Description: 'Removed from default Leader permissions',
+        Description: isObsoleteCustomerMeeting ? 'Removed from default Customer permissions' : 'Removed from default Leader permissions',
         UpdatedAt: timestamp, UpdatedBy: 'SYSTEM'
       });
       disabledObsoleteDefaults++;
@@ -123,8 +127,9 @@ function getDefaultRolePermissions_() {
     Leader: ['audit.leader.create', 'audit.view.own', 'audit.plan.view', 'findings.view.assigned', 'findings.view.created', 'findings.update.assigned', 'dashboard.view', 'meeting.view', 'meeting.create', 'meeting.update.own'],
     User: ['findings.view.assigned', 'findings.update.assigned', 'dashboard.view', 'meeting.view'],
     Viewer: ['dashboard.view.all', 'audit.view.all', 'audit.plan.view', 'findings.view.all', 'reports.view', 'meeting.view'],
-    // Customer: external customer-facing account — broad read access across every dashboard/menu, no write actions.
-    Customer: ['dashboard.view.all', 'audit.view.all', 'audit.plan.view', 'findings.view.all', 'reports.view', 'checklist.view', 'meeting.view']
+    // Customer: external customer-facing account — broad read access across LPA dashboards/reports,
+    // but NOT the internal pre-shift Meeting board (no meeting.view).
+    Customer: ['dashboard.view.all', 'audit.view.all', 'audit.plan.view', 'findings.view.all', 'reports.view', 'checklist.view']
   };
 }
 

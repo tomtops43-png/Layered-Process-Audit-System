@@ -158,6 +158,8 @@ function hasApiAccess_(user, action) {
   };
   if (['getCurrentUser', 'getMasterData'].indexOf(action) !== -1) return true;
   if (!actionPermissions[action]) return false;
+  // Customer is an external account and must never reach the internal Meeting board APIs.
+  if (action.indexOf('Meeting') !== -1 && cleanString_(user && user.Role).toLowerCase() === 'customer') return false;
   return actionPermissions[action].some(function (permissionKey) { return hasPermission_(user, permissionKey); });
 }
 

@@ -4624,6 +4624,11 @@ function applyPermissionVisibility() {
   $('#addAuditRuleButton').classList.toggle('hidden', !hasPermission('audit.plan.manage'));
   $('#addMeetingPostButton').classList.toggle('hidden', !hasPermission('meeting.create'));
   $('#meetingPostPinnedField').classList.toggle('hidden', !hasPermission('meeting.manage'));
+  // Customer is an external account — the internal pre-shift Meeting board is
+  // always hidden for them, even if a stray meeting.view permission slips in.
+  if (String(state.user?.Role || '').toLowerCase() === 'customer') {
+    $$('#mainNav [data-page="meeting"]').forEach(btn => btn.classList.add('hidden'));
+  }
   $('#shiftManagementPanel').classList.toggle('hidden', String(state.user?.Role || '').toLowerCase() !== 'admin');
 }
 
