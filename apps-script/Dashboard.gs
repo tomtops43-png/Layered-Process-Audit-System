@@ -199,6 +199,13 @@ function getFindingShiftDigest(payload, currentUser) {
     var lineAccess = getUserLineAccess_(currentUser);
     var picUserId = cleanString_(payload && payload.picUserId);
     var now = new Date();
+    // This scans every finding against the full AuditSessions sheet and was the
+    // only dashboard read with no cache at all — the slowest call in the app,
+    // and it runs on three different pages. Keyed by PIC so the filtered views
+    // (which used to miss entirely) cache too.
+    var digestCacheKey = shiftDigestCacheKey_(currentUser, picUserId, formatDateBangkok_(now), lineAccess);
+    var cachedDigest = safeCacheGetJson_(digestCacheKey);
+    if (cachedDigest) return jsonResponse(true, 'Finding shift digest loaded from cache.', cachedDigest);
     var dayLabels = {
       today: formatDateBangkok_(now),
       yesterday: formatDateBangkok_(new Date(now.getTime() - 24 * 3600 * 1000)),
@@ -248,6 +255,7 @@ function getFindingShiftDigest(payload, currentUser) {
       };
     });
 
+    safeCachePutJson_(digestCacheKey, digest, 90);
     return jsonResponse(true, 'Finding shift digest loaded.', digest);
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
@@ -303,6 +311,11 @@ function resolveUserResponsibleLines_(currentUser) {
   access.forEach(function (row) { var id = cleanString_(row.LineID); if (id) ids[id] = true; });
   return allLines.filter(function (l) { return ids[cleanString_(l.LineID)]; })
     .map(function (l) { return { LineID: cleanString_(l.LineID), LineName: cleanString_(l.LineName) }; });
+}
+
+function shiftDigestCacheKey_(user, picUserId, date, lineAccess) {
+  return 'LPA_SHIFT_DIGEST_' + cleanString_(user.UserID) + '_' + (cleanString_(picUserId) || 'ALL') +
+    '_' + cleanString_(date) + '_' + lineAccessScopeKey_(lineAccess || []);
 }
 
 function dashboardCacheKey_(user, period, lineAccess, lineId) {
