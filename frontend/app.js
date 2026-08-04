@@ -316,7 +316,15 @@ function makeWorkerTimeout(ms) {
 // ever invoked — the deployment is fine, the request just never landed. Those are
 // safe to replay (even for writes, since nothing ran server-side).
 const RETRYABLE_HTTP_STATUS = [404, 408, 425, 429, 500, 502, 503, 504];
-const API_MAX_ATTEMPTS = 3;
+// These 404 windows are not instantaneous — they persist for seconds at a time
+// (redeploys and request bursts both trigger them). Three quick attempts gave up
+// after ~1.5s and surfaced the error to the user; this rides out ~25s.
+const API_MAX_ATTEMPTS = 6;
+const API_RETRY_BASE_MS = 800;
+const API_RETRY_MAX_MS = 8000;
+// Firing several requests at the endpoint at once is itself a trigger for those
+// 404s, so no more than this many are ever in flight — the rest queue.
+const API_MAX_CONCURRENT = 2;
 // Actions that change server state: a dropped connection may mean the write DID
 // land, so replay them only when the server explicitly refused the request.
 const WRITE_ACTIONS = [
@@ -330,16 +338,40 @@ const WRITE_ACTIONS = [
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+// Gate on the endpoint: at most API_MAX_CONCURRENT requests in flight, everything
+// else waits its turn. Slots are released in acquire order.
+const apiGate = { active: 0, queue: [] };
+
+async function acquireApiSlot() {
+  if (apiGate.active < API_MAX_CONCURRENT) { apiGate.active++; return; }
+  await new Promise(resolve => apiGate.queue.push(resolve));
+  apiGate.active++;
+}
+
+function releaseApiSlot() {
+  apiGate.active--;
+  const next = apiGate.queue.shift();
+  if (next) next();
+}
+
 async function apiCall(action, payload = {}) {
   const TIMEOUT_MS = (action === 'uploadFile' || action === 'saveAudit' || action === 'convertMeetingSlideFile') ? 90000 : 45000;
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return await apiCallOnce(action, payload, TIMEOUT_MS);
-    } catch (error) {
-      if (!error.lpaRetryable || attempt >= API_MAX_ATTEMPTS) throw error;
-      console.warn(`apiCall(${action}) attempt ${attempt} failed, retrying:`, error.message);
-      await sleep(500 * attempt);
+  await acquireApiSlot();
+  try {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await apiCallOnce(action, payload, TIMEOUT_MS);
+      } catch (error) {
+        if (!error.lpaRetryable || attempt >= API_MAX_ATTEMPTS) throw error;
+        // Exponential backoff with jitter so retries from several calls that
+        // failed together do not line back up into another burst.
+        const backoff = Math.min(API_RETRY_BASE_MS * 2 ** (attempt - 1), API_RETRY_MAX_MS);
+        console.warn(`apiCall(${action}) attempt ${attempt} failed, retrying:`, error.message);
+        await sleep(backoff * (0.7 + Math.random() * 0.6));
+      }
     }
+  } finally {
+    releaseApiSlot();
   }
 }
 
@@ -1128,15 +1160,19 @@ function populateShiftDigestPicFilter(selectId = 'mgrShiftDigestPic') {
   populateSelect(`#${selectId}`, picUsers, 'UserID', 'PicLabel', 'ผู้รับผิดชอบ: ทั้งหมด');
 }
 
-async function loadFindingShiftDigest(containerId = 'mgrShiftDigest', selectId = 'mgrShiftDigestPic') {
+async function loadFindingShiftDigest(containerId = 'mgrShiftDigest', selectId = 'mgrShiftDigestPic', prefetched = null) {
   const el = $(`#${containerId}`);
   if (!el) return;
-  el.innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
+  if (!prefetched) el.innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   try {
     if (!(state.masterData.users || []).length) await ensureMasterDataLoaded(false);
     populateShiftDigestPicFilter(selectId);
     const picUserId = $(`#${selectId}`)?.value || '';
-    const digest = await apiCall('getFindingShiftDigest', picUserId ? { picUserId } : {});
+    // A prefetched digest is always the unfiltered one, so only reuse it when the
+    // PIC filter is empty — otherwise fetch the filtered view.
+    const digest = (prefetched && !picUserId)
+      ? prefetched
+      : await apiCall('getFindingShiftDigest', picUserId ? { picUserId } : {});
     // Meeting page keeps the digest around so TV mode can show it as a final slide
     if (containerId === 'meetingShiftDigest') state.meetingFindingDigest = digest;
     renderMgrShiftDigest(digest, containerId);
@@ -2671,7 +2707,7 @@ function isMeetingPinned(row) {
   return ['yes', 'true', '1'].includes(String(row?.Pinned || '').toLowerCase());
 }
 
-async function loadMeetingBoard() {
+function meetingBoardPayload() {
   const dateInput = $('#meetingDate');
   if (!dateInput.value) dateInput.value = localDateInput(new Date());
   const payload = { meetingDate: dateInput.value };
@@ -2679,10 +2715,47 @@ async function loadMeetingBoard() {
   const category = optionalFilterValue($('#meetingCategory').value);
   if (lineId) payload.lineId = lineId;
   if (category) payload.category = category;
-  const container = $('#meetingBoard');
-  container.innerHTML = '<div class="empty-state">กำลังโหลดบอร์ดประชุม...</div>';
+  return payload;
+}
+
+/** Opening the Meeting page needed three separate requests (board, finding
+ * digest, master data) fired at once. That burst is one of the patterns that
+ * makes the Apps Script endpoint return 404, and it cost three round trips. */
+async function loadMeetingPage() {
+  const wantsDigest = hasAnyPermission(['dashboard.view', 'dashboard.view.all']);
+  const calls = [{ action: 'getMeetingPosts', payload: meetingBoardPayload() }];
+  const masterIndex = (state.masterData.users || []).length
+    ? -1 : calls.push({ action: 'getMasterData', payload: {} }) - 1;
+  const digestIndex = wantsDigest ? calls.push({ action: 'getFindingShiftDigest', payload: {} }) - 1 : -1;
+
+  $('#meetingBoard').innerHTML = '<div class="empty-state">กำลังโหลดบอร์ดประชุม...</div>';
+  if (wantsDigest) $('#meetingShiftDigest').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
+
+  let results;
   try {
-    const data = await apiCall('getMeetingPosts', payload);
+    results = await apiBatch(calls);
+  } catch (error) {
+    $('#meetingBoard').innerHTML = emptyHtml(error.message);
+    showToast(error.message, 'error');
+    return;
+  }
+  if (masterIndex >= 0 && results[masterIndex]) {
+    state.masterData = results[masterIndex];
+    state.masterDataLoadedAt = Date.now();
+    populateAllMasterSelects();
+  }
+  await loadMeetingBoard(results[0]);
+  if (digestIndex >= 0) {
+    await loadFindingShiftDigest('meetingShiftDigest', 'meetingShiftDigestPic', results[digestIndex]);
+  }
+}
+
+async function loadMeetingBoard(prefetched = null) {
+  const payload = meetingBoardPayload();
+  const container = $('#meetingBoard');
+  if (!prefetched) container.innerHTML = '<div class="empty-state">กำลังโหลดบอร์ดประชุม...</div>';
+  try {
+    const data = prefetched || await apiCall('getMeetingPosts', payload);
     state.meetingPosts = data.posts || [];
     state.meetingCarryOver = data.carryOver || [];
     state.meetingCanCreate = Boolean(data.canCreate);
@@ -4776,12 +4849,8 @@ async function navigateTo(page) {
   }
   if (page === 'dashboard') loadDashboard(false);
   if (page === 'meeting') {
-    // Board, Finding digest, and master data are independent GAS calls — run them in parallel
-    loadMeetingBoard();
-    if (hasAnyPermission(['dashboard.view', 'dashboard.view.all'])) {
-      loadFindingShiftDigest('meetingShiftDigest', 'meetingShiftDigestPic');
-    }
-    try { await ensureMasterDataLoaded(false); } catch (_) { return; }
+    // Board, Finding digest, and master data go out as one batched request
+    await loadMeetingPage();
   }
   if (['audit', 'audit-plan', 'findings', 'checklist', 'admin'].includes(page)) {
     if (page === 'findings') {
