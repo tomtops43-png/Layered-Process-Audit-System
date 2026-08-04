@@ -344,14 +344,16 @@ const apiGate = { active: 0, queue: [] };
 
 async function acquireApiSlot() {
   if (apiGate.active < API_MAX_CONCURRENT) { apiGate.active++; return; }
+  // The waker hands its slot straight over, so active already counts this call.
   await new Promise(resolve => apiGate.queue.push(resolve));
-  apiGate.active++;
 }
 
 function releaseApiSlot() {
-  apiGate.active--;
   const next = apiGate.queue.shift();
+  // Handing the slot to a waiter keeps active unchanged. Decrementing first would
+  // leave a gap that a fresh caller could claim before the waiter resumes.
   if (next) next();
+  else apiGate.active--;
 }
 
 async function apiCall(action, payload = {}) {
