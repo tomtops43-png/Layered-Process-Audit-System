@@ -213,6 +213,7 @@ function migrateRulesToLineLevel(payload, currentUser) {
         if (oldIds[cleanString_(ids[i][0])]) sheet.deleteRow(i + 2);
       }
     }
+    invalidateSheetMatrixCache_(SHEET_NAMES.AUDIT_PLAN_RULES);
     invalidateAuditRulesCache_();
     return jsonResponse(true, 'แปลง Rule เสร็จสมบูรณ์', { migrated: migrated, deleted: stationRules.length });
   } catch(error) {
@@ -250,6 +251,7 @@ function deduplicateLineRules(payload, currentUser) {
         if (delSet[cleanString_(ids[i][0])]) sheet.deleteRow(i + 2);
       }
     }
+    invalidateSheetMatrixCache_(SHEET_NAMES.AUDIT_PLAN_RULES);
     invalidateAuditRulesCache_();
     return jsonResponse(true, 'ลบ rule ซ้ำเสร็จสมบูรณ์', { deleted: toDelete.length });
   } catch(error) {
@@ -541,6 +543,7 @@ function deleteAuditRule(payload, currentUser) {
     }
     if (rowNumber < 0) throw new Error('Audit schedule rule not found: ' + ruleId);
     sheet.deleteRow(rowNumber);
+    invalidateSheetMatrixCache_(SHEET_NAMES.AUDIT_PLAN_RULES);
     invalidateDashboardCachesForUser_(currentUser);
     return jsonResponse(true, 'Audit schedule rule deleted.', { ruleId: ruleId });
   } catch (error) {

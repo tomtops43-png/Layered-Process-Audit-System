@@ -276,5 +276,6 @@ function upsertCompositeRow_(sheetName, keys, object) {
     if (Object.prototype.hasOwnProperty.call(object, header)) values[index] = object[header];
   });
   sheet.getRange(row._rowNumber, 1, 1, headers.length).setValues([values]);
+  invalidateSheetMatrixCache_(sheetName);
   return object;
 }

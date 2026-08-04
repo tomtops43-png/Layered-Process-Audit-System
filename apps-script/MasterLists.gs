@@ -62,6 +62,7 @@ function deactivateDuplicateMasterListRows_(rows) {
   rows.forEach(function (row) {
     sheet.getRange(row._rowNumber, activeColumn).setValue('Inactive');
   });
+  invalidateSheetMatrixCache_(SHEET_NAMES.LISTS);
 }
 
 function normalizeMasterListSortOrders_(listType) {
@@ -93,5 +94,6 @@ function normalizeMasterListSortOrders_(listType) {
     row.SortOrder = maximum;
     used[maximum] = row._rowNumber;
   });
+  invalidateSheetMatrixCache_(SHEET_NAMES.LISTS);
   return rows.sort(compareMasterListRows_);
 }

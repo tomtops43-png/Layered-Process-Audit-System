@@ -16,11 +16,15 @@ function ensureMeetingSheet_(sheetName) {
     sheet = spreadsheet.insertSheet(sheetName);
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.setFrozenRows(1);
+    invalidateSheetMatrixCache_(sheetName);
     return sheet;
   }
   var existing = getHeaders_(sheet);
   var missing = headers.filter(function (header) { return existing.indexOf(header) === -1; });
-  if (missing.length) sheet.getRange(1, existing.length + 1, 1, missing.length).setValues([missing]);
+  if (missing.length) {
+    sheet.getRange(1, existing.length + 1, 1, missing.length).setValues([missing]);
+    invalidateSheetMatrixCache_(sheetName);
+  }
   return sheet;
 }
 

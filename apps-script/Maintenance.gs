@@ -86,6 +86,7 @@ function archiveSheetRows_(sheetName, shouldArchive) {
     sheet.getRange(2, 1, lastRow - 1, lastColumn).clearContent();
     if (keep.length) sheet.getRange(2, 1, keep.length, lastColumn).setValues(keep);
     SpreadsheetApp.flush();
+    invalidateSheetMatrixCache_(sheetName);
     return move.length;
   } finally {
     lock.releaseLock();

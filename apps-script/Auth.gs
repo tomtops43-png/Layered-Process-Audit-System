@@ -29,7 +29,10 @@ function login(payload) {
     if (isLoginLocked_(username)) {
       return jsonResponse(false, 'Too many failed login attempts. Please try again in 10 minutes.', {});
     }
-    var user = getRowsAsObjects(SHEET_NAMES.USERS).filter(function (row) {
+    // Cached rows: every user mutation (create/update/deactivate/reset password,
+    // plus the legacy-hash upgrade below) calls invalidateUserCache_, so a hit here
+    // can never authenticate against a stale credential.
+    var user = getCachedUserRows_().filter(function (row) {
       return cleanString_(row.Username).toLowerCase() === username;
     })[0];
     if (!user || !isActive_(user.ActiveStatus)) {

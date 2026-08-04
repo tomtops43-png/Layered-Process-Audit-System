@@ -78,7 +78,8 @@ const state = {
   startingPlanAudit: false,
   notificationTimer: null,
   notificationInFlight: false,
-  lastNotificationKey: ''
+  lastNotificationKey: '',
+  bootstrapping: false
 };
 
 const PERMISSION_CATALOG = [
@@ -105,7 +106,6 @@ function wireCheckboxChips(scope) {
 }
 let busyDepth = 0;
 const busyMessages = [];
-const busyDisabledState = new Map();
 
 window.addEventListener('DOMContentLoaded', initApp);
 
@@ -312,8 +312,38 @@ function makeWorkerTimeout(ms) {
   return { promise, cancel };
 }
 
+// Apps Script's /exec edge sporadically answers 404/429/5xx before the script is
+// ever invoked — the deployment is fine, the request just never landed. Those are
+// safe to replay (even for writes, since nothing ran server-side).
+const RETRYABLE_HTTP_STATUS = [404, 408, 425, 429, 500, 502, 503, 504];
+const API_MAX_ATTEMPTS = 3;
+// Actions that change server state: a dropped connection may mean the write DID
+// land, so replay them only when the server explicitly refused the request.
+const WRITE_ACTIONS = [
+  'saveAudit', 'uploadFile', 'updateFinding', 'submitFinding', 'verifyFinding', 'closeFinding',
+  'saveMeetingPost', 'deleteMeetingPost', 'updateMeetingPostStatus', 'acknowledgeMeetingPost',
+  'convertMeetingSlideFile', 'saveProductionPlan', 'upsertAuditPlanRule', 'deleteAuditRule',
+  'generateAuditPlan', 'refreshAuditPlanStatus', 'upsertMasterList', 'migrateRulesToLineLevel',
+  'deduplicateLineRules', 'createUser', 'updateUser', 'deactivateUser', 'resetUserPassword',
+  'updateRolePermissions', 'updateUserPermissions', 'updateUserLineAccess'
+];
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
 async function apiCall(action, payload = {}) {
   const TIMEOUT_MS = (action === 'uploadFile' || action === 'saveAudit' || action === 'convertMeetingSlideFile') ? 90000 : 45000;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await apiCallOnce(action, payload, TIMEOUT_MS);
+    } catch (error) {
+      if (!error.lpaRetryable || attempt >= API_MAX_ATTEMPTS) throw error;
+      console.warn(`apiCall(${action}) attempt ${attempt} failed, retrying:`, error.message);
+      await sleep(500 * attempt);
+    }
+  }
+}
+
+async function apiCallOnce(action, payload, TIMEOUT_MS) {
   const { promise: timeoutPromise, cancel: cancelTimeout } = makeWorkerTimeout(TIMEOUT_MS);
   const timeoutMsg = `ระบบใช้เวลานานเกินไป (${TIMEOUT_MS / 1000}s) กรุณาลองใหม่อีกครั้ง`;
   const fetchPromise = fetch(CONFIG.API_URL, {
@@ -322,7 +352,11 @@ async function apiCall(action, payload = {}) {
     body: JSON.stringify({ action, token: state.token || '', payload })
   }).then(async response => {
     cancelTimeout();
-    if (!response.ok) throw new Error(`เซิร์ฟเวอร์ตอบกลับ HTTP ${response.status}`);
+    if (!response.ok) {
+      const httpError = new Error(`เซิร์ฟเวอร์ตอบกลับ HTTP ${response.status}`);
+      httpError.lpaRetryable = RETRYABLE_HTTP_STATUS.includes(response.status);
+      throw httpError;
+    }
     const result = await response.json();
     if (!result.success) {
       const rawMessage = result.message || 'ไม่สามารถดำเนินการได้';
@@ -339,9 +373,38 @@ async function apiCall(action, payload = {}) {
   } catch (error) {
     cancelTimeout();
     if (error.message === '__timeout__') throw new Error(timeoutMsg);
-    if (error instanceof TypeError) throw new Error('ไม่สามารถเชื่อมต่อระบบได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่');
+    if (error instanceof TypeError) {
+      const networkError = new Error('ไม่สามารถเชื่อมต่อระบบได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่');
+      networkError.lpaRetryable = !WRITE_ACTIONS.includes(action);
+      throw networkError;
+    }
     throw error;
   }
+}
+
+/**
+ * Runs several read actions in one request.
+ *
+ * Every Apps Script round trip costs ~2s of platform overhead regardless of how
+ * little work it does, so page loads are dominated by call count, not payload
+ * size. Resolves to an array positionally matching `calls`; a sub-call that
+ * failed resolves to null rather than rejecting the whole batch.
+ */
+async function apiBatch(calls) {
+  if (!calls.length) return [];
+  if (calls.length === 1) {
+    try { return [await apiCall(calls[0].action, calls[0].payload || {})]; } catch (_) { return [null]; }
+  }
+  const data = await apiCall('batch', { calls: calls.map(c => ({ action: c.action, payload: c.payload || {} })) });
+  const results = Array.isArray(data.results) ? data.results : [];
+  return calls.map((call, index) => {
+    const result = results[index];
+    if (!result || !result.success) {
+      if (result) console.warn(`batch(${call.action}) failed:`, result.message);
+      return null;
+    }
+    return result.data || {};
+  });
 }
 
 async function login() {
@@ -385,6 +448,7 @@ function logout(notify = true) {
   state.masterDataPromise = null;
   state.checklist = [];
   state.auditAnswers = {};
+  state.bootstrapping = false;
   localStorage.removeItem('lpa_token');
   localStorage.removeItem('lpa_user');
   GASCache.invalidateAll();
@@ -398,45 +462,101 @@ function logout(notify = true) {
 }
 
 async function initializeAuthenticatedApp(validateSession = true) {
-  if (validateSession) {
-    showLoading('กำลังตรวจสอบ Session...');
-    try {
-      const current = await apiCall('getCurrentUser', {});
-      state.user = current;
-      localStorage.setItem('lpa_user', JSON.stringify(state.user));
-    } catch (error) {
-      showToast(error.message, 'error');
-      return;
-    } finally {
-      hideLoading();
-    }
-  }
+  state.bootstrapping = true;
+  // On a page refresh the session used to be revalidated with a blocking
+  // getCurrentUser call — ~4s of spinner before the shell even appeared. The
+  // stored user renders the shell straight away and getCurrentUser rides along
+  // in the bootstrap batch below; a dead token still logs out, just later.
+  applyUserToShell();
+  showDashboardSkeleton();
+  // Fire the background batch first: it publishes state.masterDataPromise
+  // synchronously, so anything navigateTo triggers that needs master data joins
+  // this request instead of opening a second one.
+  bootstrapBackgroundData(validateSession);
+  await navigateTo('dashboard');
+}
+
+function applyUserToShell() {
   $('#currentUserName').textContent = state.user.FullName || state.user.Username || '-';
   $('#currentUserRole').textContent = state.user.Role || '-';
   applyPermissionVisibility();
   applyAuditPlanRoleScope();
   applyAuditLayerPermissions();
   applyViewerAccountRestrictions();
-  showDashboardSkeleton();
-  await navigateTo('dashboard');
-  // Meeting-ack reminders: toast once at login, badge + dashboard banner until acked
-  refreshMeetingAckNotifications(true);
-  // Pre-warm GAS findings cache in background so Finding Tracking page loads fast on first visit
-  setTimeout(() => apiCall('getFindings', {}).then(data => {
-    if (!state.findingsCache) {
-      state.findingsCache = { key: JSON.stringify({}), data: Array.isArray(data.findings) ? data.findings : [], ts: Date.now() };
+}
+
+/**
+ * Everything the dashboard itself does not block on, fetched in one request.
+ *
+ * These used to be five independent calls (meeting acks, finding notifications,
+ * a 3s-delayed findings pre-warm, an idle schedule-rules prefetch, plus master
+ * data loaded lazily behind a blocking spinner on first navigation). At ~2s of
+ * platform overhead per Apps Script round trip that dominated the post-login
+ * experience; one batch pays that overhead once.
+ */
+async function bootstrapBackgroundData(validateSession = false) {
+  const calls = [{ action: 'getMasterData', payload: {} }];
+  const currentUserIndex = validateSession
+    ? calls.push({ action: 'getCurrentUser', payload: {} }) - 1 : -1;
+  const notificationIndex = calls.push({
+    action: 'getMyFindingNotificationSummary',
+    payload: { lastSeenAt: getLastSeenFindingNotificationAt(), limit: 5 }
+  }) - 1;
+  const ackIndex = hasPermission('meeting.view')
+    ? calls.push({ action: 'getMyPendingMeetingAcks', payload: {} }) - 1 : -1;
+  const findingsIndex = calls.push({ action: 'getFindings', payload: {} }) - 1;
+  const rulesIndex = hasPermission('audit.plan.view')
+    ? calls.push({ action: 'getAuditPlanRules', payload: { activeStatus: 'Active', limit: 300 } }) - 1 : -1;
+
+  const batchPromise = apiBatch(calls);
+  // Park the master-data slice on the shared promise so anything that calls
+  // ensureMasterDataLoaded while the batch is in flight (the shift digest does,
+  // during navigateTo) waits on this request instead of issuing its own.
+  state.masterDataPromise = batchPromise.then(batchResults => {
+    const data = batchResults[0];
+    if (!data) throw new Error('ไม่สามารถโหลด Master Data ได้');
+    state.masterData = data;
+    state.masterDataLoadedAt = Date.now();
+    populateAllMasterSelects();
+    return data;
+  });
+  state.masterDataPromise.catch(() => {});
+
+  let results;
+  try {
+    results = await batchPromise;
+  } catch (error) {
+    console.warn('Background bootstrap failed:', error.message || error);
+    return;
+  } finally {
+    state.bootstrapping = false;
+    state.masterDataPromise = null;
+  }
+
+  if (currentUserIndex >= 0 && results[currentUserIndex]) {
+    state.user = results[currentUserIndex];
+    localStorage.setItem('lpa_user', JSON.stringify(state.user));
+    applyUserToShell();
+  }
+  const notifications = results[notificationIndex];
+  if (notifications) handleFindingNotificationSummary(notifications, true);
+  // Keep the recurring poll running even if the summary sub-call failed.
+  startFindingNotificationPolling(!notifications);
+
+  if (ackIndex >= 0 && results[ackIndex]) {
+    state.meetingPendingAcks = results[ackIndex].pending || [];
+    renderMeetingAckBadgeAndBanner();
+    if (state.meetingPendingAcks.length) {
+      showToast(`📣 มีเรื่องแจ้งจากที่ประชุม ${state.meetingPendingAcks.length} รายการ รอคุณกดรับทราบ`, 'warning', 8000);
     }
-  }).catch(() => {}), 3000);
-  // Prefetch schedule rules when browser is idle (speeds up first LPA Schedule Rules tab visit)
-  const idlePrefetch = () => {
-    if (!state.auditRules.length && hasPermission('audit.plan.view')) {
-      apiCall('getAuditPlanRules', { activeStatus: 'Active', limit: 300 })
-        .then(data => { if (!state.auditRules.length) state.auditRules = data.rules || []; })
-        .catch(() => {});
-    }
-  };
-  if ('requestIdleCallback' in window) requestIdleCallback(idlePrefetch, { timeout: 8000 });
-  else setTimeout(idlePrefetch, 8000);
+  }
+  const findings = results[findingsIndex];
+  if (findings && !state.findingsCache) {
+    state.findingsCache = { key: JSON.stringify({}), data: Array.isArray(findings.findings) ? findings.findings : [], ts: Date.now() };
+  }
+  if (rulesIndex >= 0 && results[rulesIndex] && !state.auditRules.length) {
+    state.auditRules = results[rulesIndex].rules || [];
+  }
 }
 
 async function loadMasterData(withLoading = true) {
@@ -1927,6 +2047,8 @@ function handleNotificationVisibilityChange() {
 
 async function pollFindingNotifications(immediate = false) {
   if (!state.token || !state.user || state.notificationInFlight) return;
+  // bootstrapBackgroundData already has this summary in flight inside its batch.
+  if (state.bootstrapping) return;
   state.notificationInFlight = true;
   try {
     const data = await apiCall('getMyFindingNotificationSummary', { lastSeenAt: getLastSeenFindingNotificationAt(), limit: 5 });
@@ -4704,6 +4826,10 @@ function closeMobileDrawer() {
 function toggleMobileDrawer() {
   if ($('#sidebar').classList.contains('open')) closeMobileDrawer(); else openMobileDrawer();
 }
+// Input is blocked purely in CSS (.is-busy #loginView/#appView { pointer-events:none }).
+// The old implementation also walked every button/input/select/textarea in the
+// document to toggle .disabled — thousands of layout-invalidating writes on both
+// sides of every single API call, which is what made the UI feel sluggish.
 function showLoading(message = 'กำลังโหลด...') {
   busyDepth++;
   busyMessages.push(message);
@@ -4711,12 +4837,6 @@ function showLoading(message = 'กำลังโหลด...') {
   $('#loadingOverlay').classList.remove('hidden');
   document.body.classList.add('is-busy');
   document.body.setAttribute('aria-busy', 'true');
-  if (busyDepth === 1) {
-    $$('button, input, select, textarea').forEach(element => {
-      busyDisabledState.set(element, element.disabled);
-      element.disabled = true;
-    });
-  }
 }
 
 function hideLoading() {
@@ -4731,10 +4851,6 @@ function hideLoading() {
   $('#loadingOverlay').classList.add('hidden');
   document.body.classList.remove('is-busy');
   document.body.removeAttribute('aria-busy');
-  busyDisabledState.forEach((wasDisabled, element) => {
-    if (element.isConnected) element.disabled = wasDisabled;
-  });
-  busyDisabledState.clear();
 }
 
 async function withBusy(message, asyncFunction) {

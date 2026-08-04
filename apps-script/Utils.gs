@@ -1,13 +1,21 @@
 /** Shared database, validation, date, ID, and response helpers. */
+var _SPREADSHEET_HANDLE_ = null;
+
 function getSpreadsheet_() {
+  if (_SPREADSHEET_HANDLE_) return _SPREADSHEET_HANDLE_;
   if (!SPREADSHEET_ID) SPREADSHEET_ID = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID') || '';
   if (!SPREADSHEET_ID) throw new Error('SPREADSHEET_ID is not configured in Script Properties.');
-  return SpreadsheetApp.openById(SPREADSHEET_ID);
+  _SPREADSHEET_HANDLE_ = SpreadsheetApp.openById(SPREADSHEET_ID);
+  return _SPREADSHEET_HANDLE_;
 }
 
+var _SHEET_HANDLE_MEMO_ = {};
+
 function getSheet(sheetName) {
+  if (_SHEET_HANDLE_MEMO_[sheetName]) return _SHEET_HANDLE_MEMO_[sheetName];
   var sheet = getSpreadsheet_().getSheetByName(sheetName);
   if (!sheet) throw new Error('Required sheet not found: ' + sheetName);
+  _SHEET_HANDLE_MEMO_[sheetName] = sheet;
   return sheet;
 }
 
@@ -17,14 +25,45 @@ function getHeaders_(sheet) {
   return sheet.getRange(1, 1, 1, lastColumn).getDisplayValues()[0].map(cleanString_);
 }
 
-function getRowsAsObjects(sheetName) {
+/**
+ * Per-execution raw sheet cache: { headers: [], values: [][] }.
+ *
+ * A single API request reads the same sheet several times (Findings + AuditSessions
+ * are each touched by 3-5 helpers), and the batch endpoint multiplies that further.
+ * Every read used to cost two Sheets round trips (getHeaders_ + getValues); this
+ * memo collapses all of them into one getDataRange() call per sheet per execution.
+ * Cleared by invalidateSheetMatrixCache_ after any write so later reads see it.
+ */
+var _SHEET_MATRIX_CACHE_ = {};
+
+function getSheetMatrix_(sheetName) {
+  if (_SHEET_MATRIX_CACHE_[sheetName]) return _SHEET_MATRIX_CACHE_[sheetName];
   var sheet = getSheet(sheetName);
   var lastRow = sheet.getLastRow();
   var lastColumn = sheet.getLastColumn();
-  if (lastRow < 2 || lastColumn < 1) return [];
-  var headers = getHeaders_(sheet);
-  var values = sheet.getRange(2, 1, lastRow - 1, lastColumn).getValues();
-  return values.map(function (row, index) {
+  var matrix = { headers: [], values: [] };
+  if (lastRow >= 1 && lastColumn >= 1) {
+    var all = sheet.getRange(1, 1, lastRow, lastColumn).getValues();
+    matrix.headers = (all[0] || []).map(cleanString_);
+    matrix.values = all.slice(1);
+  }
+  _SHEET_MATRIX_CACHE_[sheetName] = matrix;
+  return matrix;
+}
+
+/** Drop the raw cache after a write. Called with no argument it clears every sheet. */
+function invalidateSheetMatrixCache_(sheetName) {
+  if (sheetName) delete _SHEET_MATRIX_CACHE_[sheetName];
+  else _SHEET_MATRIX_CACHE_ = {};
+}
+
+function getRowsAsObjects(sheetName) {
+  var matrix = getSheetMatrix_(sheetName);
+  var headers = matrix.headers;
+  if (!headers.length || !matrix.values.length) return [];
+  // Fresh objects on every call — callers such as refreshOverdueForRead_ mutate rows
+  // in place, and they must never write through to the shared raw cache.
+  return matrix.values.map(function (row, index) {
     var object = { _rowNumber: index + 2 };
     headers.forEach(function (header, column) {
       if (header) object[header] = normalizeCellValue_(row[column]);
@@ -42,6 +81,7 @@ function appendObject(sheetName, object) {
   if (!headers.length) throw new Error('Sheet has no header row: ' + sheetName);
   var row = headers.map(function (header) { return object[header] === undefined ? '' : object[header]; });
   sheet.appendRow(row);
+  invalidateSheetMatrixCache_(sheetName);
   return object;
 }
 
@@ -56,6 +96,7 @@ function appendBatch_(sheetName, objects) {
   });
   var lastRow = sheet.getLastRow();
   sheet.getRange(lastRow + 1, 1, rows.length, headers.length).setValues(rows);
+  invalidateSheetMatrixCache_(sheetName);
 }
 
 /** Generate N sequential IDs while the caller already owns the script lock. */
@@ -180,6 +221,7 @@ function updateObjectById(sheetName, idColumnName, idValue, updateObject) {
     if (Object.prototype.hasOwnProperty.call(updateObject, header)) current[index] = updateObject[header];
   });
   sheet.getRange(rowNumber, 1, 1, headers.length).setValues([current]);
+  invalidateSheetMatrixCache_(sheetName);
   var result = {};
   headers.forEach(function (header, index) { result[header] = normalizeCellValue_(current[index]); });
   return result;
