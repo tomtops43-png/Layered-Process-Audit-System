@@ -240,6 +240,12 @@ function bindEvents() {
   });
   $('#photoLightbox').addEventListener('click', event => { if (event.target === event.currentTarget) closePhotoLightbox(); });
   $('#photoLightbox').addEventListener('close', () => { $('#photoLightboxImage').src = ''; });
+  $('#confirmDialogOk').addEventListener('click', () => settleConfirmDialog(true));
+  $('#confirmDialogCancel').addEventListener('click', () => settleConfirmDialog(false));
+  // Escape and backdrop clicks both mean "no" — they funnel through the same
+  // settle() as the buttons so every dismissal path resolves the promise once.
+  $('#confirmDialog').addEventListener('close', () => settleConfirmDialog(false));
+  $('#confirmDialog').addEventListener('click', event => { if (event.target === event.currentTarget) settleConfirmDialog(false); });
   ['#editCloseRemark', '#editRejectReason'].forEach(selector => {
     $(selector).addEventListener('input', event => event.target.classList.remove('field-error'));
   });
@@ -249,7 +255,13 @@ function bindEvents() {
   wireFindingReasonSelect('#editRejectReasonSelect', '#editRejectReason', '#editRejectReasonNoteField');
   $('#addUserButton').addEventListener('click', () => openUserEditor());
   $('#migrateRulesBtn').addEventListener('click', async () => {
-    if (!confirm('แปลง Rule ระดับ Station ทั้งหมด → Line Level?\n(ลบ Rule เก่า สร้าง Rule ใหม่ 1 ต่อ 1 Line)\nไม่สามารถย้อนกลับได้')) return;
+    const confirmed = await showConfirm({
+      title: 'แปลง Rule เป็น Line Level?',
+      message: 'ระบบจะลบ Rule ระดับ Station เดิม แล้วสร้าง Rule ใหม่ 1 Rule ต่อ 1 Line\nการดำเนินการนี้ไม่สามารถย้อนกลับได้',
+      confirmText: 'แปลง Rule',
+      tone: 'danger'
+    });
+    if (!confirmed) return;
     const btn = $('#migrateRulesBtn');
     btn.disabled = true; btn.textContent = 'กำลังแปลง...';
     try {
@@ -261,7 +273,13 @@ function bindEvents() {
     finally { btn.disabled = false; btn.textContent = '🔄 Migrate Rules → Line Level'; }
   });
   $('#deduplicateRulesBtn').addEventListener('click', async () => {
-    if (!confirm('ลบ Rule ที่ซ้ำกัน (Line+Role+Frequency เดียวกัน) ออก?\nจะเหลือ 1 Rule ต่อ Line')) return;
+    const confirmed = await showConfirm({
+      title: 'ลบ Rule ที่ซ้ำกัน?',
+      message: 'Rule ที่มี Line + Role + Frequency เดียวกันจะถูกลบออก เหลือไว้ 1 Rule ต่อ Line',
+      confirmText: 'ลบ Rule ซ้ำ',
+      tone: 'danger'
+    });
+    if (!confirmed) return;
     const btn = $('#deduplicateRulesBtn');
     btn.disabled = true; btn.textContent = 'กำลังลบ...';
     try {
@@ -2520,7 +2538,13 @@ async function saveAudit() {
     }
     records.push(record);
   }
-  if (!window.confirm(`ยืนยันบันทึก Audit จำนวน ${records.length} ข้อ?`)) {
+  const confirmedSave = await showConfirm({
+    title: 'ยืนยันบันทึกผลตรวจ?',
+    message: `ระบบจะบันทึกผลการตรวจทั้งหมด ${records.length} ข้อ`,
+    confirmText: 'บันทึก Audit',
+    tone: 'success'
+  });
+  if (!confirmedSave) {
     setAuditSavingState(false);
     return;
   }
@@ -3068,7 +3092,13 @@ async function saveMeetingPostFromForm() {
 async function deleteMeetingPostAction() {
   const postId = $('#meetingPostId').value;
   if (!postId) return;
-  if (!confirm('ลบหัวข้อนี้ออกจากบอร์ดประชุม?')) return;
+  const confirmed = await showConfirm({
+    title: 'ลบหัวข้อนี้?',
+    message: 'หัวข้อจะถูกลบออกจากบอร์ดประชุมและกู้คืนไม่ได้',
+    confirmText: 'ลบหัวข้อ',
+    tone: 'danger'
+  });
+  if (!confirmed) return;
   showLoading('กำลังลบหัวข้อ...');
   try {
     await apiCall('deleteMeetingPost', { postId });
@@ -3838,7 +3868,12 @@ async function submitFindingForVerification() {
   if (!rootCause || !correctiveAction || !hasPhoto) {
     return showToast('กรุณากรอก Root Cause, Corrective Action และแนบ After Photo อย่างน้อย 1 รูปให้ครบก่อนส่งตรวจยืนยัน', 'warning');
   }
-  if (!window.confirm(`ส่ง Finding ${findingId} เพื่อตรวจสอบ?`)) return;
+  const confirmed = await showConfirm({
+    title: 'ส่ง Finding ให้ตรวจยืนยัน?',
+    message: `${findingId} จะถูกส่งให้ผู้ตรวจสอบยืนยันผลการแก้ไข`,
+    confirmText: 'ส่งตรวจยืนยัน'
+  });
+  if (!confirmed) return;
   await runFindingWorkflow('submitFinding', {
     findingId, rootCause, correctiveAction,
     rootCauseCategory: ($('#editRootCauseCategoryVal') || {}).value || '',
@@ -3869,10 +3904,18 @@ async function verifyFinding(decision) {
       : 'กรุณาเลือกหรือระบุเหตุผลการปิด Finding ก่อนปิด Finding';
     return showToast(warning, 'warning');
   }
-  const confirmation = decision === 'Reject'
-    ? 'ยืนยัน Reject Finding นี้และส่งกลับให้ผู้รับผิดชอบแก้ไข?'
-    : 'ยืนยันปิด Finding นี้?';
-  if (!window.confirm(confirmation)) return;
+  const confirmed = await showConfirm(isReject ? {
+    title: 'Reject Finding นี้?',
+    message: `${findingId} จะถูกส่งกลับให้ผู้รับผิดชอบแก้ไขอีกครั้ง`,
+    confirmText: 'Reject Finding',
+    tone: 'danger'
+  } : {
+    title: 'ปิด Finding นี้?',
+    message: `${findingId} จะถูกปิดและบันทึกเหตุผลการปิดไว้ในระบบ`,
+    confirmText: 'Close Finding',
+    tone: 'success'
+  });
+  if (!confirmed) return;
   await runFindingWorkflow('verifyFinding', {
     findingId, decision,
     rejectReason: decision === 'Reject' ? verifierRemark : '',
@@ -4196,7 +4239,12 @@ async function saveAuditRule() {
       : activeStationsForLine(payload.lineId).length;
     if (!stationCount) return showToast('ไม่พบ Station ที่ Active ใน Line ที่เลือก', 'warning');
     const lineLabel = allLines ? 'ทุก Line' : 'Line นี้';
-    const confirmed = window.confirm(`ระบบจะสร้างกฎสำหรับ Station ที่ Active ทั้งหมดใน ${lineLabel} ต้องการดำเนินการต่อหรือไม่?`);
+    const confirmed = await showConfirm({
+      title: 'สร้างกฎให้ทุก Station?',
+      message: `ระบบจะสร้างกฎสำหรับ Station ที่ Active ทั้งหมดใน ${lineLabel} (${stationCount} Station)`,
+      confirmText: 'สร้างกฎ',
+      tone: 'warning'
+    });
     if (!confirmed) return;
   }
   showLoading('กำลังบันทึกกฎตารางตรวจ...');
@@ -4217,7 +4265,13 @@ async function saveAuditRule() {
 }
 
 async function deleteAuditRule(ruleId, ruleLabel) {
-  if (!window.confirm(`ยืนยันลบกฎตารางตรวจ?\n${ruleLabel}`)) return;
+  const confirmed = await showConfirm({
+    title: 'ลบกฎตารางตรวจ?',
+    message: ruleLabel,
+    confirmText: 'ลบกฎ',
+    tone: 'danger'
+  });
+  if (!confirmed) return;
   showLoading('กำลังลบกฎตารางตรวจ...');
   try {
     await apiCall('deleteAuditRule', { ruleId });
@@ -4538,7 +4592,14 @@ async function saveUserAccess(userId) {
 
 async function deactivateSelectedUser() {
   const userId = $('#adminEditUserId').value;
-  if (!userId || !window.confirm('ยืนยันปิดใช้งานผู้ใช้นี้?')) return;
+  if (!userId) return;
+  const confirmed = await showConfirm({
+    title: 'ปิดใช้งานผู้ใช้นี้?',
+    message: 'ผู้ใช้จะไม่สามารถเข้าสู่ระบบได้ จนกว่าจะเปิดใช้งานใหม่',
+    confirmText: 'ปิดใช้งาน',
+    tone: 'danger'
+  });
+  if (!confirmed) return;
   showLoading('กำลังบันทึกข้อมูลผู้ใช้...');
   try {
     await apiCall('deactivateUser', { userId });
@@ -4940,6 +5001,45 @@ function showToast(message, type = 'info', duration = 4500) {
   $('#toastContainer').appendChild(toast);
   setTimeout(() => toast.remove(), duration);
   return toast;
+}
+
+// window.confirm() paints the browser's own "<host> says" alert, which looks
+// nothing like the rest of the app. showConfirm() drives a styled <dialog>
+// instead and resolves the same true/false, so call sites just await it.
+const CONFIRM_TONE_ICONS = { primary: '?', danger: '!', warning: '!', success: '✓' };
+let confirmDialogResolve = null;
+
+function showConfirm(options) {
+  const config = typeof options === 'string' ? { message: options } : (options || {});
+  const dialog = $('#confirmDialog');
+  if (!dialog || typeof dialog.showModal !== 'function') {
+    return Promise.resolve(window.confirm(config.message || config.title || 'ยืนยันการทำรายการ?'));
+  }
+  settleConfirmDialog(false);
+  const tone = config.tone || 'primary';
+  dialog.className = `modal confirm-modal tone-${tone}`;
+  $('#confirmDialogIcon').textContent = config.icon || CONFIRM_TONE_ICONS[tone] || '?';
+  $('#confirmDialogTitle').textContent = config.title || 'ยืนยันการทำรายการ';
+  $('#confirmDialogMessage').textContent = config.message || '';
+  const okButton = $('#confirmDialogOk');
+  const cancelButton = $('#confirmDialogCancel');
+  okButton.textContent = config.confirmText || 'ยืนยัน';
+  cancelButton.textContent = config.cancelText || 'ยกเลิก';
+  okButton.className = `btn ${tone === 'danger' ? 'btn-danger' : 'btn-primary'}`;
+  dialog.showModal();
+  // Destructive prompts start on Cancel so a stray Enter cannot delete anything.
+  (tone === 'danger' ? cancelButton : okButton).focus();
+  return new Promise(resolve => { confirmDialogResolve = resolve; });
+}
+
+// Buttons, Escape and backdrop clicks all land here. The resolver is cleared
+// before close() so the resulting 'close' event settles nothing a second time.
+function settleConfirmDialog(result) {
+  const resolve = confirmDialogResolve;
+  confirmDialogResolve = null;
+  const dialog = $('#confirmDialog');
+  if (dialog && dialog.open) dialog.close();
+  if (resolve) resolve(result);
 }
 
 function findingReportTable(rows) {
