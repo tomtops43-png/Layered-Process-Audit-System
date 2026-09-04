@@ -343,6 +343,8 @@ const API_RETRY_MAX_MS = 8000;
 // Firing several requests at the endpoint at once is itself a trigger for those
 // 404s, so no more than this many are ever in flight — the rest queue.
 const API_MAX_CONCURRENT = 2;
+// Timeouts get their own, much shorter ladder — see the retry loop in apiCall().
+const API_MAX_TIMEOUT_ATTEMPTS = 2;
 // Actions that change server state: a dropped connection may mean the write DID
 // land, so replay them only when the server explicitly refused the request.
 const WRITE_ACTIONS = [
@@ -357,36 +359,52 @@ const WRITE_ACTIONS = [
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 // Gate on the endpoint: at most API_MAX_CONCURRENT requests in flight, everything
-// else waits its turn. Slots are released in acquire order.
-const apiGate = { active: 0, queue: [] };
+// else waits its turn. Two lanes, because plain FIFO let a background refresh that
+// started a moment earlier hold up the button the user just pressed: the write was
+// sent first but sat in the queue for a whole round trip with the spinner already
+// up. Writes, and anything else a user is actively waiting on, take the high lane.
+const apiGate = { active: 0, high: [], normal: [] };
 
-async function acquireApiSlot() {
+function apiGateBusy() { return apiGate.active >= API_MAX_CONCURRENT; }
+
+async function acquireApiSlot(priority) {
   if (apiGate.active < API_MAX_CONCURRENT) { apiGate.active++; return; }
   // The waker hands its slot straight over, so active already counts this call.
-  await new Promise(resolve => apiGate.queue.push(resolve));
+  await new Promise(resolve => apiGate[priority === 'high' ? 'high' : 'normal'].push(resolve));
 }
 
 function releaseApiSlot() {
-  const next = apiGate.queue.shift();
+  const next = apiGate.high.shift() || apiGate.normal.shift();
   // Handing the slot to a waiter keeps active unchanged. Decrementing first would
   // leave a gap that a fresh caller could claim before the waiter resumes.
   if (next) next();
   else apiGate.active--;
 }
 
-async function apiCall(action, payload = {}) {
+async function apiCall(action, payload = {}, options = {}) {
   const TIMEOUT_MS = (action === 'uploadFile' || action === 'saveAudit' || action === 'convertMeetingSlideFile') ? 90000 : 45000;
-  await acquireApiSlot();
+  // Writes are always something a user is standing in front of; reads are only
+  // urgent when the caller says so (background refreshes pass priority 'normal').
+  const priority = options.priority || (WRITE_ACTIONS.includes(action) ? 'high' : 'normal');
+  await acquireApiSlot(priority);
   try {
+    let timeouts = 0;
     for (let attempt = 1; ; attempt++) {
       try {
         return await apiCallOnce(action, payload, TIMEOUT_MS);
       } catch (error) {
+        // A refused request costs milliseconds, so riding those out is cheap. A
+        // timeout already cost the full deadline, so replaying it up the whole
+        // ladder would leave the user in front of a spinner for minutes.
+        if (error.lpaTimeout && ++timeouts >= API_MAX_TIMEOUT_ATTEMPTS) throw error;
         if (!error.lpaRetryable || attempt >= API_MAX_ATTEMPTS) throw error;
         // Exponential backoff with jitter so retries from several calls that
         // failed together do not line back up into another burst.
         const backoff = Math.min(API_RETRY_BASE_MS * 2 ** (attempt - 1), API_RETRY_MAX_MS);
         console.warn(`apiCall(${action}) attempt ${attempt} failed, retrying:`, error.message);
+        // A silent spinner through a 25s retry ladder is indistinguishable from a
+        // frozen page, so say what is happening while it rides the outage out.
+        if (options.quiet !== true) setLoadingHint(`เซิร์ฟเวอร์ยังไม่ตอบสนอง กำลังลองใหม่ครั้งที่ ${attempt + 1} จาก ${API_MAX_ATTEMPTS}`);
         await sleep(backoff * (0.7 + Math.random() * 0.6));
       }
     }
@@ -403,13 +421,30 @@ async function apiCallOnce(action, payload, TIMEOUT_MS) {
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body: JSON.stringify({ action, token: state.token || '', payload })
   }).then(async response => {
-    cancelTimeout();
     if (!response.ok) {
+      cancelTimeout();
       const httpError = new Error(`เซิร์ฟเวอร์ตอบกลับ HTTP ${response.status}`);
       httpError.lpaRetryable = RETRYABLE_HTTP_STATUS.includes(response.status);
       throw httpError;
     }
-    const result = await response.json();
+    // Reading the body is part of the request, so the timeout has to cover it.
+    // Cancelling on the headers alone left the call with no deadline at all, and
+    // Apps Script's edge does stall mid-body — that request then never settled and
+    // the loading overlay stayed up until the page was reloaded. This is the hang.
+    const text = await response.text();
+    cancelTimeout();
+    let result;
+    try {
+      result = JSON.parse(text);
+    } catch (_) {
+      // Not JSON means the edge served something that is not our script (an
+      // interstitial or an error page), so the request never reached the backend.
+      const parseError = new Error('เซิร์ฟเวอร์ตอบกลับข้อมูลไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง');
+      // Same rule as a dropped connection: a read is safe to replay, a write is
+      // not, because there is no proof from here that the script did not run.
+      parseError.lpaRetryable = !WRITE_ACTIONS.includes(action);
+      throw parseError;
+    }
     if (!result.success) {
       const rawMessage = result.message || 'ไม่สามารถดำเนินการได้';
       if (isTokenError(rawMessage) && action !== 'login') {
@@ -424,7 +459,14 @@ async function apiCallOnce(action, payload, TIMEOUT_MS) {
     return await Promise.race([fetchPromise, timeoutPromise]);
   } catch (error) {
     cancelTimeout();
-    if (error.message === '__timeout__') throw new Error(timeoutMsg);
+    if (error.message === '__timeout__') {
+      const timeoutError = new Error(timeoutMsg);
+      // A read that timed out changed nothing, so it is safe to replay; a write
+      // may have landed server-side, so that one still has to be surfaced.
+      timeoutError.lpaRetryable = !WRITE_ACTIONS.includes(action);
+      timeoutError.lpaTimeout = true;
+      throw timeoutError;
+    }
     if (error instanceof TypeError) {
       const networkError = new Error('ไม่สามารถเชื่อมต่อระบบได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่');
       networkError.lpaRetryable = !WRITE_ACTIONS.includes(action);
@@ -2105,9 +2147,13 @@ async function pollFindingNotifications(immediate = false) {
   if (!state.token || !state.user || state.notificationInFlight) return;
   // bootstrapBackgroundData already has this summary in flight inside its batch.
   if (state.bootstrapping) return;
+  // A badge count is never worth the last free slot. If the endpoint is already
+  // saturated, skip this tick rather than queue — the next one is a minute away,
+  // and whatever the user does next should not have to wait behind a badge.
+  if (apiGateBusy()) { scheduleNextFindingNotificationPoll(); return; }
   state.notificationInFlight = true;
   try {
-    const data = await apiCall('getMyFindingNotificationSummary', { lastSeenAt: getLastSeenFindingNotificationAt(), limit: 5 });
+    const data = await apiCall('getMyFindingNotificationSummary', { lastSeenAt: getLastSeenFindingNotificationAt(), limit: 5 }, { priority: 'normal', quiet: true });
     handleFindingNotificationSummary(data, immediate);
   } catch (error) {
     console.warn('Finding notification polling failed:', error.message || error);
@@ -2585,7 +2631,7 @@ async function saveAudit() {
     state.leaderDashData = null;
     clearAuditDraft();
     resetAuditForm();
-    loadDashboard(false);
+    refreshDashboardIfVisible();
   } catch (error) {
     const message = error && error.message ? error.message : 'ไม่สามารถบันทึก Audit ได้';
     state.auditDuplicateBlocked = isAuditDuplicateMessage(message);
@@ -3484,7 +3530,10 @@ function renderMeetingTv() {
     btn.addEventListener('click', () => setMeetingPostStatus(btn, btn.dataset.mtgId, btn.dataset.mtgStatus, true)));
 }
 
-async function loadFindings(force = false) {
+// quiet: refresh in place — no overlay, no skeleton, keep the current cards on
+// screen until the new ones arrive. Used after a write, where the list is already
+// correct and this call only reconciles it.
+async function loadFindings(force = false, quiet = false) {
   const payload = {
     lineId: optionalFilterValue($('#findingLine').value), stationId: optionalFilterValue($('#findingStation').value),
     category: optionalFilterValue($('#findingCategory').value), status: optionalFilterValue($('#findingStatus').value),
@@ -3505,19 +3554,24 @@ async function loadFindings(force = false) {
     renderFindings();
     return;
   }
-  $('#findingsList').innerHTML = Array.from({length: 4}, () => '<article class="finding-card skeleton-card" style="min-height:110px"></article>').join('');
-  showLoading('กำลังโหลด Finding...');
+  if (!quiet) {
+    $('#findingsList').innerHTML = Array.from({length: 4}, () => '<article class="finding-card skeleton-card" style="min-height:110px"></article>').join('');
+    showLoading('กำลังโหลด Finding...');
+  }
   try {
-    const data = await apiCall('getFindings', payload);
+    const data = await apiCall('getFindings', payload, quiet ? { priority: 'normal', quiet: true } : {});
     state.findings = Array.isArray(data.findings) ? data.findings : [];
     state.findingsTotal = number(data.total ?? state.findings.length);
     state.findingsQuery = payload;
     state.findingsCache = { key: cacheKey, data: state.findings, total: state.findingsTotal, ts: Date.now() };
     renderFindings();
   } catch (error) {
-    showToast(error.message, 'error');
+    // A failed background reconcile leaves the optimistic row in place; the next
+    // manual search corrects it. Only a foreground load is worth a toast.
+    if (!quiet) showToast(error.message, 'error');
+    else console.warn('quiet finding refresh failed:', error.message || error);
   } finally {
-    hideLoading();
+    if (!quiet) hideLoading();
   }
 }
 
@@ -3937,15 +3991,23 @@ async function runFindingWorkflow(action, payload, options) {
     const files = Array.from($('#editAfterPhoto').files || []);
     const keptExisting = findingKeptExistingPhotos();
     if (files.length) {
-      const uploadedUrls = [];
-      for (let i = 0; i < files.length; i++) {
+      // Fire the uploads together and let the API gate pace them. One at a time
+      // meant three photos cost three full round trips back to back before the
+      // write even started.
+      let done = 0;
+      const paint = () => {
         // Update the existing overlay's text in place rather than calling
         // showLoading again — that would push busyDepth past the single
         // hideLoading() in the finally block and leave the UI stuck busy.
-        if (files.length > 1) $('#loadingText').textContent = `กำลังอัปโหลดรูปหลังแก้ไข ${i + 1}/${files.length}...`;
-        const upload = await uploadFile(files[i], 'Finding', payload.findingId, 'AfterPhoto', false);
-        uploadedUrls.push(upload.DriveFileURL);
-      }
+        if (files.length > 1) $('#loadingText').textContent = `กำลังอัปโหลดรูปหลังแก้ไข ${done}/${files.length}...`;
+      };
+      paint();
+      const uploadedUrls = await Promise.all(files.map(async file => {
+        const upload = await uploadFile(file, 'Finding', payload.findingId, 'AfterPhoto', false);
+        done++;
+        paint();
+        return upload.DriveFileURL;
+      }));
       $('#loadingText').textContent = settings.loadingMessage;
       payload.afterPhotoUrl = keptExisting.concat(uploadedUrls).join(',');
     } else if (state.editingFinding) {
@@ -3961,21 +4023,59 @@ async function runFindingWorkflow(action, payload, options) {
         payload.reassignRole = reassignRoles.join(',');
       }
     }
-    await apiCall(action, payload);
+    const result = await apiCall(action, payload);
     $('#findingDialog').close();
     state.findingPhotoRemovals = new Set();
     state.findingsCache = null;
     state.leaderDashData = null;
     GASCache.invalidate('dashboard'); GASCache.invalidatePrefix('mgr_comp_'); GASCache.invalidatePrefix('dir_dash_');
-    await loadFindings(true);
-    await loadDashboard(false);
+    // The server hands back the row it just wrote, so the card on screen can be
+    // corrected from that copy immediately. Re-reading the list and the dashboard
+    // is reconciliation, not part of the action — awaiting them here held the
+    // overlay through two more Apps Script round trips after the Finding was
+    // already closed, which is exactly what looked like a hang.
+    applyFindingUpdate(result && result.finding);
     showToast(settings.successMessage, 'success');
+    refreshAfterFindingWrite();
   } catch (error) {
     showToast(error.message, 'error');
   } finally {
     hideLoading();
     actionBtns.forEach(b => { b.disabled = false; });
   }
+}
+
+/** Patches one finding in the on-screen list from the server's own copy. */
+function applyFindingUpdate(finding) {
+  if (!finding || !finding.FindingID) return;
+  const index = state.findings.findIndex(row => String(row.FindingID) === String(finding.FindingID));
+  if (index === -1) return;
+  state.findings[index] = { ...state.findings[index], ...finding };
+  renderFindings();
+}
+
+/** Reconciles list, badges and dashboard after a Finding write, without holding
+ *  the UI. The dashboard is only refetched when it is the page on screen —
+ *  otherwise the invalidated cache makes navigating to it fetch fresh anyway. */
+function refreshAfterFindingWrite() {
+  // Deferred by a tick so the caller's finally block can drop the overlay first —
+  // the notification poll stands down while the app is busy, and this refresh is
+  // precisely the moment its badge count went stale.
+  setTimeout(() => {
+    loadFindings(true, true).catch(error => console.warn('finding refresh failed:', error.message || error));
+    pollFindingNotifications(true);
+    refreshDashboardIfVisible();
+  }, 0);
+}
+
+/** Refetches the dashboard only when it is the page on screen. Its caches were
+ *  invalidated by the write either way, so navigating to it still gets fresh
+ *  data — spending round trips on a page nobody is looking at only starves the
+ *  two-slot gate of capacity the user's next action needs. */
+function refreshDashboardIfVisible() {
+  const page = $('#page-dashboard');
+  if (!page || !page.classList.contains('active-page')) return;
+  Promise.resolve(loadDashboard()).catch(error => console.warn('dashboard refresh failed:', error.message || error));
 }
 
 async function closeFinding(payload) {
@@ -4958,6 +5058,34 @@ function closeMobileDrawer() {
 function toggleMobileDrawer() {
   if ($('#sidebar').classList.contains('open')) closeMobileDrawer(); else openMobileDrawer();
 }
+// An Apps Script round trip costs seconds even when it succeeds, and the retry
+// ladder can ride out an outage for far longer. A motionless spinner over that
+// window is what users report as "ค้าง", so once a wait passes this many seconds
+// the overlay starts counting out loud — same spinner, visibly still alive.
+const BUSY_HINT_AFTER_SECONDS = 5;
+let busyStartedAt = 0;
+let busyHintTimer = null;
+let busyHintText = '';
+
+function setLoadingHint(text) {
+  busyHintText = text || '';
+  renderLoadingHint();
+}
+
+function renderLoadingHint() {
+  const hint = $('#loadingHint');
+  if (!hint) return;
+  const seconds = busyStartedAt ? Math.round((Date.now() - busyStartedAt) / 1000) : 0;
+  if (!busyHintText && seconds < BUSY_HINT_AFTER_SECONDS) {
+    hint.textContent = '';
+    hint.classList.add('hidden');
+    return;
+  }
+  const base = busyHintText || 'ระบบยังทำงานอยู่ กรุณารอสักครู่';
+  hint.textContent = seconds >= BUSY_HINT_AFTER_SECONDS ? `${base} (${seconds} วินาที)` : base;
+  hint.classList.remove('hidden');
+}
+
 // Input is blocked purely in CSS (.is-busy #loginView/#appView { pointer-events:none }).
 // The old implementation also walked every button/input/select/textarea in the
 // document to toggle .disabled — thousands of layout-invalidating writes on both
@@ -4969,6 +5097,13 @@ function showLoading(message = 'กำลังโหลด...') {
   $('#loadingOverlay').classList.remove('hidden');
   document.body.classList.add('is-busy');
   document.body.setAttribute('aria-busy', 'true');
+  if (busyDepth === 1) {
+    busyStartedAt = Date.now();
+    busyHintText = '';
+    renderLoadingHint();
+    clearInterval(busyHintTimer);
+    busyHintTimer = setInterval(renderLoadingHint, 1000);
+  }
 }
 
 function hideLoading() {
@@ -4980,6 +5115,12 @@ function hideLoading() {
   }
   busyDepth = 0;
   busyMessages.length = 0;
+  clearInterval(busyHintTimer);
+  busyHintTimer = null;
+  busyStartedAt = 0;
+  busyHintText = '';
+  const hint = $('#loadingHint');
+  if (hint) { hint.textContent = ''; hint.classList.add('hidden'); }
   $('#loadingOverlay').classList.add('hidden');
   document.body.classList.remove('is-busy');
   document.body.removeAttribute('aria-busy');

@@ -263,6 +263,8 @@ label{display:flex;flex-direction:column;gap:7px;font-size:.88rem;font-weight:70
 .line-access-item{justify-content:space-between}
 .line-access-item select{width:auto;min-height:34px}
 .loading-overlay{position:fixed;z-index:100;inset:0;display:grid;place-content:center;justify-items:center;gap:16px;background:rgba(7,29,47,.68);color:#fff}
+/* Long waits are the norm on Apps Script; this line proves the spinner is still alive. */
+.loading-hint{max-width:min(340px,88vw);text-align:center;font-size:13px;line-height:1.5;font-weight:500;color:rgba(255,255,255,.82);margin-top:-6px}
 .is-busy{cursor:wait}
 .is-busy #loginView,.is-busy #appView{pointer-events:none;user-select:none}
 .is-busy .loading-overlay{pointer-events:all}
