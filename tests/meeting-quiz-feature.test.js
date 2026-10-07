@@ -37,6 +37,12 @@ assert(config.includes('GUEST_QUIZ_ACTIONS'), 'API should define the limited QR 
   const roleLine = setup.split('\n').find(line => line.trim().startsWith(`${role}:`));
   assert(roleLine && roleLine.includes('meeting.quiz.manage'), `${role} should be able to manage quizzes`);
 });
+['Admin', 'Engineer'].forEach(role => {
+  const roleLine = setup.split('\n').find(line => line.trim().startsWith(`${role}:`));
+  assert(roleLine && roleLine.includes('meeting.quiz.generate'), `${role} should be able to generate quizzes`);
+});
+assert(rbac.includes("generateMeetingQuiz: ['meeting.quiz.generate']"), 'quiz generation must have a dedicated permission');
+assert(frontend.includes("'meeting.quiz.generate'"), 'permission editor should expose the quiz generation permission');
 assert(meeting.includes('copy.MeetingQuiz = meetingQuizSummaryForPost_(row, user, quizSummaryCache)'));
 assert(quizSource.includes('function meetingQuizPostsForDate_(meetingDate)'));
 assert(quizSource.includes('function meetingQuizRowsForDate_(meetingDate)'));
@@ -102,6 +108,10 @@ assert(todaysPrompt.includes('แยกชิ้นงานตาม Model'));
 assert(todaysPrompt.includes('อุปกรณ์ป้องกันส่วนบุคคล'));
 assert(todaysPrompt.includes('Safety Shoes, Earplugs และ Uniform'));
 assert(todaysPrompt.includes('ครอบคลุมหัวข้อทั้งหมด'), 'daily prompt should cover topics together');
+assert(todaysPrompt.includes('วิเคราะห์ปัญหาหลัก'), 'quiz generation should identify the main problem');
+assert(todaysPrompt.includes('เน้นข้อผิดพลาด'), 'quiz generation should emphasize process errors in the meeting content');
+assert(frontend.includes('Gen ข้อสอบ 5 ข้ออัตโนมัติ'), 'TV QR slide should provide the automatic daily quiz action');
+assert(frontend.includes('generateMeetingQuiz\', { postId }'), 'TV quiz generation should call the protected server action');
 context.SHEET_NAMES.MEETING_POSTS = 'Posts';
 context.getRowsAsObjects = table => table === 'Posts' ? todaysPosts : rows;
 context.meetingPostCompare_ = () => 0;

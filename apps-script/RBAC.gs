@@ -28,6 +28,10 @@ function getUserPermissions_(user) {
   if (isAdmin_(user)) permissions['*'] = true;
   var defaults = getDefaultRolePermissions_();
   (defaults[user.Role] || []).forEach(function (permissionKey) { permissions[permissionKey] = true; });
+  // Seed quiz capabilities until setupRbac has written the new role defaults.
+  var roleKey = cleanString_(user.Role).toLowerCase();
+  if (roleKey === 'engineer') { permissions['meeting.quiz.manage'] = true; permissions['meeting.quiz.generate'] = true; }
+  if (roleKey === 'supervisor' || roleKey === 'leader') permissions['meeting.quiz.manage'] = true;
   getCachedRolePermissionRows_().forEach(function (row) {
     if (valuesEqual_(row.Role, user.Role)) permissions[cleanString_(row.PermissionKey)] = isAllowed_(row.Allowed);
   });
@@ -153,7 +157,7 @@ function hasApiAccess_(user, action) {
     submitMeetingQuiz: ['meeting.view'],
     getMeetingQuizAnswerKey: ['meeting.view'],
     getMeetingQuizAdmin: ['meeting.quiz.manage'],
-    generateMeetingQuiz: ['meeting.quiz.manage'],
+    generateMeetingQuiz: ['meeting.quiz.generate'],
     saveMeetingQuizDraft: ['meeting.quiz.manage'],
     publishMeetingQuiz: ['meeting.quiz.manage'],
     lockMeetingQuizRoster: ['meeting.quiz.manage'],

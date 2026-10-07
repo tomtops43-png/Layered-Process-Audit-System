@@ -116,7 +116,8 @@ function getMeetingPosts(payload, user) {
       carryOver: carryOver.map(decorate),
       canCreate: hasPermission_(user, 'meeting.create'),
       canManage: hasPermission_(user, 'meeting.manage'),
-      canManageQuiz: hasPermission_(user, 'meeting.quiz.manage')
+      canManageQuiz: hasPermission_(user, 'meeting.quiz.manage'),
+      canGenerateQuiz: hasPermission_(user, 'meeting.quiz.generate')
     });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
