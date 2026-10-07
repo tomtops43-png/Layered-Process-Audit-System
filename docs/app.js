@@ -63,11 +63,14 @@ const state = {
   meetingCarryOver: [],
   meetingCanCreate: false,
   meetingCanManage: false,
+  meetingCanManageQuiz: false,
   meetingTvIndex: 0,
   meetingPendingAcks: [],
   meetingFindingDigest: null,
   meetingPhotoItems: [],
   editingMeetingPost: null,
+  meetingQuizAdmin: null,
+  meetingQuizExam: null,
   adminUsers: [],
   adminMasterLists: [],
   editingUser: null,
@@ -90,7 +93,7 @@ const PERMISSION_CATALOG = [
   'findings.close.major', 'findings.close.critical', 'dashboard.view', 'dashboard.view.all',
   'reports.view', 'reports.export', 'checklist.view', 'checklist.manage',
   'audit.plan.view', 'audit.plan.manage', 'audit.plan.generate', 'audit.plan.refresh',
-  'meeting.view', 'meeting.create', 'meeting.update.own', 'meeting.manage'
+  'meeting.view', 'meeting.create', 'meeting.update.own', 'meeting.manage', 'meeting.quiz.manage'
 ];
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -114,6 +117,12 @@ function initApp() {
   bindVisualViewport();
   bindEvents();
   setDefaultDates();
+  const publicQuizToken = new URLSearchParams(window.location.search).get('quiz');
+  if (publicQuizToken) {
+    showPublicQuiz();
+    openPublicMeetingQuiz(publicQuizToken);
+    return;
+  }
   if (state.token && state.user) {
     showApplication();
     initializeAuthenticatedApp();
@@ -206,6 +215,15 @@ function bindEvents() {
   $('#deleteMeetingPostButton').addEventListener('click', deleteMeetingPostAction);
   $('#meetingAckSearch').addEventListener('input', filterMeetingAckUsers);
   $('#meetingPostPhoto').addEventListener('change', addMeetingPhotoFiles);
+  $('#meetingBoard').addEventListener('click', handleMeetingQuizBoardClick);
+  $('#closeMeetingQuizAdmin').addEventListener('click', () => $('#meetingQuizAdminDialog').close());
+  $('#closeMeetingQuizExam').addEventListener('click', () => $('#meetingQuizExamDialog').close());
+  $('#meetingQuizAdminContent').addEventListener('click', handleMeetingQuizAdminClick);
+  $('#meetingQuizExamContent').addEventListener('submit', handleMeetingQuizExamSubmit);
+  $('#meetingQuizExamContent').addEventListener('change', handleMeetingQuizExamChange);
+  $('#publicMeetingQuizContent').addEventListener('submit', handleMeetingQuizExamSubmit);
+  $('#publicMeetingQuizContent').addEventListener('change', handleMeetingQuizExamChange);
+  $('#publicMeetingQuizContent').addEventListener('click', handleMeetingQuizExamClick);
   $('#findingLine').addEventListener('change', () => populateStationSelect('#findingStation', $('#findingLine').value, true));
   $('#checklistLine').addEventListener('change', () => populateStationSelect('#checklistStation', $('#checklistLine').value, false));
   $('#applyFindingFilters').addEventListener('click', loadFindings);
@@ -350,7 +368,9 @@ const API_MAX_TIMEOUT_ATTEMPTS = 2;
 const WRITE_ACTIONS = [
   'saveAudit', 'uploadFile', 'updateFinding', 'submitFinding', 'verifyFinding', 'closeFinding',
   'saveMeetingPost', 'deleteMeetingPost', 'updateMeetingPostStatus', 'acknowledgeMeetingPost',
-  'convertMeetingSlideFile', 'saveProductionPlan', 'upsertAuditPlanRule', 'deleteAuditRule',
+  'convertMeetingSlideFile', 'generateMeetingQuiz', 'saveMeetingQuizDraft', 'publishMeetingQuiz',
+  'lockMeetingQuizRoster', 'excuseMeetingQuizParticipant', 'registerMeetingQuizParticipant', 'submitMeetingQuiz',
+  'saveProductionPlan', 'upsertAuditPlanRule', 'deleteAuditRule',
   'generateAuditPlan', 'refreshAuditPlanStatus', 'upsertMasterList', 'migrateRulesToLineLevel',
   'deduplicateLineRules', 'createUser', 'updateUser', 'deactivateUser', 'resetUserPassword',
   'updateRolePermissions', 'updateUserPermissions', 'updateUserLineAccess'
@@ -382,7 +402,7 @@ function releaseApiSlot() {
 }
 
 async function apiCall(action, payload = {}, options = {}) {
-  const TIMEOUT_MS = (action === 'uploadFile' || action === 'saveAudit' || action === 'convertMeetingSlideFile') ? 90000 : 45000;
+  const TIMEOUT_MS = (action === 'uploadFile' || action === 'saveAudit' || action === 'convertMeetingSlideFile' || action === 'generateMeetingQuiz') ? 90000 : 45000;
   // Writes are always something a user is standing in front of; reads are only
   // urgent when the caller says so (background refreshes pass priority 'normal').
   const priority = options.priority || (WRITE_ACTIONS.includes(action) ? 'high' : 'normal');
@@ -2790,36 +2810,40 @@ function meetingBoardPayload() {
   return payload;
 }
 
-/** Opening the Meeting page needed three separate requests (board, finding
- * digest, master data) fired at once. That burst is one of the patterns that
- * makes the Apps Script endpoint return 404, and it cost three round trips. */
+/** Load the board first, then refresh the Finding digest and master data in
+ * parallel so slower auxiliary data does not hold the Meeting board open. */
 async function loadMeetingPage() {
   const wantsDigest = hasAnyPermission(['dashboard.view', 'dashboard.view.all']);
-  const calls = [{ action: 'getMeetingPosts', payload: meetingBoardPayload() }];
-  const masterIndex = (state.masterData.users || []).length
-    ? -1 : calls.push({ action: 'getMasterData', payload: {} }) - 1;
-  const digestIndex = wantsDigest ? calls.push({ action: 'getFindingShiftDigest', payload: {} }) - 1 : -1;
-
   $('#meetingBoard').innerHTML = '<div class="empty-state">กำลังโหลดบอร์ดประชุม...</div>';
   if (wantsDigest) $('#meetingShiftDigest').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
 
-  let results;
+  let posts;
   try {
-    results = await apiBatch(calls);
+    // This is a user navigation, so let the board jump ahead of queued
+    // background reads. It is a single request and does not wait on the digest.
+    posts = await apiCall('getMeetingPosts', meetingBoardPayload(), { priority: 'high' });
   } catch (error) {
     $('#meetingBoard').innerHTML = emptyHtml(error.message);
+    if (wantsDigest) $('#meetingShiftDigest').innerHTML = emptyHtml('โหลด Finding ไม่สำเร็จ');
     showToast(error.message, 'error');
     return;
   }
-  if (masterIndex >= 0 && results[masterIndex]) {
-    state.masterData = results[masterIndex];
-    state.masterDataLoadedAt = Date.now();
-    populateAllMasterSelects();
+
+  await loadMeetingBoard(posts);
+  // Keep the heavier digest off the critical path so the Meeting board becomes
+  // usable as soon as its posts arrive. The digest and master data can then
+  // load together in the background.
+  const masterDataTask = ensureMasterDataLoaded(false);
+  if (wantsDigest) {
+    const digestTask = apiCall('getFindingShiftDigest', {}, { priority: 'normal' });
+    Promise.all([masterDataTask, digestTask]).then(([, digest]) =>
+      loadFindingShiftDigest('meetingShiftDigest', 'meetingShiftDigestPic', digest)
+    ).catch(error => {
+      const digest = $('#meetingShiftDigest');
+      if (digest) digest.innerHTML = emptyHtml(error.message || 'โหลด Finding ไม่สำเร็จ');
+    });
   }
-  await loadMeetingBoard(results[0]);
-  if (digestIndex >= 0) {
-    await loadFindingShiftDigest('meetingShiftDigest', 'meetingShiftDigestPic', results[digestIndex]);
-  }
+  else masterDataTask.catch(error => console.warn('Meeting master data load failed:', error.message || error));
 }
 
 async function loadMeetingBoard(prefetched = null) {
@@ -2827,11 +2851,12 @@ async function loadMeetingBoard(prefetched = null) {
   const container = $('#meetingBoard');
   if (!prefetched) container.innerHTML = '<div class="empty-state">กำลังโหลดบอร์ดประชุม...</div>';
   try {
-    const data = prefetched || await apiCall('getMeetingPosts', payload);
+    const data = prefetched || await apiCall('getMeetingPosts', payload, { priority: 'high' });
     state.meetingPosts = data.posts || [];
     state.meetingCarryOver = data.carryOver || [];
     state.meetingCanCreate = Boolean(data.canCreate);
     state.meetingCanManage = Boolean(data.canManage);
+    state.meetingCanManageQuiz = Boolean(data.canManageQuiz);
     $('#addMeetingPostButton').classList.toggle('hidden', !state.meetingCanCreate);
     renderMeetingBoard();
   } catch (error) {
@@ -2848,11 +2873,20 @@ function renderMeetingBoard() {
   const progress = posts.length
     ? `<div class="mtg-progress${discussed >= posts.length ? ' mtg-progress-done' : ''}">คุยแล้ว ${discussed} จาก ${posts.length} หัวข้อ${discussed >= posts.length ? ' ✅' : ''}</div>`
     : '';
+  const shownQuizDates = new Set();
+  const renderDailyPostCard = (row, isCarry) => {
+    const quiz = row.MeetingQuiz || {};
+    const dateKey = String(row.MeetingDate || '').slice(0, 10);
+    const hasDailyQuizAction = Boolean(quiz.available || quiz.canManage || quiz.hasDraft);
+    const showQuizActions = hasDailyQuizAction && !shownQuizDates.has(dateKey);
+    if (showQuizActions) shownQuizDates.add(dateKey);
+    return meetingPostCardHtml(row, isCarry, showQuizActions);
+  };
   const todayHtml = posts.length
-    ? posts.map(row => meetingPostCardHtml(row, false)).join('')
+    ? posts.map(row => renderDailyPostCard(row, false)).join('')
     : emptyHtml(state.meetingCanCreate ? 'ยังไม่มีหัวข้อสำหรับวันนี้ กด "+ เพิ่มหัวข้อ" เพื่อลงเรื่องที่จะคุย' : 'ยังไม่มีหัวข้อสำหรับวันนี้');
   const carryHtml = carryOver.length
-    ? `<div class="mtg-carry-section"><div class="mtg-carry-title">⏳ ค้างจากวันก่อน (${carryOver.length})</div>${carryOver.map(row => meetingPostCardHtml(row, true)).join('')}</div>`
+    ? `<div class="mtg-carry-section"><div class="mtg-carry-title">⏳ ค้างจากวันก่อน (${carryOver.length})</div>${carryOver.map(row => renderDailyPostCard(row, true)).join('')}</div>`
     : '';
   container.innerHTML = `${progress}${todayHtml}${carryHtml}`;
   $$('[data-mtg-edit]', container).forEach(btn => btn.addEventListener('click', () => openMeetingEditor(btn.dataset.mtgEdit)));
@@ -2873,7 +2907,7 @@ function meetingAckSectionHtml(row) {
   </div>`;
 }
 
-function meetingPostCardHtml(row, isCarry) {
+function meetingPostCardHtml(row, isCarry, showQuizActions = true) {
   const cat = meetingCategoryMeta(row.Category);
   const status = String(row.Status || 'Open').toLowerCase();
   const statusMeta = status === 'closed' ? { label: 'จบเรื่อง', cls: 'status-closed' } :
@@ -2886,6 +2920,14 @@ function meetingPostCardHtml(row, isCarry) {
   if (canTick && status === 'open') actions.push(`<button class="btn btn-secondary" data-mtg-status="Discussed" data-mtg-id="${escapeAttr(row.PostID)}">✓ คุยแล้ว</button>`);
   if (canTick && status === 'discussed') actions.push(`<button class="btn btn-outline" data-mtg-status="Closed" data-mtg-id="${escapeAttr(row.PostID)}">จบเรื่อง</button>`);
   if (canTick && status !== 'open') actions.push(`<button class="btn btn-ghost" data-mtg-status="Open" data-mtg-id="${escapeAttr(row.PostID)}">↩ รอคุย</button>`);
+  const quiz = row.MeetingQuiz || {};
+  if (showQuizActions) {
+    if (quiz.allSubmitted) actions.push(`<button class="btn btn-primary" data-mtg-quiz-review="${escapeAttr(row.PostID)}">🔑 เฉลย</button>`);
+    if (quiz.canManage) actions.push(`<button class="btn btn-outline" data-mtg-quiz-manage="${escapeAttr(row.PostID)}">${quiz.available ? '📱 QR / จัดการข้อสอบ' : (quiz.hasDraft ? '✏️ แก้ไขข้อสอบร่าง' : '✨ Gen ข้อสอบ 5 ข้อ')}</button>`);
+    if (quiz.available) {
+      actions.push(`<button class="btn btn-secondary" data-mtg-quiz-open="${escapeAttr(row.PostID)}">📝 ทำข้อสอบ / ดูเฉลยของฉัน</button>`);
+    }
+  }
   if (row.CanEdit) actions.push(`<button class="btn btn-outline" data-mtg-edit="${escapeAttr(row.PostID)}">แก้ไข</button>`);
   const metaParts = [
     `${formatDate(row.MeetingDate)}${row.Shift ? ' · กะ ' + escapeHtml(row.Shift) : ''}`,
@@ -2912,11 +2954,474 @@ function meetingPostCardHtml(row, isCarry) {
       if (row.SlideFileURL) return `<div class="mtg-doc"><a href="${escapeAttr(row.SlideFileURL)}" target="_blank" rel="noopener" class="btn btn-outline btn-compact">📊 เปิดสไลด์ PPT/PDF${row.SlideFileName ? ' · ' + escapeHtml(row.SlideFileName) : ''}</a></div>`;
       return '';
     })()}
+    ${showQuizActions && quiz.available
+      ? `<div class="mtg-quiz-summary">ข้อสอบ 5 ข้อ · ${(quiz.shiftSessions || []).map(session => `${escapeHtml(session.label || session.shift)} ${session.submittedCount || 0}/${session.participantCount || 0} คน${session.rosterStatus === 'Locked' ? ' · ปิดรับ' : ' · เปิดรับ'}`).join(' · ')}</div>`
+      : (showQuizActions && quiz.canManage ? '<div class="mtg-quiz-summary">วันนี้ยังไม่มีข้อสอบ</div>' : '')}
     ${meetingAckSectionHtml(row)}
     <div class="mtg-meta">${metaParts.join(' · ')}</div>
     ${actions.length ? `<div class="mtg-actions">${actions.join('')}</div>` : ''}
   </article>`;
 }
+
+function handleMeetingQuizBoardClick(event) {
+  const manage = event.target.closest('[data-mtg-quiz-manage]');
+  if (manage) return openMeetingQuizAdmin(manage.dataset.mtgQuizManage);
+  const open = event.target.closest('[data-mtg-quiz-open]');
+  if (open) return openMeetingQuizExam(open.dataset.mtgQuizOpen);
+  const review = event.target.closest('[data-mtg-quiz-review]');
+  if (review) return openMeetingQuizAnswerKey(review.dataset.mtgQuizReview);
+}
+
+function meetingQuizTokenStorageKey(quizId) { return `lpa_mtg_quiz_token_${String(quizId || '')}`; }
+function meetingQuizPublicTokenStorageKey(publicToken) { return `lpa_mtg_quiz_public_${String(publicToken || '')}`; }
+
+function meetingQuizScope(model) {
+  return model && model.publicMode ? { publicToken: model.publicToken } : { postId: model.postId };
+}
+
+function meetingQuizExamTitleElement(model = state.meetingQuizExam) {
+  return $(model && model.publicMode ? '#publicMeetingQuizTitle' : '#meetingQuizExamTitle');
+}
+
+function meetingQuizExamContentElement(model = state.meetingQuizExam) {
+  return $(model && model.publicMode ? '#publicMeetingQuizContent' : '#meetingQuizExamContent');
+}
+
+async function openMeetingQuizAdmin(postId) {
+  const post = findMeetingPost(postId);
+  if (!post) return;
+  state.meetingQuizAdmin = { postId, post, quiz: null, questions: [], participants: [], summary: {} };
+  $('#meetingQuizAdminTitle').textContent = `จัดการข้อสอบ · ${post.Topic || postId}`;
+  $('#meetingQuizAdminContent').innerHTML = '<div class="empty-state">กำลังโหลดข้อมูลข้อสอบ...</div>';
+  $('#meetingQuizAdminDialog').showModal();
+  await refreshMeetingQuizAdmin();
+}
+
+async function refreshMeetingQuizAdmin(quizId = '') {
+  const current = state.meetingQuizAdmin;
+  if (!current) return;
+  try {
+    const data = await apiCall('getMeetingQuizAdmin', { postId: current.postId, ...(quizId ? { quizId } : {}) });
+    Object.assign(current, data);
+    renderMeetingQuizAdmin();
+  } catch (error) {
+    $('#meetingQuizAdminContent').innerHTML = emptyHtml(error.message);
+    showToast(error.message, 'error');
+  }
+}
+
+function meetingQuizUiQuestion(row = {}) {
+  return {
+    questionTH: row.QuestionTH || row.questionTH || '',
+    choicesTH: row.choicesTH || [row.ChoiceATH || row.choiceATH || '', row.ChoiceBTH || row.choiceBTH || '', row.ChoiceCTH || row.choiceCTH || '', row.ChoiceDTH || row.choiceDTH || ''],
+    questionMY: row.QuestionMY || row.questionMY || '',
+    choicesMY: row.choicesMY || [row.ChoiceAMY || row.choiceAMY || '', row.ChoiceBMY || row.choiceBMY || '', row.ChoiceCMY || row.choiceCMY || '', row.ChoiceDMY || row.choiceDMY || ''],
+    correctOption: row.CorrectOption || row.correctOption || 'A',
+    explanationTH: row.ExplanationTH || row.explanationTH || '',
+    explanationMY: row.ExplanationMY || row.explanationMY || ''
+  };
+}
+
+function renderMeetingQuizAdmin() {
+  const model = state.meetingQuizAdmin;
+  if (!model) return;
+  const quiz = model.quiz;
+  const isDraft = quiz && String(quiz.Status || '').toLowerCase() === 'draft';
+  const summary = model.summary || {};
+  const participants = model.participants || [];
+  const publicUrl = quiz && !isDraft && quiz.PublicToken ? meetingQuizPublicUrl(quiz.PublicToken) : '';
+  let qrSvg = '';
+  if (publicUrl && typeof qrcode === 'function') {
+    try {
+      const qr = qrcode(0, 'M');
+      qr.addData(publicUrl);
+      qr.make();
+      qrSvg = qr.createSvgTag(5, 4);
+    } catch (error) { console.warn('Could not build quiz QR code:', error); }
+  }
+  const statusText = !quiz ? 'ยังไม่มีฉบับข้อสอบ' : isDraft ? `ฉบับร่าง v${quiz.VersionNo || ''}` : 'เผยแพร่แล้ว · แยกรายชื่อและการปิดรับตามกะ';
+  const canGenerate = !quiz || isDraft;
+  const questionEditor = isDraft ? (model.questions || []).map((raw, index) => {
+    const q = meetingQuizUiQuestion(raw);
+    const choices = ['A', 'B', 'C', 'D'];
+    const choiceFields = (lang, values) => `<div class="quiz-choice-grid">${choices.map((key, i) => `<label class="quiz-choice-row"><strong>${key}</strong><textarea data-quiz-field="choice${key}${lang}" aria-label="ตัวเลือก ${key} ${lang}" required>${escapeHtml(values[i] || '')}</textarea></label>`).join('')}</div>`;
+    return `<section class="quiz-editor-question" data-quiz-q="${index}">
+      <h4>ข้อ ${index + 1}</h4>
+      <div class="quiz-editor-grid">
+        <label>คำถามภาษาไทย<textarea data-quiz-field="questionTH" required>${escapeHtml(q.questionTH)}</textarea></label>
+        <label>မေးခွန်း (မြန်မာ)<textarea data-quiz-field="questionMY" required>${escapeHtml(q.questionMY)}</textarea></label>
+      </div>
+      <div class="quiz-editor-grid"><div><strong>ตัวเลือกภาษาไทย</strong>${choiceFields('TH', q.choicesTH)}</div><div><strong>ရွေးချယ်စရာများ (မြန်မာ)</strong>${choiceFields('MY', q.choicesMY)}</div></div>
+      <div class="quiz-editor-grid">
+        <label>คำตอบที่ถูก<select data-quiz-field="correctOption">${choices.map(key => `<option value="${key}" ${q.correctOption === key ? 'selected' : ''}>${key}</option>`).join('')}</select></label>
+        <span></span>
+        <label>คำอธิบายภาษาไทย<textarea data-quiz-field="explanationTH" required>${escapeHtml(q.explanationTH)}</textarea></label>
+        <label>ရှင်းလင်းချက် (မြန်မာ)<textarea data-quiz-field="explanationMY" required>${escapeHtml(q.explanationMY)}</textarea></label>
+      </div>
+    </section>`;
+  }).join('') : '';
+  const shiftSessions = model.shiftSessions || [];
+  const roster = shiftSessions.map(session => {
+    const people = participants.filter(person => String(person.Shift || '') === String(session.shift || ''));
+    const peopleHtml = people.length ? `<ul class="quiz-roster-list">${people.map(person => {
+      const submitted = person.ParticipantStatus === 'Submitted';
+      const excused = person.ParticipantStatus === 'Excused';
+      return `<li class="quiz-roster-item"><span>${escapeHtml(person.DisplayName)} · ${submitted ? 'ส่งแล้ว' : (excused ? 'ยกเว้น' : 'ยังไม่ส่ง')}</span>${!submitted && !excused ? `<button type="button" class="btn btn-ghost btn-compact" data-quiz-excuse="${escapeAttr(person.ParticipantID)}">ยกเว้นจากรอบ</button>` : ''}</li>`;
+    }).join('')}</ul>` : '<div class="empty-state">ยังไม่มีผู้ลงชื่อสอบในกะนี้</div>';
+    const lockButton = session.rosterStatus === 'Locked'
+      ? '<span class="status-badge status-ok">ปิดรับรายชื่อแล้ว</span>'
+      : `<button type="button" class="btn btn-outline" data-quiz-lock="${escapeAttr(session.shift)}">ปิดรับรายชื่อ ${escapeHtml(session.label || session.shift)} / เริ่มสอบ</button>`;
+    return `<section class="quiz-shift-roster"><div class="quiz-roster-summary"><strong>${escapeHtml(session.label || session.shift)}</strong><span>ลงชื่อ ${session.participantCount || 0} คน · ส่งแล้ว ${session.submittedCount || 0} คน</span>${lockButton}</div>${peopleHtml}</section>`;
+  }).join('');
+  const sourceTopics = (model.post?.SourceTopics || []).map(topic => topic.Topic).filter(Boolean);
+  $('#meetingQuizAdminContent').innerHTML = `
+    <div class="quiz-admin-toolbar"><div><strong>${escapeHtml(model.post?.Topic || '')}</strong><div class="field-help">${escapeHtml(model.post?.MeetingDate || '')} · ${escapeHtml(statusText)}${sourceTopics.length ? `<br>หัวข้อที่ใช้: ${sourceTopics.map(escapeHtml).join(' · ')}` : ''}</div></div>${canGenerate ? `<button type="button" class="btn btn-secondary" data-quiz-generate>${isDraft ? '🔄 Gen ร่างใหม่ 5 ข้อจากทุกหัวข้อวันนี้' : '✨ Gen ข้อสอบ 5 ข้อจากทุกหัวข้อวันนี้'}</button>` : ''}</div>
+    ${quiz && !isDraft ? `<div class="quiz-status-note">สร้างข้อสอบชุดเดียวกันให้พนักงานทุกกะ แต่แต่ละกะมีรายชื่อและเวลาปิดรับแยกกัน</div><h4>รายชื่อผู้เข้าสอบแยกตามกะ</h4>${roster}` : ''}
+    ${publicUrl ? `<section class="quiz-qr-panel"><div><h4>QR สำหรับพนักงานเข้าสอบ</h4><p class="field-help">พนักงานสแกน QR นี้แล้วกรอกชื่อ–นามสกุลและเลือกกะได้เลย ไม่ต้อง Login</p><div class="quiz-qr-link">${escapeHtml(publicUrl)}</div><button type="button" class="btn btn-outline" data-quiz-copy-link="${escapeAttr(publicUrl)}">คัดลอกลิงก์ข้อสอบ</button></div>${qrSvg ? `<div class="quiz-qr-image" aria-label="QR Code สำหรับเข้าสอบ">${qrSvg}</div>` : '<div class="quiz-qr-image quiz-qr-error">ยังสร้าง QR ไม่ได้ กรุณาคัดลอกลิงก์</div>'}</section>` : ''}
+    ${isDraft ? `<div class="quiz-status-note">ตรวจแก้ได้ก่อนเผยแพร่ · ระบบจะเปิดรับรายชื่อหลังเผยแพร่</div><div id="meetingQuizEditor">${questionEditor}</div><div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-save>บันทึกฉบับร่าง</button><button type="button" class="btn btn-primary" data-quiz-publish>เผยแพร่และเปิดรับสอบ</button></div>` : ''}
+    ${quiz && !isDraft && !participants.length ? '<div class="quiz-status-note">ยังไม่มีผู้ลงชื่อสอบในรอบนี้</div>' : ''}
+    ${quiz && !isDraft && summary.allSubmitted ? '<div class="quiz-status-note">ทุกกะปิดรับรายชื่อและส่งครบแล้ว ปุ่มเฉลยรวมเปิดให้ทุกคนดูบนบอร์ด</div>' : ''}
+    ${!quiz ? '<div class="quiz-status-note">Meeting หนึ่งวันใช้ข้อสอบชุดเดียว 5 ข้อ โดยรวมรายละเอียดและสไลด์จากทุกหัวข้อของวันนั้น แล้วตรวจแก้ก่อนเผยแพร่</div>' : ''}`;
+}
+
+function meetingQuizPublicUrl(publicToken) {
+  const url = new URL(window.location.href);
+  url.search = '';
+  url.hash = '';
+  url.searchParams.set('quiz', publicToken);
+  return url.toString();
+}
+
+function readMeetingQuizAdminQuestions() {
+  return $$('#meetingQuizEditor [data-quiz-q]').map(card => {
+    const get = field => card.querySelector(`[data-quiz-field="${field}"]`)?.value.trim() || '';
+    return {
+      questionTH: get('questionTH'), choicesTH: ['A', 'B', 'C', 'D'].map(key => get(`choice${key}TH`)),
+      questionMY: get('questionMY'), choicesMY: ['A', 'B', 'C', 'D'].map(key => get(`choice${key}MY`)),
+      correctOption: get('correctOption'), explanationTH: get('explanationTH'), explanationMY: get('explanationMY')
+    };
+  });
+}
+
+async function handleMeetingQuizAdminClick(event) {
+  const model = state.meetingQuizAdmin;
+  if (!model) return;
+  const button = event.target.closest('[data-quiz-copy-link],[data-quiz-generate],[data-quiz-save],[data-quiz-publish],[data-quiz-lock],[data-quiz-excuse]');
+  if (!button) return;
+  try {
+    button.disabled = true;
+    if (button.hasAttribute('data-quiz-copy-link')) {
+      await navigator.clipboard.writeText(button.dataset.quizCopyLink);
+      showToast('คัดลอกลิงก์ข้อสอบแล้ว', 'success');
+    } else if (button.hasAttribute('data-quiz-generate')) {
+      if (String(model.quiz?.Status || '').toLowerCase() === 'draft') {
+        const confirmed = await showConfirm({ title: 'สร้างข้อสอบร่างใหม่?', message: 'ระบบจะสร้างคำถามใหม่ครบ 5 ข้อจากทุกหัวข้อของ Meeting วันนี้ และแทนที่คำถามในฉบับร่างนี้', confirmText: 'สร้างใหม่', tone: 'primary' });
+        if (!confirmed) return;
+      }
+      showLoading('กำลังอ่านสไลด์และสร้างข้อสอบ 5 ข้อ...');
+      const data = await apiCall('generateMeetingQuiz', { postId: model.postId, ...(model.quiz?.Status === 'Draft' ? { quizId: model.quiz.QuizID } : {}) });
+      Object.assign(model, { quiz: data.quiz, questions: data.questions || [], participants: [] });
+      renderMeetingQuizAdmin();
+      showToast('สร้างข้อสอบฉบับร่างแล้ว ตรวจแก้ก่อนเผยแพร่', 'success');
+    } else if (button.hasAttribute('data-quiz-save')) {
+      await apiCall('saveMeetingQuizDraft', { postId: model.postId, quizId: model.quiz.QuizID, questions: readMeetingQuizAdminQuestions() });
+      await refreshMeetingQuizAdmin(model.quiz.QuizID);
+      showToast('บันทึกฉบับร่างแล้ว', 'success');
+    } else if (button.hasAttribute('data-quiz-publish')) {
+      const confirmed = await showConfirm({ title: 'เผยแพร่ข้อสอบ?', message: 'ผู้เข้าสอบจะเริ่มลงชื่อและทำข้อสอบชุดนี้ได้', confirmText: 'เผยแพร่', tone: 'primary' });
+      if (!confirmed) return;
+      await apiCall('saveMeetingQuizDraft', { postId: model.postId, quizId: model.quiz.QuizID, questions: readMeetingQuizAdminQuestions() });
+      await apiCall('publishMeetingQuiz', { postId: model.postId, quizId: model.quiz.QuizID });
+      await refreshMeetingQuizAdmin(model.quiz.QuizID);
+      await loadMeetingBoard();
+      showToast('เผยแพร่แล้ว สแกน QR นี้ให้พนักงานเข้าสอบได้เลย', 'success');
+    } else if (button.hasAttribute('data-quiz-lock')) {
+      const confirmed = await showConfirm({ title: 'ปิดรับรายชื่อและเริ่มสอบ?', message: 'หลังจากนี้จะไม่มีผู้ลงชื่อใหม่ได้ เฉลยรวมจะเปิดเมื่อทุกคนส่งหรือถูกยกเว้น', confirmText: 'ปิดรับรายชื่อ', tone: 'primary' });
+      if (!confirmed) return;
+      await apiCall('lockMeetingQuizRoster', { postId: model.postId, shift: button.dataset.quizLock });
+      await refreshMeetingQuizAdmin();
+      await loadMeetingBoard();
+      showToast('ปิดรับรายชื่อแล้ว', 'success');
+    } else if (button.hasAttribute('data-quiz-excuse')) {
+      const reason = window.prompt('เหตุผลที่ยกเว้นผู้เข้าสอบรายนี้');
+      if (!reason || !reason.trim()) return;
+      await apiCall('excuseMeetingQuizParticipant', { postId: model.postId, participantId: button.dataset.quizExcuse, reason: reason.trim() });
+      await refreshMeetingQuizAdmin(model.quiz?.QuizID || '');
+      await loadMeetingBoard();
+      showToast('อัปเดตรายชื่อผู้เข้าสอบแล้ว', 'success');
+    }
+  } catch (error) {
+    showToast(error.message, 'error');
+  } finally {
+    if (button.isConnected) button.disabled = false;
+    hideLoading();
+  }
+}
+
+async function openMeetingQuizExam(postId) {
+  const post = findMeetingPost(postId);
+  const quizId = post?.MeetingQuiz?.quizId;
+  if (!post || !quizId) return showToast('ยังไม่มีข้อสอบที่เผยแพร่สำหรับหัวข้อนี้', 'warning');
+  const key = meetingQuizTokenStorageKey(quizId);
+  const token = sessionStorage.getItem(key) || '';
+  const topic = post.MeetingQuiz.sourceTitle || `Meeting ${String(post.MeetingDate || '').slice(0, 10)}`;
+  state.meetingQuizExam = { postId, quizId, topic, language: '', answers: {}, participantToken: token, questions: [], participant: null, review: null, mode: 'exam' };
+  $('#meetingQuizExamTitle').textContent = `แบบทดสอบ · ${topic}`;
+  $('#meetingQuizExamContent').innerHTML = '<div class="empty-state">กำลังโหลดข้อสอบ...</div>';
+  $('#meetingQuizExamDialog').showModal();
+  try {
+    const data = await apiCall('getMeetingQuiz', { postId, participantToken: token });
+    Object.assign(state.meetingQuizExam, data);
+    if (!state.meetingQuizExam.language && data.participant?.language) state.meetingQuizExam.language = data.participant.language;
+    state.meetingQuizExam.tokenKey = key;
+    if (!data.participant && token) {
+      sessionStorage.removeItem(key);
+      state.meetingQuizExam.participantToken = '';
+    }
+    renderMeetingQuizExam();
+  } catch (error) {
+    $('#meetingQuizExamContent').innerHTML = emptyHtml(error.message);
+    showToast(error.message, 'error');
+  }
+}
+
+function showPublicQuiz() {
+  $('#publicQuizView').classList.remove('hidden');
+  $('#loginView').classList.add('hidden');
+  $('#appView').classList.add('hidden');
+}
+
+async function openPublicMeetingQuiz(publicToken) {
+  const tokenKey = meetingQuizPublicTokenStorageKey(publicToken);
+  const participantToken = sessionStorage.getItem(tokenKey) || '';
+  state.meetingQuizExam = {
+    postId: '', publicToken, publicMode: true, quizId: '', topic: 'Meeting', meetingDate: '',
+    language: '', answers: {}, participantToken, questions: [], participant: null, review: null,
+    mode: 'exam', tokenKey
+  };
+  const model = state.meetingQuizExam;
+  meetingQuizExamContentElement(model).innerHTML = '<div class="empty-state">กำลังโหลดข้อสอบ...</div>';
+  try {
+    const data = await apiCall('getMeetingQuiz', { publicToken, participantToken });
+    Object.assign(model, data);
+    if (!model.language && data.participant?.language) model.language = data.participant.language;
+    if (!data.participant && participantToken) {
+      sessionStorage.removeItem(tokenKey);
+      model.participantToken = '';
+    }
+    renderMeetingQuizExam();
+  } catch (error) {
+    meetingQuizExamContentElement(model).innerHTML = emptyHtml(error.message);
+    showToast(error.message, 'error');
+  }
+}
+
+function renderMeetingQuizExam() {
+  const model = state.meetingQuizExam;
+  if (!model) return;
+  const title = meetingQuizExamTitleElement(model);
+  const content = meetingQuizExamContentElement(model);
+  const lang = model.language === 'MY' ? 'MY' : 'TH';
+  if (model.mode === 'globalReview') {
+    title.textContent = lang === 'MY' ? 'အဖြေများနှင့် ရှင်းလင်းချက်' : 'เฉลยรวม';
+    content.innerHTML = `<label>ဘာသာ / ภาษา<select data-quiz-language><option value="TH" ${lang === 'TH' ? 'selected' : ''}>ไทย</option><option value="MY" ${lang === 'MY' ? 'selected' : ''}>မြန်မာ</option></select></label>${meetingQuizAnswerKeyHtml(model.questions || [], lang)}${model.publicMode ? `<div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-back-result>${lang === 'MY' ? 'ရလဒ်သို့ ပြန်သွားရန်' : 'กลับไปผลสอบของฉัน'}</button></div>` : ''}`;
+    return;
+  }
+  if (!model.participant) {
+    title.textContent = `${lang === 'MY' ? 'အစည်းအဝေး စာမေးပွဲ' : 'แบบทดสอบ'} · ${model.topic || ''}`;
+    const locked = Boolean(model.rosterLocked);
+    const shifts = model.shiftOptions || [];
+    const selectedShift = shifts.some(shift => shift.value === model.shift) ? model.shift : (shifts[0]?.value || '');
+    model.shift = selectedShift;
+    const shiftField = `<label>กะ<select name="shift" required>${shifts.map(shift => `<option value="${escapeAttr(shift.value)}" ${shift.value === selectedShift ? 'selected' : ''}>${escapeHtml(shift.label || shift.value)}</option>`).join('')}</select></label>`;
+    content.innerHTML = `<p class="page-helper">${escapeHtml(model.meetingDate || '')} · ${escapeHtml(model.topic || '')}</p>${locked ? `<div class="quiz-status-note">ปิดรับรายชื่อ ${escapeHtml(shifts.find(shift => shift.value === selectedShift)?.label || selectedShift)} แล้ว กรุณาเลือกกะที่เปิดรับหรือแจ้ง Leader</div>${shiftField}` : `<form id="meetingQuizRegistrationForm" class="form-stack"><p>ข้อสอบชุดเดียวกันสำหรับทุกกะ · กรอกชื่อและนามสกุลก่อนเริ่มทำ 5 ข้อ</p>${shiftField}<label>ชื่อ *<input name="firstName" autocomplete="given-name" required maxlength="100"></label><label>นามสกุล *<input name="lastName" autocomplete="family-name" required maxlength="100"></label><label>ภาษา<select name="language"><option value="TH">ไทย</option><option value="MY">မြန်မာ</option></select></label><div class="modal-actions"><button type="submit" class="btn btn-primary">เริ่มทำข้อสอบ</button></div></form>`}`;
+    return;
+  }
+  if (String(model.participant.status || '').toLowerCase() === 'excused') {
+    content.innerHTML = '<div class="quiz-status-note">รายชื่อนี้ถูกยกเว้นจากรอบสอบแล้ว หากต้องการสอบ กรุณาติดต่อ Leader หรือผู้ดูแล</div>';
+    return;
+  }
+  if (model.review) {
+    title.textContent = lang === 'MY' ? 'စာမေးပွဲရလဒ်နှင့် ပြန်လည်သုံးသပ်ချက်' : 'ผลสอบและเฉลยของฉัน';
+    const rows = (model.review.questions || []).map(question => ({
+      Question: question.Question, QuestionNo: question.QuestionNo, SelectedText: question.SelectedText,
+      CorrectText: question.CorrectText, CorrectOption: question.CorrectOption,
+      SelectedOption: question.SelectedOption, IsCorrect: question.IsCorrect, Explanation: question.Explanation
+    }));
+    const publicKeyActions = model.publicMode ? (model.allSubmitted
+      ? `<div class="quiz-status-note">${lang === 'MY' ? 'အလုပ်သမားအားလုံး တင်သွင်းပြီးပါပြီ' : 'ทุกคนส่งข้อสอบครบแล้ว'}</div><div class="modal-actions"><button type="button" class="btn btn-primary" data-quiz-global-key>${lang === 'MY' ? 'အဖြေများကို ကြည့်ရန်' : 'ดูเฉลยรวม'}</button><button type="button" class="btn btn-outline" data-quiz-finish>${lang === 'MY' ? 'ပိတ်ရန်' : 'ปิดผลสอบ'}</button></div>`
+      : `<div class="quiz-status-note">${lang === 'MY' ? 'အဖြေစုစုပေါင်းကို နှစ်ဆိုင်းလုံး ပိတ်ပြီး လူတိုင်း တင်သွင်းသည့်အခါ ပြသပါမည်' : 'เฉลยรวมจะแสดงเมื่อปิดรับทั้งสองกะและทุกคนส่งข้อสอบแล้ว'}<div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-check-key>${lang === 'MY' ? 'အဖြေအခြေအနေကို စစ်ဆေးရန်' : 'ตรวจสอบสถานะเฉลยรวม'}</button><button type="button" class="btn btn-primary" data-quiz-finish>${lang === 'MY' ? 'ပိတ်ရန်' : 'ปิดผลสอบ'}</button></div></div>`)
+      : `<div class="modal-actions"><button type="button" class="btn btn-primary" data-quiz-finish>${lang === 'MY' ? 'ပြီးပါပြီ / နောက်လူအတွက် ပိတ်ရန်' : 'เสร็จแล้ว / ให้คนถัดไปทำ'}</button></div>`;
+    content.innerHTML = `<label>${lang === 'MY' ? 'ဘာသာစကား' : 'ภาษา'}<select data-quiz-language><option value="TH" ${lang === 'TH' ? 'selected' : ''}>ไทย</option><option value="MY" ${lang === 'MY' ? 'selected' : ''}>မြန်မာ</option></select></label><div class="quiz-score">${lang === 'MY' ? 'ရမှတ်' : 'คะแนน'} ${model.review.score}/${model.review.total}</div>${meetingQuizPersonalReviewHtml(rows, lang)}${publicKeyActions}`;
+    return;
+  }
+  const choices = ['A', 'B', 'C', 'D'];
+  const questions = model.questions || [];
+  content.innerHTML = `<div class="quiz-status-note">${escapeHtml(model.participant.displayName || '')} · ${lang === 'TH' ? 'ตอบให้ครบทุกข้อ แล้วส่งคำตอบ' : 'အဖြေအားလုံးကို ရွေးပြီး တင်သွင်းပါ'}</div><label>${lang === 'MY' ? 'ဘာသာစကား' : 'ภาษา'}<select data-quiz-language><option value="TH" ${lang === 'TH' ? 'selected' : ''}>ไทย</option><option value="MY" ${lang === 'MY' ? 'selected' : ''}>မြန်မာ</option></select></label><form id="meetingQuizAnswerForm">${questions.map(q => `<fieldset class="quiz-exam-question"><legend>${meetingQuizQuestionNumber(q.QuestionNo)}. ${escapeHtml(q['Question' + lang] || '')}</legend>${choices.map(choice => `<label class="quiz-exam-choice"><input type="radio" name="q${meetingQuizQuestionNumber(q.QuestionNo)}" value="${choice}" ${model.answers[meetingQuizQuestionNumber(q.QuestionNo)] === choice ? 'checked' : ''} required><span>${choice}. ${escapeHtml(q['Choice' + choice + lang] || '')}</span></label>`).join('')}</fieldset>`).join('')}<div class="modal-actions"><button type="submit" class="btn btn-primary">${lang === 'MY' ? 'စာမေးပွဲတင်သွင်းရန်' : 'ส่งข้อสอบ'}</button></div></form>`;
+}
+
+function meetingQuizQuestionNumber(value) { const number = Number(value); return Number.isFinite(number) ? number : 0; }
+
+function meetingQuizPersonalReviewHtml(rows, lang) {
+  const labels = lang === 'MY'
+    ? { correct: '✓ မှန်ကန်သည်', wrong: '✗ မှားယွင်းသည်', rightAnswer: 'အဖြေမှန်' }
+    : { correct: '✓ ตอบถูก', wrong: '✗ ตอบผิด', rightAnswer: 'คำตอบที่ถูก' };
+  return rows.map(row => `<section class="quiz-review-question"><h4>${row.QuestionNo}. ${escapeHtml(row.Question || '')}</h4><div class="quiz-answer-line ${row.IsCorrect ? 'is-correct' : 'is-wrong'}">${row.IsCorrect ? labels.correct : labels.wrong} · ${escapeHtml(row.SelectedOption || '-')} ${escapeHtml(row.SelectedText || '')}</div>${!row.IsCorrect ? `<div class="quiz-answer-line is-correct">${labels.rightAnswer}: ${escapeHtml(row.CorrectOption)} ${escapeHtml(row.CorrectText || '')}</div>` : ''}<div class="quiz-explanation">${escapeHtml(row.Explanation || '')}</div></section>`).join('');
+}
+
+function meetingQuizAnswerKeyHtml(questions, lang) {
+  const labels = lang === 'MY'
+    ? { open: 'အဖြေများကို ဖွင့်ထားပါပြီ · အတူတကွ ပြန်လည်လေ့လာနိုင်ပါသည်', correct: 'အဖြေမှန်' }
+    : { open: 'เฉลยรวมเปิดแล้ว · ใช้ทบทวนร่วมกัน', correct: 'คำตอบที่ถูก' };
+  return `<div class="quiz-status-note">${labels.open}</div>${questions.map(q => {
+    const question = q['Question' + lang] || '';
+    const correct = q.CorrectOption || '';
+    const choice = q['Choice' + correct + lang] || '';
+    const explanation = q['Explanation' + lang] || '';
+    return `<section class="quiz-review-question"><h4>${meetingQuizQuestionNumber(q.QuestionNo)}. ${escapeHtml(question)}</h4><div class="quiz-answer-line is-correct">${labels.correct}: ${escapeHtml(correct)} ${escapeHtml(choice)}</div><div class="quiz-explanation">${escapeHtml(explanation)}</div></section>`;
+  }).join('')}`;
+}
+
+async function handleMeetingQuizExamSubmit(event) {
+  const model = state.meetingQuizExam;
+  if (!model) return;
+  if (event.target.id === 'meetingQuizRegistrationForm') {
+    event.preventDefault();
+    const form = event.target;
+    const firstName = form.elements.firstName.value.trim();
+    const lastName = form.elements.lastName.value.trim();
+    const language = form.elements.language.value;
+    try {
+      const data = await apiCall('registerMeetingQuizParticipant', {
+        ...meetingQuizScope(model), firstName, lastName, language, shift: form.elements.shift.value, participantToken: model.participantToken
+      });
+      model.participantId = data.participantId;
+      model.participantToken = data.participantToken;
+      model.tokenKey = model.publicMode ? meetingQuizPublicTokenStorageKey(model.publicToken) : meetingQuizTokenStorageKey(model.quizId);
+      sessionStorage.setItem(model.tokenKey, data.participantToken);
+      model.participant = { participantId: data.participantId, displayName: `${firstName} ${lastName}`, language, status: 'Registered' };
+      model.language = language;
+      model.shift = data.shift || form.elements.shift.value;
+      model.questions = data.questions || [];
+      renderMeetingQuizExam();
+      if (!model.publicMode) await loadMeetingBoard();
+    } catch (error) { showToast(error.message, 'error'); }
+  } else if (event.target.id === 'meetingQuizAnswerForm') {
+    event.preventDefault();
+    const answers = model.answers || {};
+    const missing = (model.questions || []).find(q => !answers[meetingQuizQuestionNumber(q.QuestionNo)]);
+    if (missing) return showToast('กรุณาตอบให้ครบทั้ง 5 ข้อ', 'warning');
+    const submitted = Object.keys(answers).map(questionNo => ({ questionNo: Number(questionNo), choice: answers[questionNo] }));
+    try {
+      showLoading('กำลังส่งข้อสอบ...');
+      const data = await apiCall('submitMeetingQuiz', { ...meetingQuizScope(model), quizId: model.quizId, participantToken: model.participantToken, language: model.language, answers: submitted });
+      model.review = data.review;
+      model.allSubmitted = Boolean(data.allSubmitted);
+      model.participant.status = 'Submitted';
+      renderMeetingQuizExam();
+      if (!model.publicMode) await loadMeetingBoard();
+    } catch (error) { showToast(error.message, 'error'); }
+    finally { hideLoading(); }
+  }
+}
+
+async function handleMeetingQuizExamChange(event) {
+  const model = state.meetingQuizExam;
+  if (!model) return;
+  if (event.target.matches('[data-quiz-language]')) {
+    model.language = event.target.value;
+    if (model.review && model.mode !== 'globalReview') {
+      try {
+        const data = await apiCall('getMeetingQuiz', { ...meetingQuizScope(model), participantToken: model.participantToken, language: model.language });
+        model.review = data.review || model.review;
+      } catch (error) { showToast(error.message, 'error'); }
+    }
+    renderMeetingQuizExam();
+  } else if (event.target.matches('select[name="shift"]')) {
+    const form = event.target.closest('form');
+    const firstName = form?.elements.firstName?.value || '';
+    const lastName = form?.elements.lastName?.value || '';
+    model.shift = event.target.value;
+    const selected = (model.shiftOptions || []).find(shift => shift.value === model.shift);
+    model.rosterLocked = selected?.rosterStatus === 'Locked';
+    renderMeetingQuizExam();
+    const nextForm = $('#meetingQuizRegistrationForm');
+    if (nextForm) {
+      nextForm.elements.firstName.value = firstName;
+      nextForm.elements.lastName.value = lastName;
+    }
+  } else if (event.target.matches('input[type="radio"][name^="q"]')) {
+    const questionNo = Number(event.target.name.slice(1));
+    model.answers[questionNo] = event.target.value;
+  }
+}
+
+async function openMeetingQuizAnswerKey(postId) {
+  const post = findMeetingPost(postId);
+  if (!post?.MeetingQuiz?.quizId) return;
+  const topic = post.MeetingQuiz.sourceTitle || `Meeting ${String(post.MeetingDate || '').slice(0, 10)}`;
+  state.meetingQuizExam = { postId, quizId: post.MeetingQuiz.quizId, topic, language: 'TH', questions: [], mode: 'globalReview' };
+  $('#meetingQuizExamTitle').textContent = `เฉลยรวม · ${topic}`;
+  $('#meetingQuizExamContent').innerHTML = '<div class="empty-state">กำลังโหลดเฉลย...</div>';
+  $('#meetingQuizExamDialog').showModal();
+  try {
+    const data = await apiCall('getMeetingQuizAnswerKey', { postId });
+    state.meetingQuizExam.questions = data.questions || [];
+    renderMeetingQuizExam();
+  } catch (error) {
+    $('#meetingQuizExamContent').innerHTML = emptyHtml(error.message);
+    showToast(error.message, 'error');
+  }
+}
+
+async function handleMeetingQuizExamClick(event) {
+  const model = state.meetingQuizExam;
+  if (!model) return;
+  const checkKey = event.target.closest('[data-quiz-check-key]');
+  const openKey = event.target.closest('[data-quiz-global-key]');
+  const backToResult = event.target.closest('[data-quiz-back-result]');
+  const finish = event.target.closest('[data-quiz-finish]');
+  if (checkKey) {
+    try {
+      const data = await apiCall('getMeetingQuiz', { ...meetingQuizScope(model), participantToken: model.participantToken, language: model.language });
+      model.allSubmitted = Boolean(data.allSubmitted);
+      model.participant = data.participant || model.participant;
+      model.review = data.review || model.review;
+      renderMeetingQuizExam();
+      showToast(model.allSubmitted ? 'เฉลยรวมเปิดแล้ว' : 'เฉลยรวมยังรอปิดรับและส่งข้อสอบให้ครบทุกกะ', model.allSubmitted ? 'success' : 'info');
+    } catch (error) { showToast(error.message, 'error'); }
+    return;
+  }
+  if (openKey) {
+    try {
+      const data = await apiCall('getMeetingQuizAnswerKey', meetingQuizScope(model));
+      model.questions = data.questions || [];
+      model.mode = 'globalReview';
+      renderMeetingQuizExam();
+    } catch (error) { showToast(error.message, 'error'); }
+    return;
+  }
+  if (backToResult) {
+    model.mode = 'exam';
+    renderMeetingQuizExam();
+    return;
+  }
+  if (!finish) return;
+  if (model.tokenKey) sessionStorage.removeItem(model.tokenKey);
+  if (model.publicMode) {
+    model.participantToken = '';
+    model.participant = null;
+    model.review = null;
+    model.answers = {};
+    model.mode = 'exam';
+    renderMeetingQuizExam();
+    return;
+  }
+  $('#meetingQuizExamDialog').close();
+  state.meetingQuizExam = null;
+}
+
+$('#meetingQuizExamContent').addEventListener('click', handleMeetingQuizExamClick);
 
 // Board card detail: --- separators become slide dividers and [รูปN] markers
 // are stripped (shown instead as a "📷 รูปที่ N" tag) so the card mirrors how
@@ -3329,8 +3834,27 @@ function tvHasFindingSlide() {
   return Boolean(state.meetingFindingDigest) && hasAnyPermission(['dashboard.view', 'dashboard.view.all']);
 }
 
+function meetingTvDailyQuiz() {
+  const meetingDate = String($('#meetingDate')?.value || localDateInput(new Date())).slice(0, 10);
+  const post = state.meetingPosts.find(row =>
+    String(row.MeetingDate || '').slice(0, 10) === meetingDate &&
+    row.MeetingQuiz?.available
+  );
+  return post ? { post, quiz: post.MeetingQuiz } : null;
+}
+
+function meetingTvAuxiliarySlides() {
+  const slides = [];
+  const dailyQuiz = meetingTvDailyQuiz();
+  // Keep a QR slot in the TV agenda every day; show a setup hint until the
+  // day's quiz is published, then replace it with the scannable QR.
+  slides.push({ type: 'quiz', dailyQuiz });
+  if (tvHasFindingSlide()) slides.push({ type: 'finding' });
+  return slides;
+}
+
 function meetingTvTotalSlides() {
-  return meetingTvPostSlides().length + (tvHasFindingSlide() ? 1 : 0);
+  return meetingTvPostSlides().length + meetingTvAuxiliarySlides().length;
 }
 
 function openMeetingTv() {
@@ -3416,6 +3940,34 @@ function meetingTvFindingSlideHtml() {
   </div>`;
 }
 
+function meetingTvQuizSlideHtml(dailyQuiz) {
+  if (!dailyQuiz) {
+    return `<div class="mtg-tv-slide mtg-tv-quiz-slide tv-anim-${meetingTvDir}">
+      <div class="mtg-tv-chips"><span class="mtg-tv-chip mtg-tv-quiz-chip">📝 แบบทดสอบหลัง Meeting</span></div>
+      <h1 class="mtg-tv-title">QR Code ข้อสอบ</h1>
+      <div class="mtg-tv-quiz-empty">ยังไม่มีข้อสอบที่เผยแพร่สำหรับวันนี้</div>
+      <p class="mtg-tv-quiz-help">ให้ผู้ดูแลกด “Gen ข้อสอบ 5 ข้อ” ตรวจข้อสอบ แล้วกด “เผยแพร่และเปิดรับสอบ” ก่อนเริ่มสอบ</p>
+    </div>`;
+  }
+  const publicUrl = dailyQuiz.quiz.publicToken ? meetingQuizPublicUrl(dailyQuiz.quiz.publicToken) : '';
+  let qrSvg = '';
+  if (publicUrl && typeof qrcode === 'function') {
+    try {
+      const qr = qrcode(0, 'M');
+      qr.addData(publicUrl);
+      qr.make();
+      qrSvg = qr.createSvgTag(8, 4);
+    } catch (error) { console.warn('Could not build TV quiz QR code:', error); }
+  }
+  return `<div class="mtg-tv-slide mtg-tv-quiz-slide tv-anim-${meetingTvDir}">
+    <div class="mtg-tv-chips"><span class="mtg-tv-chip mtg-tv-quiz-chip">📝 แบบทดสอบหลัง Meeting</span></div>
+    <h1 class="mtg-tv-title">QR Code ข้อสอบ</h1>
+    <p class="mtg-tv-quiz-help">สแกน QR Code เพื่อทำข้อสอบของ Meeting วันนี้ · ไม่ต้อง Login</p>
+    ${qrSvg ? `<div class="mtg-tv-quiz-qr" aria-label="QR Code สำหรับเข้าสอบ">${qrSvg}</div>` : '<div class="mtg-tv-quiz-error">ข้อสอบเผยแพร่แล้ว แต่ QR ยังไม่พร้อม กรุณารีเฟรชหน้า Meeting</div>'}
+    <div class="mtg-tv-quiz-caption">ข้อสอบชุดเดียว 5 ข้อ สำหรับทุกกะ · ก่อนเริ่มทำข้อสอบ กรุณากรอกชื่อและนามสกุล</div>
+  </div>`;
+}
+
 // One post section rendered as a TV slide. The topic + chips repeat on every
 // section; photos, meta, and the discuss button appear only on the last section.
 function meetingTvPostSlideHtml(slide) {
@@ -3463,7 +4015,8 @@ function renderMeetingTv() {
   const container = $('#meetingTv');
   const deck = meetingTvDeck();
   const postSlides = meetingTvPostSlides();
-  const total = postSlides.length + (tvHasFindingSlide() ? 1 : 0);
+  const auxiliarySlides = meetingTvAuxiliarySlides();
+  const total = postSlides.length + auxiliarySlides.length;
   const index = Math.max(0, Math.min(state.meetingTvIndex, total));
   state.meetingTvIndex = index;
   // Progress counts topics discussed, not slides, so a multi-slide topic counts once.
@@ -3495,13 +4048,21 @@ function renderMeetingTv() {
           ${priority === 'ด่วน' ? '<span class="mtg-tv-chip mtg-tv-urgent">ด่วน</span>' : priority === 'สำคัญ' ? '<span class="mtg-tv-chip mtg-tv-important">สำคัญ</span>' : ''}
           ${item.carry ? '<span class="mtg-tv-item-carry">⏳ ค้าง</span>' : ''}
         </button></li>`;
-      }).join('')}${tvHasFindingSlide() ? `<li style="animation-delay:${Math.min(deck.length * 70, 700)}ms" class="mtg-tv-li"><button class="mtg-tv-item mtg-tv-item-finding" data-tv-goto="${postSlides.length + 1}">
-        <span class="mtg-tv-item-icon">📢</span>
-        <span class="mtg-tv-item-text">Finding จากการตรวจ LPA<span class="mtg-tv-item-line">วันนี้ ${(state.meetingFindingDigest?.today?.totalCount) || 0} รายการ · เมื่อวาน ${(state.meetingFindingDigest?.yesterday?.totalCount) || 0} รายการ</span></span>
-      </button></li>` : ''}</ol>
+      }).join('')}${auxiliarySlides.map((slide, i) => slide.type === 'quiz'
+        ? `<li style="animation-delay:${Math.min((deck.length + i) * 70, 700)}ms" class="mtg-tv-li"><button class="mtg-tv-item mtg-tv-item-quiz" data-tv-goto="${postSlides.length + i + 1}">
+          <span class="mtg-tv-item-icon">📱</span>
+          <span class="mtg-tv-item-text">QR Code ข้อสอบ<span class="mtg-tv-item-line">${slide.dailyQuiz ? 'สแกนเพื่อทำข้อสอบ Meeting วันนี้ · 5 ข้อ' : 'ยังไม่มีข้อสอบเผยแพร่สำหรับวันที่นี้'}</span></span>
+        </button></li>`
+        : `<li style="animation-delay:${Math.min((deck.length + i) * 70, 700)}ms" class="mtg-tv-li"><button class="mtg-tv-item mtg-tv-item-finding" data-tv-goto="${postSlides.length + i + 1}">
+          <span class="mtg-tv-item-icon">📢</span>
+          <span class="mtg-tv-item-text">Finding จากการตรวจ LPA<span class="mtg-tv-item-line">วันนี้ ${(state.meetingFindingDigest?.today?.totalCount) || 0} รายการ · เมื่อวาน ${(state.meetingFindingDigest?.yesterday?.totalCount) || 0} รายการ</span></span>
+        </button></li>`).join('')}</ol>
     </div>`;
   } else if (index > postSlides.length) {
-    body = meetingTvFindingSlideHtml();
+    const auxiliarySlide = auxiliarySlides[index - postSlides.length - 1];
+    body = auxiliarySlide?.type === 'quiz'
+      ? meetingTvQuizSlideHtml(auxiliarySlide.dailyQuiz)
+      : meetingTvFindingSlideHtml();
   } else {
     body = meetingTvPostSlideHtml(postSlides[index - 1]);
   }
@@ -5012,8 +5573,17 @@ async function navigateTo(page) {
   }
   if (page === 'dashboard') loadDashboard(false);
   if (page === 'meeting') {
-    // Board, Finding digest, and master data go out as one batched request
+    // Show the board first, then refresh the digest and master data in parallel.
     await loadMeetingPage();
+    if (!window._meetingQuizBoardPoll) {
+      window._meetingQuizBoardPoll = setInterval(() => {
+        const board = $('#page-meeting');
+        if (document.visibilityState !== 'visible' || !board?.classList.contains('active-page')) return;
+        const posts = [...(state.meetingPosts || []), ...(state.meetingCarryOver || [])];
+        if (!posts.some(post => post.MeetingQuiz?.available && !post.MeetingQuiz.allSubmitted)) return;
+        loadMeetingBoard();
+      }, 30000);
+    }
   }
   if (['audit', 'audit-plan', 'findings', 'checklist', 'admin'].includes(page)) {
     if (page === 'findings') {

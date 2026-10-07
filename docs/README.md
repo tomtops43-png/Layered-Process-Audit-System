@@ -8,6 +8,7 @@ Static, mobile-responsive frontend for the Layered Process Audit System. It uses
 - `style.css` — factory-friendly responsive interface, mobile navigation, print styles, status colors, loading, and toast components.
 - `app.js` — authentication, routing, API calls, audit entry, file upload, findings, dashboard, reports, CSV export, and checklist views.
 - `config.js` — Apps Script Web App URL and application name.
+- `vendor/qrcode.js` — locally bundled QR generator used in the quiz management panel; see its MIT license beside the file.
 
 ## Run locally
 
@@ -53,6 +54,8 @@ The frontend expects `{ "success": true, "message": "...", "data": {} }`. Failed
 - Dashboard KPIs, monthly audit bars, line summaries, and actions near Due Date.
 - LPA audit with dynamic checklist, OK/NG/N/A controls, required NG action fields, Before Photo upload, and audit submission.
 - Finding filters and update/closure workflow with After Photo upload.
+- Meeting board with one bilingual Thai/Myanmar quiz of five questions per day, generated from all of that day's Meeting topics and slides. Both shifts receive the same questions with separate registration and roster closing; employees select a shift, enter their first and last name, then see their own answers and explanations after submitting. The shared answer key opens after both shifts close their rosters and everyone registered has submitted or been excused.
+- After an admin publishes the quiz, its management panel shows a QR code and copyable link. Employees scan it and take the quiz as guests without a website login. The guest link opens only that published quiz; each employee's answer token stays in that browser session.
 - Monthly report, print layout, and CSV export.
 - Active Checklist Master viewer using the backend’s exact fields.
 
@@ -61,3 +64,5 @@ The frontend expects `{ "success": true, "message": "...", "data": {} }`. Failed
 - Image files are converted to base64 only in browser memory for transport. The backend stores the file in Drive and returns `DriveFileURL`; base64 is not stored in the spreadsheet.
 - The current backend upload limit is 10 MB after base64 decoding. Mobile users should use reasonably compressed photos.
 - Before Photo uploads occur before `saveAudit`, using a temporary related ID. The returned Drive URL is then included in the audit record.
+- The quiz API key is stored only in Apps Script Script Properties. Quiz generation sends all Meeting topics and extracted slide text for the selected date to the configured Gemini API.
+- Quiz records are written to the Google Sheets tabs `MeetingQuizzes`, `MeetingQuizQuestions`, and `MeetingQuizParticipants` in the spreadsheet configured by Apps Script. The answer key remains private until both shift rosters are closed and everyone on the roster has submitted or been excused.

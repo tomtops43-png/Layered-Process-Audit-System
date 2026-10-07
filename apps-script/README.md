@@ -17,6 +17,7 @@ Deployable backend API for the QF8 customer audit-finding closure application. I
 | `Dashboard.gs` | KPI and dashboard summaries |
 | `Reports.gs` | Monthly report and CSV export |
 | `Files.gs` | Base64 decoding, Drive upload, sharing, and attachment metadata |
+| `Meeting.gs` / `MeetingQuiz.gs` | Meeting board, slide text extraction, and bilingual quizzes |
 | `Setup.gs` | Non-destructive setup and manual test helpers |
 
 ## Installation
@@ -27,9 +28,12 @@ Deployable backend API for the QF8 customer audit-finding closure application. I
 4. In **Project Settings → Script Properties**, add:
    - `SPREADSHEET_ID`: ID from the `LPA_Database` spreadsheet URL.
    - Optional `DEFAULT_ADMIN_PASSWORD`: temporary password used only when `createDefaultAdmin()` is called without arguments.
-5. In Apps Script project settings, set the project timezone to **Asia/Bangkok**. The code also explicitly formats business dates in `Asia/Bangkok`.
-6. Run `setupRbac()` once from the editor and authorize access. It runs the existing non-destructive header setup, creates the RBAC sheets when missing, and inserts only missing default role permissions; it does not delete existing users or data.
-7. Confirm the `Settings` sheet contains these keys and valid values:
+   - `GEMINI_API_KEY`: API key used by Meeting quiz generation; keep it in Script Properties and never put it in frontend files.
+   - Optional `GEMINI_MODEL` (defaults to `gemini-3.8-flash`).
+5. For quiz generation from attached files, enable the Advanced Google services for **Drive API** and **Google Slides API** in the Apps Script project. The quiz can also use the Meeting topic and detail text when no slide file is attached.
+6. In Apps Script project settings, set the project timezone to **Asia/Bangkok**. The code also explicitly formats business dates in `Asia/Bangkok`.
+7. Run `setupRbac()` once from the editor and authorize access. It runs the existing non-destructive header setup, creates the RBAC sheets when missing, and inserts only missing default role permissions; it does not delete existing users or data.
+8. Confirm the `Settings` sheet contains these keys and valid values:
    - `APP_NAME`
    - `TIMEZONE` (`Asia/Bangkok`)
    - `SPREADSHEET_ID`
@@ -41,11 +45,11 @@ Deployable backend API for the QF8 customer audit-finding closure application. I
    - `DEFAULT_DUE_DAYS`
    - `CUSTOMER_NAME`
    - `COMPANY_NAME`
-8. Create an administrator by running `createDefaultAdmin('admin', 'replace-with-a-strong-password')`. Remove any temporary password from Script Properties afterward.
-9. Deploy with **Deploy → New deployment → Web app**:
+9. Create an administrator by running `createDefaultAdmin('admin', 'replace-with-a-strong-password')`. Remove any temporary password from Script Properties afterward.
+10. Deploy with **Deploy → New deployment → Web app**:
    - Execute as: **Me**
    - Who has access: select the option appropriate for the GitHub Pages client (commonly **Anyone**)
-10. Copy the `/exec` deployment URL for the future frontend.
+11. Copy the `/exec` deployment URL for the future frontend.
 
 ## Request contract
 
@@ -88,9 +92,20 @@ HTTP status codes are not used to distinguish API errors because Apps Script `Co
 ## API actions
 
 - Public: `login`
-- Protected: `getCurrentUser`, `getMasterData`, `getChecklist`, `saveAudit`, `getAuditList`, `getFindings`, `updateFinding`, `closeFinding`, `uploadFile`, `getDashboard`, `getMonthlyReport`, `exportReportCsv`
+- QR guest: `getMeetingQuiz`, `registerMeetingQuizParticipant`, `submitMeetingQuiz`, and `getMeetingQuizAnswerKey`, only with a valid published-quiz token.
+- Protected: `getCurrentUser`, `getMasterData`, `getChecklist`, `saveAudit`, `getAuditList`, `getFindings`, `updateFinding`, `closeFinding`, `uploadFile`, `getDashboard`, `getMonthlyReport`, `exportReportCsv`, quiz management actions, and authenticated Meeting quiz access.
 
-`Admin` has full access. `Manager`, `Supervisor`, and `Engineer` can audit, report, update, and close findings. `Leader` can create audits and update assigned findings. `User` access is restricted to assigned findings/actions and their own audit-list entries.
+`Admin` has full access. The default `Supervisor`, `Leader`, and `Engineer` roles can manage quizzes. Employees without accounts can use the published quiz's QR link; authenticated Meeting users can also take the quiz through the board.
+
+## Meeting quiz flow
+
+- Generate one daily set of five bilingual Thai/Myanmar multiple-choice questions from all non-deleted Meeting topics, details, and extractable slide text for that date. A Manager can edit the draft before publishing, or regenerate that same draft from all daily topics.
+- Each Meeting date has at most one published quiz. Both shifts use the same five questions, while each shift has its own participant list and roster close time. The source hash covers all topics and slide text for that date; publishing checks that the content has not changed since generation.
+- Employees select their shift and register with first and last name before the exam. The shared answer key stays locked until every shift has closed its roster and all registered participants have submitted or been excused.
+- On submission, the employee receives their score, their own selected answers, the correct answers for mistakes, and explanations. The shared `getMeetingQuizAnswerKey` action returns only the key and explanations after both shifts are complete.
+- To find the QR, open the Meeting board and choose `📱 QR / จัดการข้อสอบ` on that date's card. The management panel shows the QR code after publishing and also provides a copyable link. Employees open that daily quiz directly, without a website account, then enter their first and last names and select a shift. The guest link is a long random bearer token scoped to that published quiz; it cannot access meeting posts or other APIs.
+- Quiz state is stored in `MeetingQuizzes`, `MeetingQuizQuestions`, and `MeetingQuizParticipants`. `MeetingQuizzes.PublicToken` holds the QR link token. `MeetingQuizQuestions` holds the daily questions, choices, correct options, and explanations. `MeetingQuizParticipants` records names, shift, language, submission status, answers, and score; participant answer tokens are stored as hashes.
+- Quiz generation sends the Meeting date, all topics, details, and extracted slide text for that date to the Gemini API. It does not send participant names or answers. Configure `GEMINI_API_KEY` in Script Properties.
 
 ## Login example
 

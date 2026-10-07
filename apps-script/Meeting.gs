@@ -100,10 +100,12 @@ function getMeetingPosts(payload, user) {
 
     ensureMeetingAcksSheet_();
     var ackByPost = getMeetingAcksByPost_();
+    var quizSummaryCache = { sheetsReady: false, byDate: {} };
     var decorate = function (row) {
       var copy = sanitizeForClient_(row);
       copy.CanEdit = canEditMeetingPost_(user, row);
       decorateMeetingAckSummary_(copy, row, ackByPost, user);
+      copy.MeetingQuiz = meetingQuizSummaryForPost_(row, user, quizSummaryCache);
       return copy;
     };
     posts.sort(meetingPostCompare_);
@@ -113,7 +115,8 @@ function getMeetingPosts(payload, user) {
       posts: posts.map(decorate),
       carryOver: carryOver.map(decorate),
       canCreate: hasPermission_(user, 'meeting.create'),
-      canManage: hasPermission_(user, 'meeting.manage')
+      canManage: hasPermission_(user, 'meeting.manage'),
+      canManageQuiz: hasPermission_(user, 'meeting.quiz.manage')
     });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});

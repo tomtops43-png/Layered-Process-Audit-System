@@ -23,6 +23,9 @@ var SHEET_NAMES = {
   AUDIT_PLAN_RULES: 'AuditPlanRules',
   MEETING_POSTS: 'MeetingPosts',
   MEETING_ACKS: 'MeetingPostAcks',
+  MEETING_QUIZZES: 'MeetingQuizzes',
+  MEETING_QUIZ_QUESTIONS: 'MeetingQuizQuestions',
+  MEETING_QUIZ_PARTICIPANTS: 'MeetingQuizParticipants',
   LISTS: 'DO_NOT_DELETE_Lists',
   ROLE_PERMISSIONS: 'RolePermissions',
   USER_PERMISSIONS: 'UserPermissions',
@@ -44,12 +47,17 @@ SHEET_HEADERS[SHEET_NAMES.REPORT_LOGS] = ['ReportID', 'PeriodMonth', 'ReportTitl
 SHEET_HEADERS[SHEET_NAMES.AUDIT_PLAN] = ['PlanID', 'PeriodType', 'PeriodKey', 'DueDate', 'DueTime', 'RequiredRole', 'RequiredUserID', 'RequiredUserName', 'LineID', 'LineName', 'StationID', 'StationName', 'AuditLayer', 'Frequency', 'Status', 'CompletedAuditID', 'CompletedAt', 'SubmittedAt', 'IsLate', 'LateReason', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'];
 SHEET_HEADERS[SHEET_NAMES.AUDIT_PLAN_RULES] = ['RuleID', 'AssignmentMode', 'RequiredRole', 'RequiredUserID', 'RequiredUserName', 'LineID', 'LineName', 'StationID', 'StationName', 'Frequency', 'DayOfWeek', 'DayOfMonth', 'DueTime', 'ActiveStatus', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'];
 // Ack columns sit at the end so ensureMeetingPostsSheet_ can append them onto sheets created before they existed.
-SHEET_HEADERS[SHEET_NAMES.MEETING_POSTS] = ['PostID', 'MeetingDate', 'Shift', 'LineID', 'LineName', 'Category', 'Priority', 'Topic', 'Detail', 'PhotoURL', 'Status', 'Pinned', 'DiscussedAt', 'DiscussedBy', 'CreatedAt', 'CreatedBy', 'CreatedByName', 'UpdatedAt', 'UpdatedBy', 'AckRequiredUserIDs', 'AckRequiredNames', 'SlideFileURL', 'SlideFileName', 'SlideImageURLs'];
+SHEET_HEADERS[SHEET_NAMES.MEETING_POSTS] = ['PostID', 'MeetingDate', 'Shift', 'LineID', 'LineName', 'Category', 'Priority', 'Topic', 'Detail', 'PhotoURL', 'Status', 'Pinned', 'DiscussedAt', 'DiscussedBy', 'CreatedAt', 'CreatedBy', 'CreatedByName', 'UpdatedAt', 'UpdatedBy', 'AckRequiredUserIDs', 'AckRequiredNames', 'SlideFileURL', 'SlideFileName', 'SlideImageURLs', 'ActiveQuizID'];
 SHEET_HEADERS[SHEET_NAMES.MEETING_ACKS] = ['PostID', 'UserID', 'UserName', 'AckedAt'];
+SHEET_HEADERS[SHEET_NAMES.MEETING_QUIZZES] = ['QuizID', 'PostID', 'MeetingDate', 'SourcePostIDs', 'SourceHash', 'SourceTitle', 'Status', 'PublicToken', 'RosterStatus', 'ShiftRosterJSON', 'ShiftRosterClosedAtJSON', 'ShiftRosterClosedByJSON', 'VersionNo', 'GeneratedAt', 'GeneratedBy', 'PublishedAt', 'PublishedBy', 'RosterClosedAt', 'RosterClosedBy', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'];
+SHEET_HEADERS[SHEET_NAMES.MEETING_QUIZ_QUESTIONS] = ['QuestionID', 'QuizID', 'PostID', 'QuestionNo', 'QuestionTH', 'ChoiceATH', 'ChoiceBTH', 'ChoiceCTH', 'ChoiceDTH', 'QuestionMY', 'ChoiceAMY', 'ChoiceBMY', 'ChoiceCMY', 'ChoiceDMY', 'CorrectOption', 'ExplanationTH', 'ExplanationMY', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'];
+SHEET_HEADERS[SHEET_NAMES.MEETING_QUIZ_PARTICIPANTS] = ['ParticipantID', 'QuizID', 'PostID', 'Shift', 'FirstName', 'LastName', 'DisplayName', 'Language', 'ParticipantStatus', 'RegisteredAt', 'RegisteredByUserID', 'SubmittedAt', 'AnswersJSON', 'Score', 'TotalQuestions', 'TokenHash', 'ExcusedAt', 'ExcusedBy', 'ExcuseReason', 'UpdatedAt'];
 SHEET_HEADERS[SHEET_NAMES.LISTS] = ['ListType', 'ListValue', 'DisplayText', 'SortOrder', 'ActiveStatus'];
 SHEET_HEADERS[SHEET_NAMES.ROLE_PERMISSIONS] = ['Role', 'PermissionKey', 'Allowed', 'Description', 'UpdatedAt', 'UpdatedBy'];
 SHEET_HEADERS[SHEET_NAMES.USER_PERMISSIONS] = ['UserID', 'PermissionKey', 'Allowed', 'Reason', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'];
 SHEET_HEADERS[SHEET_NAMES.USER_LINE_ACCESS] = ['UserID', 'LineID', 'LineName', 'AccessLevel', 'ActiveStatus', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'];
 
 var PUBLIC_ACTIONS = ['login'];
+// QR bearer links can access only an already-published quiz and its gated answers.
+var GUEST_QUIZ_ACTIONS = ['getMeetingQuiz', 'registerMeetingQuizParticipant', 'submitMeetingQuiz', 'getMeetingQuizAnswerKey'];
 var VALID_ROLES = ['Admin', 'Manager', 'Supervisor', 'Engineer', 'Leader', 'User', 'Viewer', 'Customer'];

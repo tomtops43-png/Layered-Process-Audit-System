@@ -9,9 +9,19 @@
   <!-- The first API call happens seconds after load; warm the TLS connection now. -->
   <link rel="preconnect" href="https://script.google.com" crossorigin>
   <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
-  <link rel="stylesheet" href="style.css?v=20260904-latency">
+  <link rel="stylesheet" href="style.css?v=20261007-tv-quiz-agenda">
 </head>
 <body>
+  <div id="publicQuizView" class="login-view public-quiz-view hidden">
+    <main class="login-card public-quiz-card" aria-labelledby="publicMeetingQuizTitle">
+      <div class="brand-mark" aria-hidden="true">LPA</div>
+      <p class="eyebrow">MEETING QUIZ</p>
+      <h1 id="publicMeetingQuizTitle">แบบทดสอบหลัง Meeting</h1>
+      <p class="muted">สแกน QR เพื่อเข้าสอบได้เลย ไม่ต้องมีบัญชีหรือรหัสผ่าน</p>
+      <div id="publicMeetingQuizContent"><div class="empty-state">กำลังโหลดข้อสอบ...</div></div>
+    </main>
+  </div>
+
   <div id="loginView" class="login-view">
     <main class="login-card" aria-labelledby="loginTitle">
       <div class="brand-mark" aria-hidden="true">LPA</div>
@@ -438,6 +448,16 @@
     </form>
   </dialog>
 
+  <dialog id="meetingQuizAdminDialog" class="modal meeting-quiz-modal">
+    <div class="modal-head"><div><p class="eyebrow">MEETING QUIZ</p><h3 id="meetingQuizAdminTitle">จัดการข้อสอบ</h3></div><button type="button" class="icon-button" id="closeMeetingQuizAdmin">×</button></div>
+    <div id="meetingQuizAdminContent"><div class="empty-state">กำลังโหลดข้อมูลข้อสอบ...</div></div>
+  </dialog>
+
+  <dialog id="meetingQuizExamDialog" class="modal meeting-quiz-modal">
+    <div class="modal-head"><div><p class="eyebrow">MEETING QUIZ</p><h3 id="meetingQuizExamTitle">แบบทดสอบหลัง Meeting</h3></div><button type="button" class="icon-button" id="closeMeetingQuizExam">×</button></div>
+    <div id="meetingQuizExamContent"><div class="empty-state">กำลังโหลดข้อสอบ...</div></div>
+  </dialog>
+
   <!-- Production Plan Check-in Dialog -->
   <dialog id="prodPlanDialog" class="modal">
     <div class="modal-head">
@@ -453,6 +473,7 @@
   </dialog>
 
   <script src="config.js" defer></script>
-  <script src="app.js?v=20260904-latency" defer></script>
+  <script src="vendor/qrcode.js" defer></script>
+  <script src="app.js?v=20261007-tv-quiz-agenda" defer></script>
 </body>
 </html>

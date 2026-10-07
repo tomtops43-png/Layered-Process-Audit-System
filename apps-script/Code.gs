@@ -21,6 +21,7 @@ function doPost(e) {
     var handlers = buildApiHandlers_(payload);
     if (!handlers[action]) return jsonResponse(false, 'Unknown action: ' + action, {});
     if (PUBLIC_ACTIONS.indexOf(action) !== -1) return handlers[action]();
+    if (GUEST_QUIZ_ACTIONS.indexOf(action) !== -1 && cleanString_(payload.publicToken)) return handlers[action](null);
 
     var currentUser = getCurrentUserFromRequest_(token);
     if (!hasApiAccess_(currentUser, action)) return jsonResponse(false, 'Permission denied for action: ' + action, {});
@@ -106,6 +107,16 @@ function buildApiHandlers_(payload) {
     getLeaderDashboardBatch: function (user) { return getLeaderDashboardBatch(payload, user); },
     getFindingShiftDigest: function (user) { return getFindingShiftDigest(payload, user); },
     getMeetingPosts: function (user) { return getMeetingPosts(payload, user); },
+    getMeetingQuiz: function (user) { return getMeetingQuiz(payload, user); },
+    getMeetingQuizAdmin: function (user) { return getMeetingQuizAdmin(payload, user); },
+    generateMeetingQuiz: function (user) { return generateMeetingQuiz(payload, user); },
+    saveMeetingQuizDraft: function (user) { return saveMeetingQuizDraft(payload, user); },
+    publishMeetingQuiz: function (user) { return publishMeetingQuiz(payload, user); },
+    lockMeetingQuizRoster: function (user) { return lockMeetingQuizRoster(payload, user); },
+    excuseMeetingQuizParticipant: function (user) { return excuseMeetingQuizParticipant(payload, user); },
+    registerMeetingQuizParticipant: function (user) { return registerMeetingQuizParticipant(payload, user); },
+    submitMeetingQuiz: function (user) { return submitMeetingQuiz(payload, user); },
+    getMeetingQuizAnswerKey: function (user) { return getMeetingQuizAnswerKey(payload, user); },
     acknowledgeMeetingPost: function (user) { return acknowledgeMeetingPost(payload, user); },
     getMyPendingMeetingAcks: function (user) { return getMyPendingMeetingAcks(payload, user); },
     saveMeetingPost: function (user) { return saveMeetingPost(payload, user); },

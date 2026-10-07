@@ -32,6 +32,14 @@ assert(app.includes('function refreshAfterFindingWrite()'), 'finding writes must
 assert(!/await loadFindings\(true\);\s*await loadDashboard/.test(app),
   'a finding write must not hold the overlay through list + dashboard reloads');
 
+const meetingLoad = slice('async function loadMeetingPage()', 'async function loadMeetingBoard');
+assert(meetingLoad.indexOf("posts = await apiCall('getMeetingPosts'") >= 0,
+  'the Meeting page must request its board directly');
+assert(meetingLoad.indexOf('await loadMeetingBoard(posts)') < meetingLoad.indexOf("apiCall('getFindingShiftDigest'"),
+  'the Meeting board must render before the Finding digest starts');
+assert(meetingLoad.includes('Promise.all([masterDataTask, digestTask])'),
+  'the Finding digest and master data should load together after the board renders');
+
 // --- Behavioural checks ----------------------------------------------------
 
 function slice(from, to) {
