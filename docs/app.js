@@ -2995,6 +2995,42 @@ async function openMeetingQuizAdmin(postId) {
   $('#meetingQuizAdminContent').innerHTML = '<div class="empty-state">กำลังโหลดข้อมูลข้อสอบ...</div>';
   $('#meetingQuizAdminDialog').showModal();
   await refreshMeetingQuizAdmin();
+  const model = state.meetingQuizAdmin;
+  if (model && !model.quiz && model.canGenerate && meetingQuizIsToday(model.post?.MeetingDate)) {
+    try {
+      await generateMeetingQuizDraft(model, { automatic: true });
+      showToast('สร้างข้อสอบฉบับร่าง 5 ข้อจากทุกหัวข้อวันนี้แล้ว ตรวจแก้ก่อนเผยแพร่', 'success');
+    } catch (error) {
+      showToast(error.message, 'error');
+    }
+  }
+}
+
+function meetingQuizIsToday(value) {
+  const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Bangkok' }).format(new Date());
+  return String(value || '').slice(0, 10) === today;
+}
+
+async function generateMeetingQuizDraft(model, { automatic = false } = {}) {
+  if (!model) return;
+  model.autoGenerating = true;
+  model.generationError = '';
+  renderMeetingQuizAdmin();
+  if (!automatic) showLoading('กำลังอ่านสไลด์และสร้างข้อสอบ 5 ข้อ...');
+  try {
+    const data = await apiCall('generateMeetingQuiz', {
+      postId: model.postId,
+      ...(String(model.quiz?.Status || '').toLowerCase() === 'draft' ? { quizId: model.quiz.QuizID } : {})
+    });
+    Object.assign(model, { quiz: data.quiz, questions: data.questions || [], participants: [] });
+  } catch (error) {
+    model.generationError = error.message;
+    throw error;
+  } finally {
+    model.autoGenerating = false;
+    renderMeetingQuizAdmin();
+    if (!automatic) hideLoading();
+  }
 }
 
 async function refreshMeetingQuizAdmin(quizId = '') {
@@ -3075,8 +3111,12 @@ function renderMeetingQuizAdmin() {
     return `<section class="quiz-shift-roster"><div class="quiz-roster-summary"><strong>${escapeHtml(session.label || session.shift)}</strong><span>ลงชื่อ ${session.participantCount || 0} คน · ส่งแล้ว ${session.submittedCount || 0} คน</span>${lockButton}</div>${peopleHtml}</section>`;
   }).join('');
   const sourceTopics = (model.post?.SourceTopics || []).map(topic => topic.Topic).filter(Boolean);
+  const generationFeedback = model.autoGenerating
+    ? '<div class="quiz-status-note">กำลังวิเคราะห์รายละเอียดและสไลด์ทุกหัวข้อ แล้วสร้างข้อสอบ 5 ข้อ…</div>'
+    : (model.generationError ? `<div class="quiz-status-note">สร้างข้อสอบไม่สำเร็จ: ${escapeHtml(model.generationError)} · ตรวจการตั้งค่า AI/API แล้วกด Gen เพื่อลองอีกครั้ง</div>` : '');
   $('#meetingQuizAdminContent').innerHTML = `
-    <div class="quiz-admin-toolbar"><div><strong>${escapeHtml(model.post?.Topic || '')}</strong><div class="field-help">${escapeHtml(model.post?.MeetingDate || '')} · ${escapeHtml(statusText)}${sourceTopics.length ? `<br>หัวข้อที่ใช้: ${sourceTopics.map(escapeHtml).join(' · ')}` : ''}</div></div>${canGenerate ? `<button type="button" class="btn btn-secondary" data-quiz-generate>${isDraft ? '🔄 Gen ร่างใหม่ 5 ข้อจากทุกหัวข้อวันนี้' : '✨ Gen ข้อสอบ 5 ข้อจากทุกหัวข้อวันนี้'}</button>` : ''}</div>
+    <div class="quiz-admin-toolbar"><div><strong>${escapeHtml(model.post?.Topic || '')}</strong><div class="field-help">${escapeHtml(model.post?.MeetingDate || '')} · ${escapeHtml(statusText)}${sourceTopics.length ? `<br>หัวข้อที่ใช้: ${sourceTopics.map(escapeHtml).join(' · ')}` : ''}</div></div>${canGenerate && !model.autoGenerating ? `<button type="button" class="btn btn-secondary" data-quiz-generate>${isDraft ? '🔄 Gen ร่างใหม่ 5 ข้อจากทุกหัวข้อวันนี้' : '✨ Gen ข้อสอบ 5 ข้อจากทุกหัวข้อวันนี้'}</button>` : ''}</div>
+    ${generationFeedback}
     ${quiz && !isDraft ? `<div class="quiz-status-note">สร้างข้อสอบชุดเดียวกันให้พนักงานทุกกะ แต่แต่ละกะมีรายชื่อและเวลาปิดรับแยกกัน</div><h4>รายชื่อผู้เข้าสอบแยกตามกะ</h4>${roster}` : ''}
     ${publicUrl ? `<section class="quiz-qr-panel"><div><h4>QR สำหรับพนักงานเข้าสอบ</h4><p class="field-help">พนักงานสแกน QR นี้แล้วกรอกชื่อ–นามสกุลและเลือกกะได้เลย ไม่ต้อง Login</p><div class="quiz-qr-link">${escapeHtml(publicUrl)}</div><button type="button" class="btn btn-outline" data-quiz-copy-link="${escapeAttr(publicUrl)}">คัดลอกลิงก์ข้อสอบ</button></div>${qrSvg ? `<div class="quiz-qr-image" aria-label="QR Code สำหรับเข้าสอบ">${qrSvg}</div>` : '<div class="quiz-qr-image quiz-qr-error">ยังสร้าง QR ไม่ได้ กรุณาคัดลอกลิงก์</div>'}</section>` : ''}
     ${isDraft ? `<div class="quiz-status-note">ตรวจแก้ได้ก่อนเผยแพร่ · ระบบจะเปิดรับรายชื่อหลังเผยแพร่</div><div id="meetingQuizEditor">${questionEditor}</div><div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-save>บันทึกฉบับร่าง</button><button type="button" class="btn btn-primary" data-quiz-publish>เผยแพร่และเปิดรับสอบ</button></div>` : ''}
@@ -3121,10 +3161,7 @@ async function handleMeetingQuizAdminClick(event) {
         const confirmed = await showConfirm({ title: 'สร้างข้อสอบร่างใหม่?', message: 'ระบบจะสร้างคำถามใหม่ครบ 5 ข้อจากทุกหัวข้อของ Meeting วันนี้ และแทนที่คำถามในฉบับร่างนี้', confirmText: 'สร้างใหม่', tone: 'primary' });
         if (!confirmed) return;
       }
-      showLoading('กำลังอ่านสไลด์และสร้างข้อสอบ 5 ข้อ...');
-      const data = await apiCall('generateMeetingQuiz', { postId: model.postId, ...(model.quiz?.Status === 'Draft' ? { quizId: model.quiz.QuizID } : {}) });
-      Object.assign(model, { quiz: data.quiz, questions: data.questions || [], participants: [] });
-      renderMeetingQuizAdmin();
+      await generateMeetingQuizDraft(model);
       showToast('สร้างข้อสอบฉบับร่างแล้ว ตรวจแก้ก่อนเผยแพร่', 'success');
     } else if (button.hasAttribute('data-quiz-save')) {
       await apiCall('saveMeetingQuizDraft', { postId: model.postId, quizId: model.quiz.QuizID, questions: readMeetingQuizAdminQuestions() });
