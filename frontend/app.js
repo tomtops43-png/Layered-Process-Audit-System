@@ -3992,7 +3992,7 @@ function meetingTvQuizSlideHtml(dailyQuiz) {
     const setupContent = !dailyQuiz
       ? '<div class="mtg-tv-quiz-empty">ยังไม่มีข้อสอบที่เผยแพร่สำหรับวันนี้</div><p class="mtg-tv-quiz-help">รอ Admin หรือ Engineer สร้างและเผยแพร่ข้อสอบจากหัวข้อประชุมวันนี้</p>'
       : quiz.hasDraft
-        ? '<div class="mtg-tv-quiz-empty">มีข้อสอบฉบับร่างแล้ว</div><p class="mtg-tv-quiz-help">กลับไปที่บอร์ด Meeting เพื่อให้ Admin หรือ Engineer ตรวจแก้และเผยแพร่ก่อนเริ่มสอบ</p>'
+        ? `<div class="mtg-tv-quiz-empty">มีข้อสอบฉบับร่างแล้ว</div>${dailyQuiz.canManage ? `<button type="button" class="btn btn-primary mtg-tv-quiz-generate" data-tv-quiz-draft="${escapeAttr(dailyQuiz.post.PostID)}">✏️ เปิดและแก้ไขฉบับร่าง</button>` : ''}<p class="mtg-tv-quiz-help">ตรวจแก้และเผยแพร่ฉบับร่างก่อนให้พนักงานเริ่มสอบ</p>`
         : dailyQuiz.canGenerate && dailyQuiz.hasSlides
           ? `<p class="mtg-tv-quiz-help">ระบบจะวิเคราะห์รายละเอียดและสไลด์จากทุกหัวข้อของวันนี้ แล้วสร้างข้อสอบ 5 ข้อให้อัตโนมัติ</p><button type="button" class="btn btn-primary mtg-tv-quiz-generate" data-tv-quiz-generate="${escapeAttr(dailyQuiz.post.PostID)}">✨ Gen ข้อสอบ 5 ข้ออัตโนมัติ</button><p class="mtg-tv-quiz-help">หลังสร้าง ระบบจะเปิดหน้าตรวจแก้และเผยแพร่ก่อนให้พนักงานสแกน QR</p>`
           : dailyQuiz.canGenerate
@@ -4144,8 +4144,17 @@ function renderMeetingTv() {
   }));
   $$('[data-tv-quiz-generate]', container).forEach(btn =>
     btn.addEventListener('click', () => generateMeetingQuizFromTv(btn)));
+  $$('[data-tv-quiz-draft]', container).forEach(btn =>
+    btn.addEventListener('click', () => openMeetingQuizDraftFromTv(btn)));
   $$('[data-mtg-status]', container).forEach(btn =>
     btn.addEventListener('click', () => setMeetingPostStatus(btn, btn.dataset.mtgId, btn.dataset.mtgStatus, true)));
+}
+
+async function openMeetingQuizDraftFromTv(button) {
+  const postId = button.dataset.tvQuizDraft;
+  if (!postId) return;
+  closeMeetingTv();
+  await openMeetingQuizAdmin(postId);
 }
 
 async function generateMeetingQuizFromTv(button) {

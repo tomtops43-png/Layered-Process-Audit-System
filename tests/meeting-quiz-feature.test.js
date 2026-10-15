@@ -154,6 +154,7 @@ assert(todaysPrompt.includes('เน้นข้อผิดพลาด'), 'qui
 assert(frontend.includes('Gen ข้อสอบ 5 ข้ออัตโนมัติ'), 'TV QR slide should provide the automatic daily quiz action');
 assert(frontend.includes('generateMeetingQuiz\', { postId }'), 'TV quiz generation should call the protected server action');
 assert(frontend.includes('await openMeetingQuizAdmin(postId)'), 'TV generation should open the draft editor for review and publishing');
+assert(frontend.includes('data-tv-quiz-draft'), 'an existing draft should be editable directly from the TV quiz slide');
 context.SHEET_NAMES.MEETING_POSTS = 'Posts';
 context.getRowsAsObjects = table => table === 'Posts' ? todaysPosts : rows;
 context.meetingPostCompare_ = () => 0;
