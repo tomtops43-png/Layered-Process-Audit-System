@@ -37,12 +37,33 @@ assert(config.includes('GUEST_QUIZ_ACTIONS'), 'API should define the limited QR 
   const roleLine = setup.split('\n').find(line => line.trim().startsWith(`${role}:`));
   assert(roleLine && roleLine.includes('meeting.quiz.manage'), `${role} should be able to manage quizzes`);
 });
-['Admin', 'Engineer'].forEach(role => {
+['Admin', 'Engineer', 'Supervisor', 'Leader'].forEach(role => {
   const roleLine = setup.split('\n').find(line => line.trim().startsWith(`${role}:`));
   assert(roleLine && roleLine.includes('meeting.quiz.generate'), `${role} should be able to generate quizzes`);
 });
+assert(rbac.includes("if (roleKey === 'supervisor' || roleKey === 'leader')"), 'Supervisor and Leader should receive daily quiz generation capability');
 assert(rbac.includes("generateMeetingQuiz: ['meeting.quiz.generate']"), 'quiz generation must have a dedicated permission');
 assert(frontend.includes("'meeting.quiz.generate'"), 'permission editor should expose the quiz generation permission');
+
+const permissionContext = {
+  RBAC_EXEC_MEMO_: { permissions: {}, lineAccess: {} },
+  cleanString_: value => value == null ? '' : String(value).trim(),
+  safeCacheGetJson_: () => null,
+  safeCachePutJson_: () => {},
+  getDefaultRolePermissions_: () => ({}),
+  getCachedRolePermissionRows_: () => ['Supervisor', 'Leader'].map(Role => ({
+    Role, PermissionKey: 'meeting.quiz.generate', Allowed: 'No'
+  })),
+  getCachedUserPermissionRows_: () => [],
+  valuesEqual_: (left, right) => String(left ?? '').toLowerCase() === String(right ?? '').toLowerCase()
+};
+vm.createContext(permissionContext);
+new vm.Script(rbac).runInContext(permissionContext);
+['Supervisor', 'Leader'].forEach(role => {
+  const permissions = permissionContext.getUserPermissions_({ UserID: role, Role: role });
+  assert.strictEqual(permissions['meeting.quiz.generate'], true, `${role} must be able to generate even when an old role row says No`);
+});
+
 assert(meeting.includes('copy.MeetingQuiz = meetingQuizSummaryForPost_(row, user, quizSummaryCache)'));
 assert(quizSource.includes('function meetingQuizPostsForDate_(meetingDate)'));
 assert(quizSource.includes('function meetingQuizRowsForDate_(meetingDate)'));

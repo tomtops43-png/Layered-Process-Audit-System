@@ -31,10 +31,16 @@ function getUserPermissions_(user) {
   // Seed quiz capabilities until setupRbac has written the new role defaults.
   var roleKey = cleanString_(user.Role).toLowerCase();
   if (roleKey === 'engineer') { permissions['meeting.quiz.manage'] = true; permissions['meeting.quiz.generate'] = true; }
-  if (roleKey === 'supervisor' || roleKey === 'leader') permissions['meeting.quiz.manage'] = true;
+  if (roleKey === 'supervisor' || roleKey === 'leader') {
+    permissions['meeting.quiz.manage'] = true;
+    permissions['meeting.quiz.generate'] = true;
+  }
   getCachedRolePermissionRows_().forEach(function (row) {
     if (valuesEqual_(row.Role, user.Role)) permissions[cleanString_(row.PermissionKey)] = isAllowed_(row.Allowed);
   });
+  // Supervisor and Leader are explicitly allowed to create the daily Meeting quiz.
+  // Keep per-user overrides below so individually restricted accounts remain restricted.
+  if (roleKey === 'supervisor' || roleKey === 'leader') permissions['meeting.quiz.generate'] = true;
   getCachedUserPermissionRows_().forEach(function (row) {
     if (valuesEqual_(row.UserID, user.UserID) && cleanString_(row.Allowed).toLowerCase() !== 'inherit') {
       permissions[cleanString_(row.PermissionKey)] = isAllowed_(row.Allowed);
