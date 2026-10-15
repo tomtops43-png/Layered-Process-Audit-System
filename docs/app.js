@@ -217,6 +217,7 @@ function bindEvents() {
   $('#meetingPostPhoto').addEventListener('change', addMeetingPhotoFiles);
   $('#meetingBoard').addEventListener('click', handleMeetingQuizBoardClick);
   $('#closeMeetingQuizAdmin').addEventListener('click', () => $('#meetingQuizAdminDialog').close());
+  $('#meetingQuizAdminDialog').addEventListener('close', stopMeetingQuizAdminPolling);
   $('#closeMeetingQuizExam').addEventListener('click', () => $('#meetingQuizExamDialog').close());
   $('#meetingQuizAdminContent').addEventListener('click', handleMeetingQuizAdminClick);
   $('#meetingQuizExamContent').addEventListener('submit', handleMeetingQuizExamSubmit);
@@ -2988,6 +2989,7 @@ function meetingQuizExamContentElement(model = state.meetingQuizExam) {
 }
 
 async function openMeetingQuizAdmin(postId) {
+  stopMeetingQuizAdminPolling();
   const post = findMeetingPost(postId);
   if (!post) return;
   state.meetingQuizAdmin = { postId, post, quiz: null, questions: [], participants: [], summary: {} };
@@ -3036,14 +3038,52 @@ async function generateMeetingQuizDraft(model, { automatic = false } = {}) {
 async function refreshMeetingQuizAdmin(quizId = '') {
   const current = state.meetingQuizAdmin;
   if (!current) return;
-  try {
-    const data = await apiCall('getMeetingQuizAdmin', { postId: current.postId, ...(quizId ? { quizId } : {}) });
-    Object.assign(current, data);
-    renderMeetingQuizAdmin();
-  } catch (error) {
-    $('#meetingQuizAdminContent').innerHTML = emptyHtml(error.message);
-    showToast(error.message, 'error');
+  if (current.refreshPromise) return current.refreshPromise;
+  current.refreshPromise = (async () => {
+    try {
+      const data = await apiCall('getMeetingQuizAdmin', { postId: current.postId, ...(quizId ? { quizId } : {}) });
+      if (state.meetingQuizAdmin !== current) return;
+      Object.assign(current, data, { lastRefreshedAt: Date.now() });
+      renderMeetingQuizAdmin();
+      syncMeetingQuizAdminPolling();
+    } catch (error) {
+      if (state.meetingQuizAdmin !== current) return;
+      if (!current.silentStatusRefresh) {
+        $('#meetingQuizAdminContent').innerHTML = emptyHtml(error.message);
+        showToast(error.message, 'error');
+      } else {
+        console.warn('Meeting quiz status refresh failed:', error.message || error);
+      }
+    } finally {
+      current.refreshPromise = null;
+      current.silentStatusRefresh = false;
+    }
+  })();
+  return current.refreshPromise;
+}
+
+function stopMeetingQuizAdminPolling() {
+  if (window._meetingQuizAdminPoll) clearInterval(window._meetingQuizAdminPoll);
+  window._meetingQuizAdminPoll = null;
+}
+
+function syncMeetingQuizAdminPolling() {
+  const model = state.meetingQuizAdmin;
+  const dialog = $('#meetingQuizAdminDialog');
+  const isPublished = String(model?.quiz?.Status || '').toLowerCase() === 'published';
+  const needsUpdates = isPublished && !model?.summary?.allSubmitted;
+  if (!dialog?.open || !needsUpdates) {
+    stopMeetingQuizAdminPolling();
+    return;
   }
+  if (window._meetingQuizAdminPoll) return;
+  window._meetingQuizAdminPoll = setInterval(() => {
+    if (!dialog.open || document.visibilityState !== 'visible') return;
+    const current = state.meetingQuizAdmin;
+    if (!current || current.refreshPromise) return;
+    current.silentStatusRefresh = true;
+    refreshMeetingQuizAdmin(current.quiz?.QuizID || '');
+  }, 15000);
 }
 
 function meetingQuizUiQuestion(row = {}) {
@@ -3077,7 +3117,7 @@ function renderMeetingQuizAdmin() {
   }
   const statusText = !quiz ? 'ยังไม่มีฉบับข้อสอบ' : isDraft ? `ฉบับร่าง v${quiz.VersionNo || ''}` : 'เผยแพร่แล้ว · แยกรายชื่อและการปิดรับตามกะ';
   const hasSlides = Number(model.post?.SlideCount || 0) > 0;
-  const canGenerate = Boolean(model.canGenerate) && (!quiz || isDraft) && hasSlides;
+  const canGenerate = Boolean(model.canGenerate) && !quiz && hasSlides;
   const questionEditor = isDraft ? (model.questions || []).map((raw, index) => {
     const q = meetingQuizUiQuestion(raw);
     const choices = ['A', 'B', 'C', 'D'];
@@ -3115,11 +3155,11 @@ function renderMeetingQuizAdmin() {
     ? '<div class="quiz-status-note">กำลังวิเคราะห์รายละเอียดและสไลด์ทุกหัวข้อ แล้วสร้างข้อสอบ 5 ข้อ…</div>'
     : (model.generationError ? `<div class="quiz-status-note">สร้างข้อสอบไม่สำเร็จ: ${escapeHtml(model.generationError)} · ตรวจการตั้งค่า AI/API แล้วกด Gen เพื่อลองอีกครั้ง</div>` : '');
   $('#meetingQuizAdminContent').innerHTML = `
-    <div class="quiz-admin-toolbar"><div><strong>${escapeHtml(model.post?.Topic || '')}</strong><div class="field-help">${escapeHtml(model.post?.MeetingDate || '')} · ${escapeHtml(statusText)}${sourceTopics.length ? `<br>หัวข้อที่ใช้: ${sourceTopics.map(escapeHtml).join(' · ')}` : ''}</div></div>${canGenerate && !model.autoGenerating ? `<button type="button" class="btn btn-secondary" data-quiz-generate>${isDraft ? '🔄 Gen ร่างใหม่ 5 ข้อจากทุกหัวข้อวันนี้' : '✨ Gen ข้อสอบ 5 ข้อจากทุกหัวข้อวันนี้'}</button>` : ''}</div>
+    <div class="quiz-admin-toolbar"><div><strong>${escapeHtml(model.post?.Topic || '')}</strong><div class="field-help">${escapeHtml(model.post?.MeetingDate || '')} · ${escapeHtml(statusText)}${sourceTopics.length ? `<br>หัวข้อที่ใช้: ${sourceTopics.map(escapeHtml).join(' · ')}` : ''}</div></div><div class="quiz-admin-actions">${quiz && !isDraft ? `<span class="field-help">ส่งแล้ว ${summary.submittedCount || 0}/${summary.participantCount || 0} คน${model.lastRefreshedAt ? ` · อัปเดต ${new Date(model.lastRefreshedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : ''}</span><button type="button" class="btn btn-outline" data-quiz-refresh>รีเฟรชสถานะ</button>` : ''}${canGenerate && !model.autoGenerating ? '<button type="button" class="btn btn-secondary" data-quiz-generate>✨ Gen ข้อสอบ 5 ข้อจากทุกหัวข้อวันนี้</button>' : ''}</div></div>
     ${generationFeedback}
-    ${quiz && !isDraft ? `<div class="quiz-status-note">สร้างข้อสอบชุดเดียวกันให้พนักงานทุกกะ แต่แต่ละกะมีรายชื่อและเวลาปิดรับแยกกัน</div><h4>รายชื่อผู้เข้าสอบแยกตามกะ</h4>${roster}` : ''}
+    ${quiz && !isDraft ? `<div class="quiz-status-note">ใช้ข้อสอบและ QR Code ชุดเดียวกันได้ทั้งกะเช้าและกะดึก · รายชื่อและเวลาปิดรับแยกตามกะ · สถานะอัปเดตอัตโนมัติทุก 15 วินาที</div><h4>รายชื่อผู้เข้าสอบแยกตามกะ</h4>${roster}` : ''}
     ${publicUrl ? `<section class="quiz-qr-panel"><div><h4>QR สำหรับพนักงานเข้าสอบ</h4><p class="field-help">พนักงานสแกน QR นี้แล้วกรอกชื่อ–นามสกุลและเลือกกะได้เลย ไม่ต้อง Login</p><div class="quiz-qr-link">${escapeHtml(publicUrl)}</div><button type="button" class="btn btn-outline" data-quiz-copy-link="${escapeAttr(publicUrl)}">คัดลอกลิงก์ข้อสอบ</button></div>${qrSvg ? `<div class="quiz-qr-image" aria-label="QR Code สำหรับเข้าสอบ">${qrSvg}</div>` : '<div class="quiz-qr-image quiz-qr-error">ยังสร้าง QR ไม่ได้ กรุณาคัดลอกลิงก์</div>'}</section>` : ''}
-    ${isDraft ? `<div class="quiz-status-note">ตรวจแก้ได้ก่อนเผยแพร่ · ระบบจะเปิดรับรายชื่อหลังเผยแพร่</div><div id="meetingQuizEditor">${questionEditor}</div><div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-save>บันทึกฉบับร่าง</button><button type="button" class="btn btn-primary" data-quiz-publish>เผยแพร่และเปิดรับสอบ</button></div>` : ''}
+    ${isDraft ? `<div class="quiz-status-note">สร้างข้อสอบชุดเดียวของวันนี้แล้ว · แก้ไขและบันทึกได้ แต่ระบบจะไม่ Gen ชุดซ้ำ · เปิดรับรายชื่อหลังเผยแพร่</div><div id="meetingQuizEditor">${questionEditor}</div><div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-save>บันทึกฉบับร่าง</button><button type="button" class="btn btn-primary" data-quiz-publish>เผยแพร่และเปิดรับสอบ</button></div>` : ''}
     ${quiz && !isDraft && !participants.length ? '<div class="quiz-status-note">ยังไม่มีผู้ลงชื่อสอบในรอบนี้</div>' : ''}
     ${quiz && !isDraft && summary.allSubmitted ? '<div class="quiz-status-note">ทุกกะปิดรับรายชื่อและส่งครบแล้ว ปุ่มเฉลยรวมเปิดให้ทุกคนดูบนบอร์ด</div>' : ''}
     ${model.canManage && !model.canGenerate && (!quiz || isDraft) ? '<div class="quiz-status-note">การสร้างหรือ Gen ข้อสอบใหม่ทำได้โดย Admin หรือ Engineer</div>' : ''}
@@ -3149,7 +3189,7 @@ function readMeetingQuizAdminQuestions() {
 async function handleMeetingQuizAdminClick(event) {
   const model = state.meetingQuizAdmin;
   if (!model) return;
-  const button = event.target.closest('[data-quiz-copy-link],[data-quiz-generate],[data-quiz-save],[data-quiz-publish],[data-quiz-lock],[data-quiz-excuse]');
+  const button = event.target.closest('[data-quiz-copy-link],[data-quiz-generate],[data-quiz-save],[data-quiz-publish],[data-quiz-lock],[data-quiz-excuse],[data-quiz-refresh]');
   if (!button) return;
   try {
     button.disabled = true;
@@ -3157,12 +3197,10 @@ async function handleMeetingQuizAdminClick(event) {
       await navigator.clipboard.writeText(button.dataset.quizCopyLink);
       showToast('คัดลอกลิงก์ข้อสอบแล้ว', 'success');
     } else if (button.hasAttribute('data-quiz-generate')) {
-      if (String(model.quiz?.Status || '').toLowerCase() === 'draft') {
-        const confirmed = await showConfirm({ title: 'สร้างข้อสอบร่างใหม่?', message: 'ระบบจะสร้างคำถามใหม่ครบ 5 ข้อจากทุกหัวข้อของ Meeting วันนี้ และแทนที่คำถามในฉบับร่างนี้', confirmText: 'สร้างใหม่', tone: 'primary' });
-        if (!confirmed) return;
-      }
       await generateMeetingQuizDraft(model);
       showToast('สร้างข้อสอบฉบับร่างแล้ว ตรวจแก้ก่อนเผยแพร่', 'success');
+    } else if (button.hasAttribute('data-quiz-refresh')) {
+      await refreshMeetingQuizAdmin(model.quiz?.QuizID || '');
     } else if (button.hasAttribute('data-quiz-save')) {
       await apiCall('saveMeetingQuizDraft', { postId: model.postId, quizId: model.quiz.QuizID, questions: readMeetingQuizAdminQuestions() });
       await refreshMeetingQuizAdmin(model.quiz.QuizID);

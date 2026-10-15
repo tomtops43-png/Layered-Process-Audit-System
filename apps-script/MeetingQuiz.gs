@@ -339,8 +339,11 @@ function meetingQuizSourceText_(posts) {
       extracted = extractMeetingSlideImageText_(meetingQuizSlideImageUrls_(post), cleanString_(post.SlideFileName));
     }
     if (extracted) section.push('ข้อความที่อ่านได้จากสไลด์: ' + extracted);
+    // Meeting photos are supporting material. Avoid slow OCR when slide text or
+    // meeting details already give the generator usable content; use photos as
+    // a last-resort source for image-only topics.
     var photoUrls = meetingQuizPhotoUrls_(post);
-    if (photoUrls.length) {
+    if (photoUrls.length && !detail && !extracted) {
       var photoText = extractMeetingSlideImageText_(photoUrls, 'Meeting ' + (index + 1) + ' photos');
       if (photoText) section.push('ข้อความที่อ่านได้จากรูปประกอบ: ' + photoText);
     }
@@ -554,40 +557,61 @@ function saveMeetingQuizQuestionRows_(quiz, questions, user) {
 }
 
 function generateMeetingQuiz(payload, user) {
+  var generationCache = null;
+  var generationKey = '';
+  var generationToken = '';
   try {
     var post = meetingQuizPost_(payload.postId, user);
     requireMeetingQuizManager_(user, post);
     requirePermission_(user, 'meeting.quiz.generate');
     var dailyPosts = meetingQuizPostsForDate_(post.MeetingDate);
     if (!dailyPosts.length) throw new Error('ไม่พบหัวข้อ Meeting สำหรับวันนี้');
-    if (!meetingQuizSlideCount_(dailyPosts)) throw new Error('วันนี้ยังไม่มีรายละเอียดหรือสไลด์ในหัวข้อ Meeting ให้ใช้สร้างข้อสอบ');
-    var existingForDate = meetingQuizRowsForDate_(post.MeetingDate);
-    if (existingForDate.some(function (row) { return valuesEqual_(row.Status, 'Published'); })) {
-      throw new Error('วันนี้มีข้อสอบเผยแพร่แล้ว ทำข้อสอบได้วันละ 1 ชุดต่อ Meeting');
-    }
-    var existingDraft = existingForDate.filter(function (row) { return valuesEqual_(row.Status, 'Draft'); })[0] || null;
-    if (existingDraft && !valuesEqual_(existingDraft.QuizID, payload.quizId)) {
-      throw new Error('วันนี้มีฉบับร่างอยู่แล้ว กรุณาเปิดฉบับร่างเดิมเพื่อแก้ไขหรือสร้างใหม่จากหัวข้อทั้งหมด');
-    }
-    var source = meetingQuizSourceText_(dailyPosts);
-    var generated = normalizeMeetingQuizQuestions_(callMeetingQuizGenerator_(buildMeetingQuizPrompt_(dailyPosts, source)).questions);
-    var sourceHash = meetingQuizSourceHash_(dailyPosts, source);
+    var meetingDate = dateOnly_(post.MeetingDate);
+    generationCache = CacheService.getScriptCache();
+    generationKey = 'meetingQuizGenerating:' + meetingDate.replace(/[^0-9]/g, '');
+    generationToken = Utilities.getUuid();
     var lock = LockService.getScriptLock();
     lock.waitLock(15000);
     try {
-      existingForDate = meetingQuizRowsForDate_(post.MeetingDate);
+      var existingForDate = meetingQuizRowsForDate_(meetingDate);
       if (existingForDate.some(function (row) { return valuesEqual_(row.Status, 'Published'); })) {
-        throw new Error('วันนี้มีข้อสอบเผยแพร่แล้ว ทำข้อสอบได้วันละ 1 ชุดต่อ Meeting');
+        throw new Error('วันนี้มีข้อสอบเผยแพร่แล้ว ใช้ QR ชุดเดิมร่วมกันได้ทั้งสองกะ');
+      }
+      var existingDraft = existingForDate.filter(function (row) { return valuesEqual_(row.Status, 'Draft'); })[0] || null;
+      if (existingDraft && meetingQuizQuestions_(existingDraft.QuizID).length === 5) {
+        return jsonResponse(true, 'ใช้ข้อสอบฉบับร่าง 5 ข้อที่สร้างไว้แล้วของวันนี้', {
+          quiz: existingDraft, questions: meetingQuizQuestions_(existingDraft.QuizID).map(meetingQuizQuestionForReview_)
+        });
+      }
+      if (generationCache.get(generationKey)) {
+        throw new Error('กำลังสร้างข้อสอบชุดเดียวของวันนี้อยู่ กรุณารอสักครู่แล้วเปิดข้อสอบอีกครั้ง');
+      }
+      if (!meetingQuizSlideCount_(dailyPosts)) throw new Error('วันนี้ยังไม่มีรายละเอียดหรือสไลด์ในหัวข้อ Meeting ให้ใช้สร้างข้อสอบ');
+      // Keep the slow Drive/Gemini work outside the script lock. This short-lived
+      // marker prevents two admins from spending time generating duplicate sets.
+      generationCache.put(generationKey, generationToken, 600);
+    } finally { lock.releaseLock(); }
+
+    var source = meetingQuizSourceText_(dailyPosts);
+    var generated = normalizeMeetingQuizQuestions_(callMeetingQuizGenerator_(buildMeetingQuizPrompt_(dailyPosts, source)).questions);
+    var sourceHash = meetingQuizSourceHash_(dailyPosts, source);
+    lock.waitLock(15000);
+    try {
+      existingForDate = meetingQuizRowsForDate_(meetingDate);
+      if (existingForDate.some(function (row) { return valuesEqual_(row.Status, 'Published'); })) {
+        throw new Error('วันนี้มีข้อสอบเผยแพร่แล้ว ใช้ QR ชุดเดิมร่วมกันได้ทั้งสองกะ');
       }
       existingDraft = existingForDate.filter(function (row) { return valuesEqual_(row.Status, 'Draft'); })[0] || null;
-      if (existingDraft && !valuesEqual_(existingDraft.QuizID, payload.quizId)) {
-        throw new Error('มีผู้สร้างฉบับร่างของ Meeting วันนี้แล้ว กรุณาเปิดฉบับร่างเดิมเพื่อแก้ไข');
+      if (existingDraft && meetingQuizQuestions_(existingDraft.QuizID).length === 5) {
+        return jsonResponse(true, 'ใช้ข้อสอบฉบับร่าง 5 ข้อที่สร้างไว้แล้วของวันนี้', {
+          quiz: existingDraft, questions: meetingQuizQuestions_(existingDraft.QuizID).map(meetingQuizQuestionForReview_)
+        });
       }
       var version = existingForDate.reduce(function (maximum, row) { return Math.max(maximum, toNumber_(row.VersionNo)); }, 0) + 1;
       var now = formatDateTimeBangkok(new Date());
       var quiz = existingDraft || {
         QuizID: generateId('MQZ', SHEET_NAMES.MEETING_QUIZZES, 'QuizID', getPeriodMonth(new Date())),
-        PostID: post.PostID, MeetingDate: dateOnly_(post.MeetingDate),
+        PostID: post.PostID, MeetingDate: meetingDate,
         Status: 'Draft', RosterStatus: 'Open', CreatedAt: now, CreatedBy: user.UserID
       };
       quiz.SourcePostIDs = JSON.stringify(dailyPosts.map(function (row) { return cleanString_(row.PostID); }));
@@ -614,11 +638,22 @@ function generateMeetingQuiz(payload, user) {
         appendObject(SHEET_NAMES.MEETING_QUIZZES, quiz);
       }
       saveMeetingQuizQuestionRows_(quiz, generated, user);
-      return jsonResponse(true, existingDraft ? 'สร้างข้อสอบฉบับร่างใหม่ 5 ข้อจากทุกหัวข้อของวันนี้แล้ว' : 'สร้างข้อสอบฉบับร่าง 5 ข้อจากทุกหัวข้อของวันนี้แล้ว กรุณาตรวจและบันทึกก่อนเผยแพร่', {
+      return jsonResponse(true, existingDraft ? 'ซ่อมฉบับร่างข้อสอบที่ยังไม่ครบของวันนี้แล้ว' : 'สร้างข้อสอบฉบับร่าง 5 ข้อจากทุกหัวข้อของวันนี้แล้ว กรุณาตรวจและบันทึกก่อนเผยแพร่', {
         quiz: quiz, questions: meetingQuizQuestions_(quiz.QuizID).map(meetingQuizQuestionForReview_)
       });
     } finally { lock.releaseLock(); }
   } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
+  finally {
+    if (generationCache && generationKey && generationToken) {
+      try {
+        var cleanupLock = LockService.getScriptLock();
+        cleanupLock.waitLock(15000);
+        try {
+          if (generationCache.get(generationKey) === generationToken) generationCache.remove(generationKey);
+        } finally { cleanupLock.releaseLock(); }
+      } catch (cleanupError) {}
+    }
+  }
 }
 
 function hashMeetingQuizText_(text) {

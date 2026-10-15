@@ -662,6 +662,7 @@ textarea{line-height:1.45}
 .meeting-quiz-modal{padding:20px;overflow:auto}
 .meeting-quiz-modal .modal-head{position:sticky;top:-20px;z-index:2;background:#fff;padding:4px 0 12px;border-bottom:1px solid var(--border)}
 .quiz-admin-toolbar,.quiz-roster-summary,.quiz-status-note{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:12px 0}
+.quiz-admin-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .quiz-roster-list{display:grid;gap:6px;margin:10px 0;padding:0;list-style:none}
 .quiz-shift-roster{padding:10px 12px;margin:12px 0;border:1px solid var(--border);border-radius:12px;background:#fbfcfd}
 .quiz-roster-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:9px;background:#f8fafb}
