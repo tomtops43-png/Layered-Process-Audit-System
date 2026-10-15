@@ -26,6 +26,7 @@ var SHEET_NAMES = {
   MEETING_QUIZZES: 'MeetingQuizzes',
   MEETING_QUIZ_QUESTIONS: 'MeetingQuizQuestions',
   MEETING_QUIZ_PARTICIPANTS: 'MeetingQuizParticipants',
+  MEETING_QUIZ_ANSWERS: 'MeetingQuizAnswers',
   LISTS: 'DO_NOT_DELETE_Lists',
   ROLE_PERMISSIONS: 'RolePermissions',
   USER_PERMISSIONS: 'UserPermissions',
@@ -52,6 +53,7 @@ SHEET_HEADERS[SHEET_NAMES.MEETING_ACKS] = ['PostID', 'UserID', 'UserName', 'Acke
 SHEET_HEADERS[SHEET_NAMES.MEETING_QUIZZES] = ['QuizID', 'PostID', 'MeetingDate', 'SourcePostIDs', 'SourceHash', 'SourceTitle', 'Status', 'PublicToken', 'RosterStatus', 'ShiftRosterJSON', 'ShiftRosterClosedAtJSON', 'ShiftRosterClosedByJSON', 'VersionNo', 'GeneratedAt', 'GeneratedBy', 'PublishedAt', 'PublishedBy', 'RosterClosedAt', 'RosterClosedBy', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'];
 SHEET_HEADERS[SHEET_NAMES.MEETING_QUIZ_QUESTIONS] = ['QuestionID', 'QuizID', 'PostID', 'QuestionNo', 'QuestionTH', 'ChoiceATH', 'ChoiceBTH', 'ChoiceCTH', 'ChoiceDTH', 'QuestionMY', 'ChoiceAMY', 'ChoiceBMY', 'ChoiceCMY', 'ChoiceDMY', 'CorrectOption', 'ExplanationTH', 'ExplanationMY', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'];
 SHEET_HEADERS[SHEET_NAMES.MEETING_QUIZ_PARTICIPANTS] = ['ParticipantID', 'QuizID', 'PostID', 'Shift', 'FirstName', 'LastName', 'DisplayName', 'Language', 'ParticipantStatus', 'RegisteredAt', 'RegisteredByUserID', 'SubmittedAt', 'AnswersJSON', 'Score', 'TotalQuestions', 'TokenHash', 'ExcusedAt', 'ExcusedBy', 'ExcuseReason', 'UpdatedAt'];
+SHEET_HEADERS[SHEET_NAMES.MEETING_QUIZ_ANSWERS] = ['AnswerID', 'QuizID', 'MeetingDate', 'ParticipantID', 'Shift', 'FirstName', 'LastName', 'DisplayName', 'Language', 'QuestionNo', 'Question', 'SelectedOption', 'SelectedText', 'CorrectOption', 'CorrectText', 'IsCorrect', 'Result', 'SubmittedAt'];
 SHEET_HEADERS[SHEET_NAMES.LISTS] = ['ListType', 'ListValue', 'DisplayText', 'SortOrder', 'ActiveStatus'];
 SHEET_HEADERS[SHEET_NAMES.ROLE_PERMISSIONS] = ['Role', 'PermissionKey', 'Allowed', 'Description', 'UpdatedAt', 'UpdatedBy'];
 SHEET_HEADERS[SHEET_NAMES.USER_PERMISSIONS] = ['UserID', 'PermissionKey', 'Allowed', 'Reason', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'];

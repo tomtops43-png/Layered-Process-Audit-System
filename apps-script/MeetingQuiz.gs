@@ -4,6 +4,30 @@ function ensureMeetingQuizSheets_() {
   ensureMeetingSheet_(SHEET_NAMES.MEETING_QUIZZES);
   ensureMeetingSheet_(SHEET_NAMES.MEETING_QUIZ_QUESTIONS);
   ensureMeetingSheet_(SHEET_NAMES.MEETING_QUIZ_PARTICIPANTS);
+  ensureMeetingSheet_(SHEET_NAMES.MEETING_QUIZ_ANSWERS);
+}
+
+/** Count posts of the day that have an attached slide file; days without slides do not get a quiz. */
+function meetingQuizSlideCount_(posts) {
+  return (Array.isArray(posts) ? posts : [posts]).filter(function (post) {
+    return Boolean(cleanString_(post && post.SlideFileURL));
+  }).length;
+}
+
+/** Write one row per question for a submitted participant so the sheet shows each answer and ถูก/ผิด. */
+function saveMeetingQuizAnswerRows_(quiz, participant, review, submittedAt) {
+  var period = getPeriodMonth(new Date());
+  appendBatch_(SHEET_NAMES.MEETING_QUIZ_ANSWERS, (review.questions || []).map(function (row) {
+    return {
+      AnswerID: generateId('MQA', SHEET_NAMES.MEETING_QUIZ_ANSWERS, 'AnswerID', period),
+      QuizID: quiz.QuizID, MeetingDate: dateOnly_(quiz.MeetingDate), ParticipantID: participant.ParticipantID,
+      Shift: cleanString_(participant.Shift), FirstName: participant.FirstName, LastName: participant.LastName,
+      DisplayName: participant.DisplayName, Language: participant.Language, QuestionNo: row.QuestionNo,
+      Question: row.Question, SelectedOption: row.SelectedOption, SelectedText: row.SelectedText,
+      CorrectOption: row.CorrectOption, CorrectText: row.CorrectText, IsCorrect: row.IsCorrect ? 'TRUE' : 'FALSE',
+      Result: row.IsCorrect ? 'ถูก' : 'ผิด', SubmittedAt: submittedAt
+    };
+  }));
 }
 
 function meetingQuizPost_(postId, user) {
@@ -93,7 +117,8 @@ function meetingQuizSummaryForPost_(post, user, summaryCache) {
     var drafts = getRowsAsObjects(SHEET_NAMES.MEETING_QUIZZES).filter(function (row) {
       return valuesEqual_(dateOnly_(row.MeetingDate), meetingDate) && valuesEqual_(row.Status, 'Draft');
     });
-    summary = { available: false, canManage: canManage, canGenerate: canGenerate, hasDraft: drafts.length > 0, sourcePostCount: meetingQuizPostsForDate_(post.MeetingDate).length };
+    var dayPosts = meetingQuizPostsForDate_(post.MeetingDate);
+    summary = { available: false, canManage: canManage, canGenerate: canGenerate, hasDraft: drafts.length > 0, sourcePostCount: dayPosts.length, slideCount: meetingQuizSlideCount_(dayPosts) };
     if (summaryCache) summaryCache.byDate[meetingDate] = summary;
     return summary;
   }
@@ -111,6 +136,11 @@ function meetingQuizSummaryForPost_(post, user, summaryCache) {
     participantCount: participantCount,
     submittedCount: submittedCount,
     shiftSessions: sessions,
+    people: meetingQuizParticipants_(quiz.QuizID).filter(function (row) {
+      return !valuesEqual_(row.ParticipantStatus, 'Excused');
+    }).map(function (row) {
+      return { name: cleanString_(row.DisplayName), shift: cleanString_(row.Shift), submitted: valuesEqual_(row.ParticipantStatus, 'Submitted') };
+    }),
     allSubmitted: meetingQuizAllSubmitted_(quiz, sessions),
     sourcePostCount: (function () {
       try { return JSON.parse(cleanString_(quiz.SourcePostIDs) || '[]').length; } catch (_) { return 1; }
@@ -406,7 +436,7 @@ function callMeetingQuizGenerator_(prompt) {
   var properties = PropertiesService.getScriptProperties();
   var apiKey = cleanString_(properties.getProperty('GEMINI_API_KEY'));
   if (!apiKey) throw new Error('ยังไม่ได้ตั้งค่า GEMINI_API_KEY ใน Apps Script Script Properties');
-  var model = cleanString_(properties.getProperty('GEMINI_MODEL')) || 'gemini-3.8-flash';
+  var model = cleanString_(properties.getProperty('GEMINI_MODEL')) || 'gemini-2.5-flash';
   var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent';
   var response = UrlFetchApp.fetch(url, {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
@@ -414,7 +444,8 @@ function callMeetingQuizGenerator_(prompt) {
     payload: JSON.stringify({
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
-        responseFormat: { text: { mimeType: 'APPLICATION_JSON', schema: meetingQuizResponseSchema_() } },
+        responseMimeType: 'application/json',
+        responseJsonSchema: meetingQuizResponseSchema_(),
         temperature: 0.25
       }
     })
@@ -490,6 +521,7 @@ function generateMeetingQuiz(payload, user) {
     requirePermission_(user, 'meeting.quiz.generate');
     var dailyPosts = meetingQuizPostsForDate_(post.MeetingDate);
     if (!dailyPosts.length) throw new Error('ไม่พบหัวข้อ Meeting สำหรับวันนี้');
+    if (!meetingQuizSlideCount_(dailyPosts)) throw new Error('วันนี้ไม่มีสไลด์นำเสนอ จึงไม่ต้องสร้างข้อสอบ');
     var existingForDate = meetingQuizRowsForDate_(post.MeetingDate);
     if (existingForDate.some(function (row) { return valuesEqual_(row.Status, 'Published'); })) {
       throw new Error('วันนี้มีข้อสอบเผยแพร่แล้ว ทำข้อสอบได้วันละ 1 ชุดต่อ Meeting');
@@ -571,13 +603,14 @@ function getMeetingQuizAdmin(payload, user) {
       return {
         ParticipantID: row.ParticipantID, Shift: cleanString_(row.Shift), FirstName: row.FirstName, LastName: row.LastName,
         DisplayName: row.DisplayName, Language: row.Language, ParticipantStatus: row.ParticipantStatus,
-        RegisteredAt: row.RegisteredAt, SubmittedAt: row.SubmittedAt, Score: row.Score
+        RegisteredAt: row.RegisteredAt, SubmittedAt: row.SubmittedAt, Score: row.Score, TotalQuestions: row.TotalQuestions
       };
     }) : [];
     return jsonResponse(true, 'ข้อมูลข้อสอบพร้อมแล้ว', {
       canGenerate: hasPermission_(user, 'meeting.quiz.generate'),
       post: {
         PostID: post.PostID, MeetingDate: dateOnly_(post.MeetingDate),
+        SlideCount: meetingQuizSlideCount_(meetingQuizPostsForDate_(post.MeetingDate)),
         Topic: selected ? cleanString_(selected.SourceTitle) : meetingQuizDailyTitle_(meetingQuizPostsForDate_(post.MeetingDate)),
         SourceTopics: meetingQuizPostsForDate_(post.MeetingDate).map(function (row) {
           return { PostID: row.PostID, Topic: cleanString_(row.Topic), SlideFileName: cleanString_(row.SlideFileName) };
@@ -795,6 +828,8 @@ function submitMeetingQuiz(payload, user) {
       ParticipantStatus: 'Submitted', Language: language, SubmittedAt: now, AnswersJSON: JSON.stringify(answerMap),
       Score: review.score, TotalQuestions: review.total, UpdatedAt: now
     });
+    participant.Language = language;
+    saveMeetingQuizAnswerRows_(quiz, participant, meetingQuizReview_(quiz.QuizID, JSON.stringify(answerMap), 'TH'), now);
     return jsonResponse(true, 'ส่งข้อสอบแล้ว', { review: review, allSubmitted: meetingQuizAllSubmitted_(quiz) });
   } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
   finally { try { lock.releaseLock(); } catch (_) {} }

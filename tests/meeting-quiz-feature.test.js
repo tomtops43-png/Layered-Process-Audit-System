@@ -141,8 +141,8 @@ context.UrlFetchApp = { fetch: (url, options) => {
 } };
 context.callMeetingQuizGenerator_('test prompt');
 const generationPayload = JSON.parse(generationRequest.options.payload);
-assert.strictEqual(generationPayload.generationConfig.responseFormat.text.mimeType, 'APPLICATION_JSON');
-assert.strictEqual(generationPayload.generationConfig.responseFormat.text.schema.type, 'object');
+assert.strictEqual(generationPayload.generationConfig.responseMimeType, 'application/json');
+assert.strictEqual(generationPayload.generationConfig.responseJsonSchema.type, 'object');
 assert(!generationRequest.url.includes('test-key'), 'API key must not appear in the request URL');
 assert.strictEqual(generationRequest.options.headers['x-goog-api-key'], 'test-key');
 const personalReview = context.meetingQuizReview_('Q1', JSON.stringify({ '1': 'A', '2': 'A' }), 'TH');
@@ -247,6 +247,8 @@ context.meetingQuizFindParticipant_ = (quizId, token) => quizId === 'Q-QR' && to
 context.meetingQuizAllSubmitted_ = () => false;
 let submittedAnswers;
 context.updateObjectById = (table, field, id, update) => { submittedAnswers = update; };
+let answerLogRows = [];
+context.appendBatch_ = (table, items) => { if (table === context.SHEET_NAMES.MEETING_QUIZ_ANSWERS) answerLogRows = items; };
 const guestSubmission = context.submitMeetingQuiz({
   publicToken: 'secret-daily-quiz-token', quizId: 'Q-QR', participantToken: 'employee-answer-token', language: 'TH',
   answers: [{ questionNo: 1, choice: 'B' }, { questionNo: 2, choice: 'B' }]
@@ -255,6 +257,9 @@ assert.strictEqual(guestSubmission.success, true, `QR guest should be able to su
 assert.strictEqual(submittedAnswers.ParticipantStatus, 'Submitted');
 assert.strictEqual(guestSubmission.data.review.score, 1, 'guest submission should return an immediate personal review');
 assert.strictEqual(guestSubmission.data.review.questions[1].CorrectOption, 'A');
+assert.strictEqual(answerLogRows.length, 2, 'each submitted answer should be logged to the answers sheet');
+assert.strictEqual(answerLogRows[0].DisplayName, insertedParticipant.DisplayName);
+assert.deepStrictEqual(answerLogRows.map(row => row.Result), ['ถูก', 'ผิด'], 'answer log should record correct/incorrect per question');
 
 const routedGuestCalls = [];
 const routerContext = {

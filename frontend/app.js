@@ -2955,7 +2955,7 @@ function meetingPostCardHtml(row, isCarry, showQuizActions = true) {
       return '';
     })()}
     ${showQuizActions && quiz.available
-      ? `<div class="mtg-quiz-summary">ข้อสอบ 5 ข้อ · ${(quiz.shiftSessions || []).map(session => `${escapeHtml(session.label || session.shift)} ${session.submittedCount || 0}/${session.participantCount || 0} คน${session.rosterStatus === 'Locked' ? ' · ปิดรับ' : ' · เปิดรับ'}`).join(' · ')}</div>`
+      ? `<div class="mtg-quiz-summary">ข้อสอบ 5 ข้อ · ${(quiz.shiftSessions || []).map(session => `${escapeHtml(session.label || session.shift)} ${session.submittedCount || 0}/${session.participantCount || 0} คน${session.rosterStatus === 'Locked' ? ' · ปิดรับ' : ' · เปิดรับ'}`).join(' · ')}</div>${(quiz.people || []).length ? `<div class="mtg-quiz-summary">✅ ตอบครบแล้ว: ${quiz.people.filter(p => p.submitted).map(p => `${escapeHtml(p.name)} (${escapeHtml(p.shift)})`).join(', ') || '-'}<br>⏳ ยังไม่ส่ง: ${quiz.people.filter(p => !p.submitted).map(p => `${escapeHtml(p.name)} (${escapeHtml(p.shift)})`).join(', ') || '-'}</div>` : ''}`
       : (showQuizActions && quiz.canManage ? '<div class="mtg-quiz-summary">วันนี้ยังไม่มีข้อสอบ</div>' : '')}
     ${meetingAckSectionHtml(row)}
     <div class="mtg-meta">${metaParts.join(' · ')}</div>
@@ -3040,7 +3040,8 @@ function renderMeetingQuizAdmin() {
     } catch (error) { console.warn('Could not build quiz QR code:', error); }
   }
   const statusText = !quiz ? 'ยังไม่มีฉบับข้อสอบ' : isDraft ? `ฉบับร่าง v${quiz.VersionNo || ''}` : 'เผยแพร่แล้ว · แยกรายชื่อและการปิดรับตามกะ';
-  const canGenerate = Boolean(model.canGenerate) && (!quiz || isDraft);
+  const hasSlides = Number(model.post?.SlideCount || 0) > 0;
+  const canGenerate = Boolean(model.canGenerate) && (!quiz || isDraft) && hasSlides;
   const questionEditor = isDraft ? (model.questions || []).map((raw, index) => {
     const q = meetingQuizUiQuestion(raw);
     const choices = ['A', 'B', 'C', 'D'];
@@ -3066,7 +3067,7 @@ function renderMeetingQuizAdmin() {
     const peopleHtml = people.length ? `<ul class="quiz-roster-list">${people.map(person => {
       const submitted = person.ParticipantStatus === 'Submitted';
       const excused = person.ParticipantStatus === 'Excused';
-      return `<li class="quiz-roster-item"><span>${escapeHtml(person.DisplayName)} · ${submitted ? 'ส่งแล้ว' : (excused ? 'ยกเว้น' : 'ยังไม่ส่ง')}</span>${!submitted && !excused ? `<button type="button" class="btn btn-ghost btn-compact" data-quiz-excuse="${escapeAttr(person.ParticipantID)}">ยกเว้นจากรอบ</button>` : ''}</li>`;
+      return `<li class="quiz-roster-item"><span>${escapeHtml(person.DisplayName)} · ${submitted ? `ส่งแล้ว · ${escapeHtml(String(person.Score ?? ''))}/${escapeHtml(String(person.TotalQuestions || 5))} คะแนน` : (excused ? 'ยกเว้น' : 'ยังไม่ส่ง')}</span>${!submitted && !excused ? `<button type="button" class="btn btn-ghost btn-compact" data-quiz-excuse="${escapeAttr(person.ParticipantID)}">ยกเว้นจากรอบ</button>` : ''}</li>`;
     }).join('')}</ul>` : '<div class="empty-state">ยังไม่มีผู้ลงชื่อสอบในกะนี้</div>';
     const lockButton = session.rosterStatus === 'Locked'
       ? '<span class="status-badge status-ok">ปิดรับรายชื่อแล้ว</span>'
@@ -3082,6 +3083,7 @@ function renderMeetingQuizAdmin() {
     ${quiz && !isDraft && !participants.length ? '<div class="quiz-status-note">ยังไม่มีผู้ลงชื่อสอบในรอบนี้</div>' : ''}
     ${quiz && !isDraft && summary.allSubmitted ? '<div class="quiz-status-note">ทุกกะปิดรับรายชื่อและส่งครบแล้ว ปุ่มเฉลยรวมเปิดให้ทุกคนดูบนบอร์ด</div>' : ''}
     ${model.canManage && !model.canGenerate && (!quiz || isDraft) ? '<div class="quiz-status-note">การสร้างหรือ Gen ข้อสอบใหม่ทำได้โดย Admin หรือ Engineer</div>' : ''}
+    ${!quiz && !hasSlides ? '<div class="quiz-status-note">วันนี้ไม่มีสไลด์นำเสนอ จึงไม่ต้องสร้างข้อสอบ</div>' : ''}
     ${!quiz ? '<div class="quiz-status-note">Meeting หนึ่งวันใช้ข้อสอบชุดเดียว 5 ข้อ โดยรวมรายละเอียดและสไลด์จากทุกหัวข้อของวันนั้น แล้วตรวจแก้ก่อนเผยแพร่</div>' : ''}`;
 }
 
