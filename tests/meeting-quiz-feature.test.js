@@ -67,6 +67,10 @@ new vm.Script(rbac).runInContext(permissionContext);
 assert(meeting.includes('copy.MeetingQuiz = meetingQuizSummaryForPost_(row, user, quizSummaryCache)'));
 assert(quizSource.includes('function meetingQuizPostsForDate_(meetingDate)'));
 assert(quizSource.includes('function meetingQuizRowsForDate_(meetingDate)'));
+assert(quizSource.includes('meetingQuizSlideImageUrls_(post).length'), 'slide images shown in TV mode must count as presentation slides');
+assert(quizSource.includes('cleanString_(post && post.Detail)'), 'meeting detail cards shown in TV mode must count as quiz content');
+assert(quizSource.includes('meetingQuizPhotoUrls_(post).length'), 'photos shown in TV mode must count as quiz content');
+assert(quizSource.includes('function extractMeetingSlideImageText_(imageUrls, fileName)'), 'image-only slides should be OCRed for quiz context');
 assert(quizSource.includes('function meetingQuizShiftSessions_(quiz)'));
 assert(quizSource.includes('function meetingQuizSetShiftRoster_(quiz, shift, status, user)'));
 assert(quizSource.includes('quiz.SourcePostIDs = JSON.stringify(dailyPosts.map'));
@@ -122,6 +126,22 @@ const todaysPosts = [
   { PostID: 'TODAY-3', MeetingDate: '2026-10-07', Topic: 'อุปกรณ์ป้องกันส่วนบุคคล', Detail: 'พนักงานและผู้รับเหมาทุกกะต้องสวม Safety Shoes, Earplugs และ Uniform' }
 ];
 const todaysSource = context.meetingQuizSourceText_(todaysPosts);
+assert.strictEqual(context.meetingQuizSlideCount_([
+  { SlideFileURL: 'https://drive.google.com/file/d/source/view' },
+  { SlideImageURLs: 'https://drive.google.com/file/d/image-one/view, https://drive.google.com/file/d/image-two/view' },
+  { Detail: 'เนื้อหาในหัวข้อที่แสดงเป็นสไลด์ TV' },
+  { SlideFileURL: '', SlideImageURLs: '' }
+]), 3, 'quiz eligibility must recognise files, TV slide images, and meeting detail cards');
+const originalImageOcr = context.extractMeetingSlideImageText_;
+let ocrUrls = [];
+context.extractMeetingSlideImageText_ = urls => { ocrUrls = urls; return 'OCR จากภาพสไลด์'; };
+const imageOnlySource = context.meetingQuizSourceText_([{ Topic: 'หัวข้อภาพ', SlideImageURLs: 'https://drive.google.com/file/d/image-only/view' }]);
+assert(imageOnlySource.includes('OCR จากภาพสไลด์'), 'quiz source text should fall back to OCR when only TV slide images remain');
+assert.strictEqual(ocrUrls.length, 1);
+const photoSource = context.meetingQuizSourceText_([{ Topic: 'หัวข้อรูปถ่าย', PhotoURL: 'https://drive.google.com/file/d/photo-only/view' }]);
+assert(photoSource.includes('OCR จากภาพสไลด์'), 'quiz source text should include OCR from meeting photos shown in TV mode');
+assert.strictEqual(ocrUrls.length, 1);
+context.extractMeetingSlideImageText_ = originalImageOcr;
 const todaysPrompt = context.buildMeetingQuizPrompt_(todaysPosts, todaysSource);
 assert(todaysPrompt.includes('เพียง 1 ชุด จำนวน 5 ข้อ'), 'today should produce one five-question daily set');
 assert(todaysPrompt.includes('ตรวจ Part No / Model / Label'));
@@ -133,6 +153,7 @@ assert(todaysPrompt.includes('วิเคราะห์ปัญหาหล�
 assert(todaysPrompt.includes('เน้นข้อผิดพลาด'), 'quiz generation should emphasize process errors in the meeting content');
 assert(frontend.includes('Gen ข้อสอบ 5 ข้ออัตโนมัติ'), 'TV QR slide should provide the automatic daily quiz action');
 assert(frontend.includes('generateMeetingQuiz\', { postId }'), 'TV quiz generation should call the protected server action');
+assert(frontend.includes('await openMeetingQuizAdmin(postId)'), 'TV generation should open the draft editor for review and publishing');
 context.SHEET_NAMES.MEETING_POSTS = 'Posts';
 context.getRowsAsObjects = table => table === 'Posts' ? todaysPosts : rows;
 context.meetingPostCompare_ = () => 0;

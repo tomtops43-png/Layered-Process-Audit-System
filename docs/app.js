@@ -2996,7 +2996,7 @@ async function openMeetingQuizAdmin(postId) {
   $('#meetingQuizAdminDialog').showModal();
   await refreshMeetingQuizAdmin();
   const model = state.meetingQuizAdmin;
-  if (model && !model.quiz && model.canGenerate && meetingQuizIsToday(model.post?.MeetingDate)) {
+  if (model && !model.quiz && model.canGenerate && Number(model.post?.SlideCount || 0) > 0 && meetingQuizIsToday(model.post?.MeetingDate)) {
     try {
       await generateMeetingQuizDraft(model, { automatic: true });
       showToast('สร้างข้อสอบฉบับร่าง 5 ข้อจากทุกหัวข้อวันนี้แล้ว ตรวจแก้ก่อนเผยแพร่', 'success');
@@ -3884,7 +3884,8 @@ function meetingTvDailyQuiz() {
     post,
     quiz: post.MeetingQuiz || {},
     canManage: Boolean(post.MeetingQuiz?.canManage),
-    canGenerate: Boolean(post.MeetingQuiz?.canGenerate)
+    canGenerate: Boolean(post.MeetingQuiz?.canGenerate),
+    hasSlides: Number(post.MeetingQuiz?.slideCount || 0) > 0
   } : null;
 }
 
@@ -3992,8 +3993,10 @@ function meetingTvQuizSlideHtml(dailyQuiz) {
       ? '<div class="mtg-tv-quiz-empty">ยังไม่มีข้อสอบที่เผยแพร่สำหรับวันนี้</div><p class="mtg-tv-quiz-help">รอ Admin หรือ Engineer สร้างและเผยแพร่ข้อสอบจากหัวข้อประชุมวันนี้</p>'
       : quiz.hasDraft
         ? '<div class="mtg-tv-quiz-empty">มีข้อสอบฉบับร่างแล้ว</div><p class="mtg-tv-quiz-help">กลับไปที่บอร์ด Meeting เพื่อให้ Admin หรือ Engineer ตรวจแก้และเผยแพร่ก่อนเริ่มสอบ</p>'
-        : dailyQuiz.canGenerate
-          ? `<p class="mtg-tv-quiz-help">ระบบจะวิเคราะห์ปัญหาหลักและวิธีป้องกันจากทุกหัวข้อและสไลด์ของวันนี้ แล้วสร้างข้อสอบ 5 ข้อให้อัตโนมัติ</p><button type="button" class="btn btn-primary mtg-tv-quiz-generate" data-tv-quiz-generate="${escapeAttr(dailyQuiz.post.PostID)}">✨ Gen ข้อสอบ 5 ข้ออัตโนมัติ</button><p class="mtg-tv-quiz-help">หลังสร้างแล้ว ให้ตรวจแก้และกดเผยแพร่จากบอร์ด Meeting ก่อนให้พนักงานสแกน</p>`
+        : dailyQuiz.canGenerate && dailyQuiz.hasSlides
+          ? `<p class="mtg-tv-quiz-help">ระบบจะวิเคราะห์รายละเอียดและสไลด์จากทุกหัวข้อของวันนี้ แล้วสร้างข้อสอบ 5 ข้อให้อัตโนมัติ</p><button type="button" class="btn btn-primary mtg-tv-quiz-generate" data-tv-quiz-generate="${escapeAttr(dailyQuiz.post.PostID)}">✨ Gen ข้อสอบ 5 ข้ออัตโนมัติ</button><p class="mtg-tv-quiz-help">หลังสร้าง ระบบจะเปิดหน้าตรวจแก้และเผยแพร่ก่อนให้พนักงานสแกน QR</p>`
+          : dailyQuiz.canGenerate
+            ? '<div class="mtg-tv-quiz-empty">ยังไม่มีรายละเอียดหรือสไลด์ประกอบสำหรับวันนี้</div><p class="mtg-tv-quiz-help">เพิ่มรายละเอียดหรือแนบสไลด์ในหัวข้อ Meeting ก่อนสร้างข้อสอบ</p>'
           : '<div class="mtg-tv-quiz-empty">วันนี้ยังไม่มีข้อสอบเผยแพร่</div><p class="mtg-tv-quiz-help">รอ Admin หรือ Engineer สร้างและเผยแพร่ข้อสอบจากหัวข้อประชุมวันนี้</p>';
     return `<div class="mtg-tv-slide mtg-tv-quiz-slide tv-anim-${meetingTvDir}">
       <div class="mtg-tv-chips"><span class="mtg-tv-chip mtg-tv-quiz-chip">📝 แบบทดสอบหลัง Meeting</span></div>
@@ -4103,7 +4106,7 @@ function renderMeetingTv() {
       }).join('')}${auxiliarySlides.map((slide, i) => slide.type === 'quiz'
         ? `<li style="animation-delay:${Math.min((deck.length + i) * 70, 700)}ms" class="mtg-tv-li"><button class="mtg-tv-item mtg-tv-item-quiz" data-tv-goto="${postSlides.length + i + 1}">
           <span class="mtg-tv-item-icon">📱</span>
-          <span class="mtg-tv-item-text">QR Code ข้อสอบ<span class="mtg-tv-item-line">${slide.dailyQuiz?.quiz?.available ? 'สแกนเพื่อทำข้อสอบ Meeting วันนี้ · 5 ข้อ' : slide.dailyQuiz?.quiz?.hasDraft ? 'มีฉบับร่าง · Admin/Engineer ตรวจและเผยแพร่' : slide.dailyQuiz?.canGenerate ? 'Admin/Engineer แตะเพื่อ Gen ข้อสอบอัตโนมัติ 5 ข้อ' : slide.dailyQuiz ? 'รอ Admin/Engineer สร้างและเผยแพร่ข้อสอบ' : 'ยังไม่มีข้อสอบเผยแพร่สำหรับวันที่นี้'}</span></span>
+          <span class="mtg-tv-item-text">QR Code ข้อสอบ<span class="mtg-tv-item-line">${slide.dailyQuiz?.quiz?.available ? 'สแกนเพื่อทำข้อสอบ Meeting วันนี้ · 5 ข้อ' : slide.dailyQuiz?.quiz?.hasDraft ? 'มีฉบับร่าง · Admin/Engineer ตรวจและเผยแพร่' : slide.dailyQuiz?.canGenerate && slide.dailyQuiz?.hasSlides ? 'Admin/Engineer แตะเพื่อ Gen ข้อสอบอัตโนมัติ 5 ข้อ' : slide.dailyQuiz?.canGenerate ? 'เพิ่มรายละเอียดหรือสไลด์ก่อน Gen ข้อสอบ' : slide.dailyQuiz ? 'รอ Admin/Engineer สร้างและเผยแพร่ข้อสอบ' : 'ยังไม่มีข้อสอบเผยแพร่สำหรับวันที่นี้'}</span></span>
         </button></li>`
         : `<li style="animation-delay:${Math.min((deck.length + i) * 70, 700)}ms" class="mtg-tv-li"><button class="mtg-tv-item mtg-tv-item-finding" data-tv-goto="${postSlides.length + i + 1}">
           <span class="mtg-tv-item-icon">📢</span>
@@ -4158,8 +4161,9 @@ async function generateMeetingQuizFromTv(button) {
       if (String(row.MeetingDate || '').slice(0, 10) !== meetingDate) return;
       row.MeetingQuiz = Object.assign({}, row.MeetingQuiz || {}, { available: false, hasDraft: true });
     });
-    renderMeetingTv();
-    showToast('สร้างข้อสอบฉบับร่างแล้ว กลับไปบอร์ด Meeting เพื่อตรวจแก้และเผยแพร่', 'success');
+    closeMeetingTv();
+    showToast('สร้างข้อสอบฉบับร่างแล้ว กำลังเปิดหน้าตรวจแก้และเผยแพร่', 'success');
+    await openMeetingQuizAdmin(postId);
   } catch (error) {
     button.disabled = false;
     button.textContent = '✨ Gen ข้อสอบ 5 ข้ออัตโนมัติ';

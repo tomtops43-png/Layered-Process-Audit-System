@@ -7,11 +7,20 @@ function ensureMeetingQuizSheets_() {
   ensureMeetingSheet_(SHEET_NAMES.MEETING_QUIZ_ANSWERS);
 }
 
-/** Count posts of the day that have an attached slide file; days without slides do not get a quiz. */
+/** Count posts with substantive content shown in the TV deck: detail text, files, or images. */
 function meetingQuizSlideCount_(posts) {
   return (Array.isArray(posts) ? posts : [posts]).filter(function (post) {
-    return Boolean(cleanString_(post && post.SlideFileURL));
+    return Boolean(cleanString_(post && post.Detail) || cleanString_(post && post.SlideFileURL) ||
+      meetingQuizSlideImageUrls_(post).length || meetingQuizPhotoUrls_(post).length);
   }).length;
+}
+
+function meetingQuizSlideImageUrls_(post) {
+  return cleanString_(post && post.SlideImageURLs).split(/\s*,\s*/).filter(Boolean);
+}
+
+function meetingQuizPhotoUrls_(post) {
+  return cleanString_(post && post.PhotoURL).split(/\s*,\s*/).filter(Boolean);
 }
 
 /** Write one row per question for a submitted participant so the sheet shows each answer and ถูก/ผิด. */
@@ -325,9 +334,15 @@ function meetingQuizSourceText_(posts) {
     var detail = cleanString_(post.Detail);
     if (detail) section.push('รายละเอียด: ' + detail);
     var fileId = meetingQuizDriveFileId_(post.SlideFileURL);
-    if (fileId) {
-      var extracted = extractMeetingSlideText_(fileId, cleanString_(post.SlideFileName));
-      if (extracted) section.push('ข้อความที่อ่านได้จากสไลด์: ' + extracted);
+    var extracted = fileId ? extractMeetingSlideText_(fileId, cleanString_(post.SlideFileName)) : '';
+    if (!extracted && meetingQuizSlideImageUrls_(post).length) {
+      extracted = extractMeetingSlideImageText_(meetingQuizSlideImageUrls_(post), cleanString_(post.SlideFileName));
+    }
+    if (extracted) section.push('ข้อความที่อ่านได้จากสไลด์: ' + extracted);
+    var photoUrls = meetingQuizPhotoUrls_(post);
+    if (photoUrls.length) {
+      var photoText = extractMeetingSlideImageText_(photoUrls, 'Meeting ' + (index + 1) + ' photos');
+      if (photoText) section.push('ข้อความที่อ่านได้จากรูปประกอบ: ' + photoText);
     }
     parts.push(section.join('\n'));
   });
@@ -372,6 +387,30 @@ function extractMeetingSlideText_(fileId, fileName) {
       try { DriveApp.getFileById(temporaryId).setTrashed(true); } catch (cleanupError) {}
     }
   }
+}
+
+/** OCR the converted TV slide images only when the original deck is unavailable or has no text. */
+function extractMeetingSlideImageText_(imageUrls, fileName) {
+  var chunks = [];
+  (Array.isArray(imageUrls) ? imageUrls : []).forEach(function (url, index) {
+    var fileId = meetingQuizDriveFileId_(url);
+    if (!fileId) return;
+    var source = DriveApp.getFileById(fileId);
+    var temporaryId = '';
+    try {
+      var name = cleanString_(fileName || source.getName()) + ' page ' + (index + 1);
+      var document = Drive.Files.copy({ title: name + ' (quiz OCR)', mimeType: 'application/vnd.google-apps.document' }, fileId,
+        { convert: true, ocr: true, ocrLanguage: 'th' });
+      temporaryId = document.id;
+      var text = DocumentApp.openById(temporaryId).getBody().getText().trim();
+      if (text) chunks.push('หน้า ' + (index + 1) + ': ' + text);
+    } finally {
+      if (temporaryId) {
+        try { DriveApp.getFileById(temporaryId).setTrashed(true); } catch (cleanupError) {}
+      }
+    }
+  });
+  return chunks.join('\n');
 }
 
 function extractGoogleSlidesText_(presentationId) {
@@ -521,7 +560,7 @@ function generateMeetingQuiz(payload, user) {
     requirePermission_(user, 'meeting.quiz.generate');
     var dailyPosts = meetingQuizPostsForDate_(post.MeetingDate);
     if (!dailyPosts.length) throw new Error('ไม่พบหัวข้อ Meeting สำหรับวันนี้');
-    if (!meetingQuizSlideCount_(dailyPosts)) throw new Error('วันนี้ไม่มีสไลด์นำเสนอ จึงไม่ต้องสร้างข้อสอบ');
+    if (!meetingQuizSlideCount_(dailyPosts)) throw new Error('วันนี้ยังไม่มีรายละเอียดหรือสไลด์ในหัวข้อ Meeting ให้ใช้สร้างข้อสอบ');
     var existingForDate = meetingQuizRowsForDate_(post.MeetingDate);
     if (existingForDate.some(function (row) { return valuesEqual_(row.Status, 'Published'); })) {
       throw new Error('วันนี้มีข้อสอบเผยแพร่แล้ว ทำข้อสอบได้วันละ 1 ชุดต่อ Meeting');
