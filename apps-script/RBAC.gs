@@ -163,6 +163,7 @@ function hasApiAccess_(user, action) {
     submitMeetingQuiz: ['meeting.view'],
     getMeetingQuizAnswerKey: ['meeting.view'],
     getMeetingQuizAdmin: ['meeting.quiz.manage'],
+    saveMeetingQuizApiKey: ['meeting.quiz.generate'],
     generateMeetingQuiz: ['meeting.quiz.generate'],
     saveMeetingQuizDraft: ['meeting.quiz.manage'],
     publishMeetingQuiz: ['meeting.quiz.manage'],

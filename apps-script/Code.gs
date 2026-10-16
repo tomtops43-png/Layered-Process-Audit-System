@@ -109,6 +109,7 @@ function buildApiHandlers_(payload) {
     getMeetingPosts: function (user) { return getMeetingPosts(payload, user); },
     getMeetingQuiz: function (user) { return getMeetingQuiz(payload, user); },
     getMeetingQuizAdmin: function (user) { return getMeetingQuizAdmin(payload, user); },
+    saveMeetingQuizApiKey: function (user) { return saveMeetingQuizApiKey(payload, user); },
     generateMeetingQuiz: function (user) { return generateMeetingQuiz(payload, user); },
     saveMeetingQuizDraft: function (user) { return saveMeetingQuizDraft(payload, user); },
     publishMeetingQuiz: function (user) { return publishMeetingQuiz(payload, user); },

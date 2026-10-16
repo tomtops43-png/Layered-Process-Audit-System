@@ -27,6 +27,7 @@ assert(config.includes("'PublicToken'"), 'published quizzes need a QR guest toke
 assert(config.includes('GUEST_QUIZ_ACTIONS'), 'API should define the limited QR guest action set');
 [
   'getMeetingQuiz', 'getMeetingQuizAdmin', 'generateMeetingQuiz', 'saveMeetingQuizDraft',
+  'saveMeetingQuizApiKey',
   'publishMeetingQuiz', 'lockMeetingQuizRoster', 'excuseMeetingQuizParticipant',
   'registerMeetingQuizParticipant', 'submitMeetingQuiz', 'getMeetingQuizAnswerKey'
 ].forEach(action => {
@@ -43,7 +44,13 @@ assert(config.includes('GUEST_QUIZ_ACTIONS'), 'API should define the limited QR 
 });
 assert(rbac.includes("if (roleKey === 'supervisor' || roleKey === 'leader')"), 'Supervisor and Leader should receive daily quiz generation capability');
 assert(rbac.includes("generateMeetingQuiz: ['meeting.quiz.generate']"), 'quiz generation must have a dedicated permission');
+assert(rbac.includes("saveMeetingQuizApiKey: ['meeting.quiz.generate']"), 'saving the API key must require quiz generation permission');
 assert(frontend.includes("'meeting.quiz.generate'"), 'permission editor should expose the quiz generation permission');
+assert(frontend.includes('data-quiz-save-api-key'), 'quiz manager needs a permanent API key settings control');
+assert(frontend.includes("type=\"password\" autocomplete=\"off\""), 'the API key input must be masked and not autofilled');
+assert(frontend.includes('data.questions.length !== 5'), 'the frontend must reject an incomplete generated quiz');
+assert(quizSource.includes("setProperty('GEMINI_API_KEY', apiKey)"), 'API key must be saved to Apps Script Script Properties');
+assert(quizSource.includes('aiConfigured: Boolean('), 'admin response should disclose only whether the key is set');
 
 const permissionContext = {
   RBAC_EXEC_MEMO_: { permissions: {}, lineAccess: {} },
@@ -188,6 +195,24 @@ assert.strictEqual(generationPayload.generationConfig.responseMimeType, 'applica
 assert.strictEqual(generationPayload.generationConfig.responseJsonSchema.type, 'object');
 assert(!generationRequest.url.includes('test-key'), 'API key must not appear in the request URL');
 assert.strictEqual(generationRequest.options.headers['x-goog-api-key'], 'test-key');
+let persistedApiKey = '';
+context.requirePermission_ = (user, permission) => {
+  assert.strictEqual(permission, 'meeting.quiz.generate');
+  assert.strictEqual(user.UserID, 'manager');
+};
+context.PropertiesService = { getScriptProperties: () => ({
+  getProperty: key => key === 'GEMINI_API_KEY' ? persistedApiKey : '',
+  setProperty: (key, value) => { assert.strictEqual(key, 'GEMINI_API_KEY'); persistedApiKey = value; }
+}) };
+const secretApiKey = 'AIza' + 'x'.repeat(36);
+const savedKeyResponse = context.saveMeetingQuizApiKey({ apiKey: secretApiKey }, { UserID: 'manager' });
+assert.strictEqual(savedKeyResponse.success, true, 'a quiz generator should be able to save the API key');
+assert.strictEqual(savedKeyResponse.data.configured, true);
+assert.strictEqual(persistedApiKey, secretApiKey, 'the key must persist outside the browser');
+assert(!JSON.stringify(savedKeyResponse).includes(secretApiKey), 'the saved key must never be returned to the browser');
+const invalidKeyResponse = context.saveMeetingQuizApiKey({ apiKey: 'short' }, { UserID: 'manager' });
+assert.strictEqual(invalidKeyResponse.success, false, 'short API keys must be rejected');
+assert.strictEqual(persistedApiKey, secretApiKey, 'invalid input must not overwrite the stored key');
 const personalReview = context.meetingQuizReview_('Q1', JSON.stringify({ '1': 'A', '2': 'A' }), 'TH');
 assert.strictEqual(personalReview.score, 1);
 assert.strictEqual(personalReview.total, 2);

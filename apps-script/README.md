@@ -28,7 +28,7 @@ Deployable backend API for the QF8 customer audit-finding closure application. I
 4. In **Project Settings → Script Properties**, add:
    - `SPREADSHEET_ID`: ID from the `LPA_Database` spreadsheet URL.
    - Optional `DEFAULT_ADMIN_PASSWORD`: temporary password used only when `createDefaultAdmin()` is called without arguments.
-   - `GEMINI_API_KEY`: API key used by Meeting quiz generation; keep it in Script Properties and never put it in frontend files.
+   - `GEMINI_API_KEY`: API key used by Meeting quiz generation; keep it in Script Properties and never put it in frontend files. Quiz generators can set or rotate it from the Meeting quiz admin panel; the stored value is never returned to the browser.
    - Optional `GEMINI_MODEL` (defaults to `gemini-3.8-flash`).
 5. For quiz generation from attached files, enable the Advanced Google services for **Drive API** and **Google Slides API** in the Apps Script project. The quiz can also use the Meeting topic and detail text when no slide file is attached.
 6. In Apps Script project settings, set the project timezone to **Asia/Bangkok**. The code also explicitly formats business dates in `Asia/Bangkok`.

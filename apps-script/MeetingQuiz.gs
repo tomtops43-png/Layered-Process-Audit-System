@@ -494,13 +494,34 @@ function callMeetingQuizGenerator_(prompt) {
   });
   var status = response.getResponseCode();
   var body = response.getContentText();
-  if (status < 200 || status >= 300) throw new Error('บริการสร้างข้อสอบตอบกลับ ' + status + ': ' + body.slice(0, 500));
-  var result = JSON.parse(body);
+  if (status < 200 || status >= 300) {
+    if (status === 400 || status === 401 || status === 403) {
+      throw new Error('Gemini ปฏิเสธ API key หรือสิทธิ์ใช้งาน (HTTP ' + status + ') ตรวจ key และการเปิดใช้ Gemini API ใน Google AI Studio');
+    }
+    if (status === 429) throw new Error('Gemini ใช้โควตาครบชั่วคราว (HTTP 429) กรุณารอสักครู่แล้วลองอีกครั้ง');
+    throw new Error('Gemini API ตอบกลับข้อผิดพลาด (HTTP ' + status + ') กรุณาลองใหม่');
+  }
+  var result;
+  try { result = JSON.parse(body); }
+  catch (parseError) { throw new Error('Gemini ส่งข้อมูลข้อสอบกลับมาในรูปแบบที่อ่านไม่ได้ กรุณาลองอีกครั้ง'); }
   var candidate = result.candidates && result.candidates[0];
   var text = candidate && candidate.content && candidate.content.parts
     ? candidate.content.parts.map(function (part) { return cleanString_(part.text); }).join('') : '';
   if (!text) throw new Error('AI ไม่ได้ส่งชุดข้อสอบกลับมา กรุณาลองอีกครั้ง');
   return JSON.parse(text);
+}
+
+/** Saves the Gemini credential without ever returning or logging its value. */
+function saveMeetingQuizApiKey(payload, user) {
+  try {
+    requirePermission_(user, 'meeting.quiz.generate');
+    var apiKey = String(payload && payload.apiKey || '').trim();
+    if (apiKey.length < 20 || apiKey.length > 256 || /[\r\n]/.test(apiKey)) {
+      throw new Error('กรุณาวาง Gemini API key ให้ครบ แล้วบันทึกอีกครั้ง');
+    }
+    PropertiesService.getScriptProperties().setProperty('GEMINI_API_KEY', apiKey);
+    return jsonResponse(true, 'บันทึก API key ใน Script Properties แล้ว', { configured: true });
+  } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
 }
 
 function normalizeMeetingQuizQuestions_(questions) {
@@ -682,6 +703,7 @@ function getMeetingQuizAdmin(payload, user) {
     }) : [];
     return jsonResponse(true, 'ข้อมูลข้อสอบพร้อมแล้ว', {
       canGenerate: hasPermission_(user, 'meeting.quiz.generate'),
+      aiConfigured: Boolean(cleanString_(PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY'))),
       post: {
         PostID: post.PostID, MeetingDate: dateOnly_(post.MeetingDate),
         SlideCount: meetingQuizSlideCount_(meetingQuizPostsForDate_(post.MeetingDate)),

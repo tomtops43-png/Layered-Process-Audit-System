@@ -369,7 +369,7 @@ const API_MAX_TIMEOUT_ATTEMPTS = 2;
 const WRITE_ACTIONS = [
   'saveAudit', 'uploadFile', 'updateFinding', 'submitFinding', 'verifyFinding', 'closeFinding',
   'saveMeetingPost', 'deleteMeetingPost', 'updateMeetingPostStatus', 'acknowledgeMeetingPost',
-  'convertMeetingSlideFile', 'generateMeetingQuiz', 'saveMeetingQuizDraft', 'publishMeetingQuiz',
+  'convertMeetingSlideFile', 'generateMeetingQuiz', 'saveMeetingQuizApiKey', 'saveMeetingQuizDraft', 'publishMeetingQuiz',
   'lockMeetingQuizRoster', 'excuseMeetingQuizParticipant', 'registerMeetingQuizParticipant', 'submitMeetingQuiz',
   'saveProductionPlan', 'upsertAuditPlanRule', 'deleteAuditRule',
   'generateAuditPlan', 'refreshAuditPlanStatus', 'upsertMasterList', 'migrateRulesToLineLevel',
@@ -3024,6 +3024,9 @@ async function generateMeetingQuizDraft(model, { automatic = false } = {}) {
       postId: model.postId,
       ...(String(model.quiz?.Status || '').toLowerCase() === 'draft' ? { quizId: model.quiz.QuizID } : {})
     });
+    if (!data?.quiz || !Array.isArray(data.questions) || data.questions.length !== 5) {
+      throw new Error('ระบบไม่ได้รับข้อสอบครบ 5 ข้อจาก API กรุณาตรวจสถานะและลองอีกครั้ง');
+    }
     Object.assign(model, { quiz: data.quiz, questions: data.questions || [], participants: [] });
   } catch (error) {
     model.generationError = error.message;
@@ -3154,8 +3157,15 @@ function renderMeetingQuizAdmin() {
   const generationFeedback = model.autoGenerating
     ? '<div class="quiz-status-note">กำลังวิเคราะห์รายละเอียดและสไลด์ทุกหัวข้อ แล้วสร้างข้อสอบ 5 ข้อ…</div>'
     : (model.generationError ? `<div class="quiz-status-note">สร้างข้อสอบไม่สำเร็จ: ${escapeHtml(model.generationError)} · ตรวจการตั้งค่า AI/API แล้วกด Gen เพื่อลองอีกครั้ง</div>` : '');
+  const aiSettings = model.canGenerate ? `<details class="quiz-api-settings" ${model.aiConfigured ? '' : 'open'}>
+    <summary>⚙️ ตั้งค่า AI สำหรับสร้างข้อสอบ <span class="quiz-api-status ${model.aiConfigured ? 'is-configured' : 'is-missing'}">${model.aiConfigured ? 'ตั้งค่าแล้ว' : 'ยังไม่ได้ตั้งค่า'}</span></summary>
+    <div class="quiz-api-settings-body"><p class="field-help">คีย์จะถูกเก็บใน Apps Script Script Properties และไม่แสดงกลับบนหน้าเว็บ ใส่คีย์ใหม่เพื่อเปลี่ยนคีย์เดิม</p>
+      <label for="meetingQuizApiKey">Gemini API key</label><div class="quiz-api-input-row"><input id="meetingQuizApiKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="วาง Gemini API key ที่นี่"><button type="button" class="btn btn-outline" data-quiz-save-api-key>บันทึกคีย์</button></div>
+    </div>
+  </details>` : '';
   $('#meetingQuizAdminContent').innerHTML = `
     <div class="quiz-admin-toolbar"><div><strong>${escapeHtml(model.post?.Topic || '')}</strong><div class="field-help">${escapeHtml(model.post?.MeetingDate || '')} · ${escapeHtml(statusText)}${sourceTopics.length ? `<br>หัวข้อที่ใช้: ${sourceTopics.map(escapeHtml).join(' · ')}` : ''}</div></div><div class="quiz-admin-actions">${quiz && !isDraft ? `<span class="field-help">ส่งแล้ว ${summary.submittedCount || 0}/${summary.participantCount || 0} คน${model.lastRefreshedAt ? ` · อัปเดต ${new Date(model.lastRefreshedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : ''}</span><button type="button" class="btn btn-outline" data-quiz-refresh>รีเฟรชสถานะ</button>` : ''}${canGenerate && !model.autoGenerating ? '<button type="button" class="btn btn-secondary" data-quiz-generate>✨ Gen ข้อสอบ 5 ข้อจากทุกหัวข้อวันนี้</button>' : ''}</div></div>
+    ${aiSettings}
     ${generationFeedback}
     ${quiz && !isDraft ? `<div class="quiz-status-note">ใช้ข้อสอบและ QR Code ชุดเดียวกันได้ทั้งกะเช้าและกะดึก · รายชื่อและเวลาปิดรับแยกตามกะ · สถานะอัปเดตอัตโนมัติทุก 15 วินาที</div><h4>รายชื่อผู้เข้าสอบแยกตามกะ</h4>${roster}` : ''}
     ${publicUrl ? `<section class="quiz-qr-panel"><div><h4>QR สำหรับพนักงานเข้าสอบ</h4><p class="field-help">พนักงานสแกน QR นี้แล้วกรอกชื่อ–นามสกุลและเลือกกะได้เลย ไม่ต้อง Login</p><div class="quiz-qr-link">${escapeHtml(publicUrl)}</div><button type="button" class="btn btn-outline" data-quiz-copy-link="${escapeAttr(publicUrl)}">คัดลอกลิงก์ข้อสอบ</button></div>${qrSvg ? `<div class="quiz-qr-image" aria-label="QR Code สำหรับเข้าสอบ">${qrSvg}</div>` : '<div class="quiz-qr-image quiz-qr-error">ยังสร้าง QR ไม่ได้ กรุณาคัดลอกลิงก์</div>'}</section>` : ''}
@@ -3189,7 +3199,7 @@ function readMeetingQuizAdminQuestions() {
 async function handleMeetingQuizAdminClick(event) {
   const model = state.meetingQuizAdmin;
   if (!model) return;
-  const button = event.target.closest('[data-quiz-copy-link],[data-quiz-generate],[data-quiz-save],[data-quiz-publish],[data-quiz-lock],[data-quiz-excuse],[data-quiz-refresh]');
+  const button = event.target.closest('[data-quiz-copy-link],[data-quiz-generate],[data-quiz-save-api-key],[data-quiz-save],[data-quiz-publish],[data-quiz-lock],[data-quiz-excuse],[data-quiz-refresh]');
   if (!button) return;
   try {
     button.disabled = true;
@@ -3199,6 +3209,24 @@ async function handleMeetingQuizAdminClick(event) {
     } else if (button.hasAttribute('data-quiz-generate')) {
       await generateMeetingQuizDraft(model);
       showToast('สร้างข้อสอบฉบับร่างแล้ว ตรวจแก้ก่อนเผยแพร่', 'success');
+    } else if (button.hasAttribute('data-quiz-save-api-key')) {
+      const input = $('#meetingQuizApiKey');
+      const apiKey = input?.value.trim() || '';
+      if (!apiKey) throw new Error('กรุณาวาง Gemini API key ก่อนบันทึก');
+      const result = await apiCall('saveMeetingQuizApiKey', { apiKey });
+      input.value = '';
+      model.aiConfigured = Boolean(result?.configured);
+      model.generationError = '';
+      renderMeetingQuizAdmin();
+      showToast('ตั้งค่า Gemini API key ถาวรแล้ว', 'success');
+      if (!model.quiz && Number(model.post?.SlideCount || 0) > 0 && meetingQuizIsToday(model.post?.MeetingDate)) {
+        try {
+          await generateMeetingQuizDraft(model, { automatic: true });
+          showToast('สร้างข้อสอบฉบับร่าง 5 ข้อแล้ว ตรวจแก้ก่อนเผยแพร่', 'success');
+        } catch (error) {
+          showToast(`บันทึกคีย์แล้ว แต่สร้างข้อสอบไม่สำเร็จ: ${error.message}`, 'warning');
+        }
+      }
     } else if (button.hasAttribute('data-quiz-refresh')) {
       await refreshMeetingQuizAdmin(model.quiz?.QuizID || '');
     } else if (button.hasAttribute('data-quiz-save')) {
