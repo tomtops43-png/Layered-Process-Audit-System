@@ -191,8 +191,11 @@ context.UrlFetchApp = { fetch: (url, options) => {
 } };
 context.callMeetingQuizGenerator_('test prompt');
 const generationPayload = JSON.parse(generationRequest.options.payload);
+assert(generationRequest.url.includes('/models/gemini-3.8-flash:generateContent'), 'new projects should use the current Gemini Flash model');
 assert.strictEqual(generationPayload.generationConfig.responseMimeType, 'application/json');
 assert.strictEqual(generationPayload.generationConfig.responseJsonSchema.type, 'object');
+assert.strictEqual(generationPayload.generationConfig.thinkingConfig.thinkingLevel, 'low', 'quiz generation should use low-latency reasoning');
+assert(!Object.hasOwn(generationPayload.generationConfig, 'temperature'), 'Gemini 3 requests should omit deprecated sampling parameters');
 assert(!generationRequest.url.includes('test-key'), 'API key must not appear in the request URL');
 assert.strictEqual(generationRequest.options.headers['x-goog-api-key'], 'test-key');
 let persistedApiKey = '';

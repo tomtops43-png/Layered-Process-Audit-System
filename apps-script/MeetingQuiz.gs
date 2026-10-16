@@ -478,7 +478,7 @@ function callMeetingQuizGenerator_(prompt) {
   var properties = PropertiesService.getScriptProperties();
   var apiKey = cleanString_(properties.getProperty('GEMINI_API_KEY'));
   if (!apiKey) throw new Error('ยังไม่ได้ตั้งค่า GEMINI_API_KEY ใน Apps Script Script Properties');
-  var model = cleanString_(properties.getProperty('GEMINI_MODEL')) || 'gemini-2.5-flash';
+  var model = cleanString_(properties.getProperty('GEMINI_MODEL')) || 'gemini-3.8-flash';
   var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent';
   var response = UrlFetchApp.fetch(url, {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
@@ -488,7 +488,7 @@ function callMeetingQuizGenerator_(prompt) {
       generationConfig: {
         responseMimeType: 'application/json',
         responseJsonSchema: meetingQuizResponseSchema_(),
-        temperature: 0.25
+        thinkingConfig: { thinkingLevel: 'low' }
       }
     })
   });
