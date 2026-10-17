@@ -963,7 +963,8 @@ function getMeetingQuizAdmin(payload, user) {
       selected.PublicToken = newMeetingQuizToken_();
       updateObjectById(SHEET_NAMES.MEETING_QUIZZES, 'QuizID', selected.QuizID, { PublicToken: selected.PublicToken });
     }
-    var participants = selected ? meetingQuizParticipants_(selected.QuizID).map(function (row) {
+    var rosterRows = meetingQuizRosterRows_();
+    var participants = selected ? meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(selected.QuizID), rosterRows).map(function (row) {
       return {
         ParticipantID: row.ParticipantID, Shift: cleanString_(row.Shift), FirstName: row.FirstName, LastName: row.LastName,
         EmployeeID: cleanString_(row.EmployeeID),
