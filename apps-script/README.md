@@ -18,6 +18,7 @@ Deployable backend API for the QF8 customer audit-finding closure application. I
 | `Reports.gs` | Monthly report and CSV export |
 | `Files.gs` | Base64 decoding, Drive upload, sharing, and attachment metadata |
 | `Meeting.gs` / `MeetingQuiz.gs` | Meeting board, slide text extraction, and bilingual quizzes |
+| `FiveS.gs` | Shift-assigned daily 5S checkpoints, photo validation, and inspection records |
 | `Setup.gs` | Non-destructive setup and manual test helpers |
 
 ## Installation
@@ -93,7 +94,7 @@ HTTP status codes are not used to distinguish API errors because Apps Script `Co
 
 - Public: `login`
 - QR guest: `getMeetingQuiz`, `registerMeetingQuizParticipant`, `submitMeetingQuiz`, and `getMeetingQuizAnswerKey`, only with a valid published-quiz token.
-- Protected: `getCurrentUser`, `getMasterData`, `getChecklist`, `saveAudit`, `getAuditList`, `getFindings`, `updateFinding`, `closeFinding`, `uploadFile`, `getDashboard`, `getMonthlyReport`, `exportReportCsv`, quiz management actions, and authenticated Meeting quiz access.
+- Protected: `getCurrentUser`, `getMasterData`, `getChecklist`, `saveAudit`, `getAuditList`, `getFindings`, `updateFinding`, `closeFinding`, `uploadFile`, `getDashboard`, `getMonthlyReport`, `exportReportCsv`, quiz management actions, authenticated Meeting quiz access, and daily 5S checkpoint actions.
 
 `Admin` has full access. `Engineer` can generate quizzes and users granted `meeting.quiz.manage` can review, edit, and publish drafts. Employees without accounts can use the published quiz's QR link; authenticated Meeting users can also take the quiz through the board.
 
@@ -106,6 +107,12 @@ HTTP status codes are not used to distinguish API errors because Apps Script `Co
 - To find the QR, open the Meeting board and choose `📱 QR / จัดการข้อสอบ` on that date's card. The management panel shows the QR code after publishing and also provides a copyable link. Employees open that daily quiz directly, without a website account, type their first and last name, and choose the quiz language. Existing names get their shift from the roster; new names are added to the roster with the selected open shift. A manager can stop each completed shift from the TV status slide or quiz panel, then see its top three. The guest link is a long random bearer token scoped to that published quiz; it cannot access meeting posts or other APIs.
 - Quiz state is stored in the Google spreadsheet configured by the Apps Script `SPREADSHEET_ID` property (the setup guide names it `LPA_Database`), in `MeetingQuizzes`, `MeetingQuizQuestions`, `MeetingQuizParticipants`, `MeetingQuizAnswers`, `MeetingQuizEmployees`, and `MeetingQuizAttendance`. `MeetingQuizzes.PublicToken` holds the QR link token and per-shift intake/stop state. `MeetingQuizQuestions` holds the daily questions, choices, correct options, and explanations. `MeetingQuizEmployees` is the active employee roster (`EmployeeID`, `FirstName`, `LastName` or `DisplayName`, `Shift`, `ActiveStatus`). `MeetingQuizAttendance` records date-specific absences (`MeetingDate`, `EmployeeID`, `Status`, `Reason`). `MeetingQuizParticipants` records employee ID, name, roster-derived shift, language, submission status, answers, and score; participant answer tokens are stored as hashes. `MeetingQuizAnswers` stores one row per question submitted. A resume token is kept in the employee's browser session storage so they can reopen their own attempt.
 - Quiz generation sends the Meeting date, all topics, details, and extracted slide text for that date to the Gemini API. It does not send participant names or answers. Configure `GEMINI_API_KEY` in Script Properties.
+
+## Daily 5S inspections
+
+- Admin assigns each checkpoint to an active Leader and shift, with a 5S category, area, and inspection standard. Leaders see only checkpoints assigned to their account and submit a Pass or Need Action result with a mandatory photo; a note is also required for Need Action.
+- Checkpoint definitions are stored in `FiveSCheckpoints`; the daily result, assigned shift and Leader, remark, and photo reference are stored in `FiveSInspections`. The image file is stored in the configured Google Drive `EVIDENCE_FOLDER_ID` folder, while its Drive metadata is recorded in `Attachments` as `FiveSInspection`. Uploads are accepted only for today's active checkpoint assigned to that Leader.
+- Admin, Manager, Supervisor, and Engineer can view daily progress and evidence across shifts. Leaders can view and submit their assigned checkpoints.
 
 ## Login example
 

@@ -163,6 +163,10 @@ function hasApiAccess_(user, action) {
     registerMeetingQuizParticipant: ['meeting.view'],
     submitMeetingQuiz: ['meeting.view'],
     getMeetingQuizAnswerKey: ['meeting.view'],
+    getFiveSBoard: ['fiveS.audit', 'fiveS.view.all', 'fiveS.manage'],
+    getFiveSSetupData: ['fiveS.manage'],
+    saveFiveSCheckpoint: ['fiveS.manage'],
+    submitFiveSInspection: ['fiveS.audit', 'fiveS.manage'],
     getMeetingQuizAdmin: ['meeting.quiz.manage'],
     saveMeetingQuizApiKey: ['meeting.quiz.generate'],
     generateMeetingQuiz: ['meeting.quiz.generate'],
@@ -178,7 +182,7 @@ function hasApiAccess_(user, action) {
     updateMeetingPostStatus: ['meeting.create', 'meeting.update.own', 'meeting.manage'],
     convertMeetingSlideFile: ['meeting.create', 'meeting.update.own', 'meeting.manage'],
     uploadFile: ['findings.update.assigned', 'findings.update.line', 'findings.verify', 'findings.view.all',
-      'audit.manager.create', 'audit.supervisor.create', 'audit.engineer.create', 'audit.leader.create', 'meeting.create']
+      'audit.manager.create', 'audit.supervisor.create', 'audit.engineer.create', 'audit.leader.create', 'meeting.create', 'fiveS.audit']
   };
   if (['getCurrentUser', 'getMasterData'].indexOf(action) !== -1) return true;
   if (!actionPermissions[action]) return false;

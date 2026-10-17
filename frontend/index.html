@@ -9,7 +9,7 @@
   <!-- The first API call happens seconds after load; warm the TLS connection now. -->
   <link rel="preconnect" href="https://script.google.com" crossorigin>
   <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
-  <link rel="stylesheet" href="style.css?v=20261017-attendance-resume-shift-status">
+  <link rel="stylesheet" href="style.css?v=20261017-daily-5s-check">
 </head>
 <body>
   <div id="publicQuizView" class="login-view public-quiz-view hidden">
@@ -55,6 +55,7 @@
       <nav id="mainNav" class="main-nav">
         <button data-page="dashboard" class="nav-item active"><span>▦</span>Dashboard</button>
         <button data-page="meeting" data-permission-any="meeting.view" class="nav-item"><span>📣</span>Meeting ก่อนเข้างาน <b id="meetingNavBadge" class="nav-badge hidden">0</b></button>
+        <button data-page="five-s" data-permission-any="fiveS.audit,fiveS.view.all,fiveS.manage" class="nav-item"><span>🧹</span>ตรวจสอบ 5.ส ประจำวัน</button>
         <button data-page="audit" class="nav-item"><span>✓</span>ตรวจ LPA <b id="auditNavBadge" class="nav-badge hidden">0</b></button>
         <button data-page="audit-plan" data-permission-any="audit.plan.view" class="nav-item"><span>▣</span>LPA Schedule Rules</button>
         <button data-page="findings" class="nav-item"><span>!</span>Finding Tracking <b id="findingNavBadge" class="nav-badge hidden">0</b></button>
@@ -190,6 +191,41 @@
           </div>
           <div id="meetingShiftDigest"><div class="empty-state">กำลังโหลด Finding...</div></div>
         </div>
+      </section>
+
+      <section id="page-five-s" class="page">
+        <div class="page-heading"><div><p class="eyebrow">DAILY 5S CHECK</p><h2>ตรวจสอบ 5.ส ประจำวัน</h2><p class="page-helper">Admin กำหนดจุดตรวจและมอบหมาย Leader ตามกะ · Leader บันทึกผลพร้อมรูปถ่ายทุกจุด</p></div><button id="fiveSRefreshButton" class="btn btn-outline">↻ รีเฟรช</button></div>
+        <article class="panel filters-panel">
+          <div class="form-grid filter-grid">
+            <label>วันที่ตรวจ<input id="fiveSInspectionDate" type="date"></label>
+            <label id="fiveSShiftFilterField" class="hidden">กะ<select id="fiveSShiftFilter"><option value="">ทุกกะ</option></select></label>
+          </div>
+          <button id="fiveSLoadButton" class="btn btn-secondary">แสดงรายการตรวจ</button>
+        </article>
+        <div id="fiveSSummary" class="five-s-summary"></div>
+        <div id="fiveSManagerPanel" class="hidden" data-permission-any="fiveS.manage">
+          <article class="panel">
+            <div class="panel-title"><div><p class="eyebrow">ADMIN · CHECKPOINTS</p><h3>กำหนดจุดตรวจและผู้รับผิดชอบ</h3></div><button id="fiveSAddCheckpointButton" class="btn btn-primary" type="button">+ เพิ่มจุดตรวจ</button></div>
+            <p class="section-help">กำหนดหัวข้อ 5.ส, พื้นที่, มาตรฐาน, กะ และ Leader ผู้ตรวจ รูปถ่ายต้องแนบทุกครั้งที่บันทึกผล</p>
+            <form id="fiveSCheckpointForm" class="form-grid hidden">
+              <input id="fiveSCheckpointId" type="hidden">
+              <label>หัวข้อ 5.ส<select id="fiveSCategory" required><option value="">เลือกหัวข้อ</option><option>สะสาง (Seiri)</option><option>สะดวก (Seiton)</option><option>สะอาด (Seiso)</option><option>มาตรฐาน (Seiketsu)</option><option>สร้างนิสัย (Shitsuke)</option></select></label>
+              <label>ชื่อจุดตรวจ<input id="fiveSCheckpointName" maxlength="120" required placeholder="เช่น พื้นที่วางชิ้นงานหน้าไลน์"></label>
+              <label>พื้นที่<input id="fiveSArea" maxlength="120" required placeholder="เช่น Assembly Line 1"></label>
+              <label>กะ<select id="fiveSCheckpointShift" required><option value="">เลือกกะ</option></select></label>
+              <label>Leader ผู้รับผิดชอบ<select id="fiveSLeader" required><option value="">เลือก Leader</option></select></label>
+              <label>สถานะ<select id="fiveSCheckpointStatus"><option>Active</option><option>Inactive</option></select></label>
+              <label class="full-width">มาตรฐาน/สิ่งที่ต้องตรวจ<textarea id="fiveSStandardText" rows="3" maxlength="1000" required placeholder="อธิบายสภาพที่ต้องรักษา หรือจุดที่ต้องตรวจ"></textarea></label>
+              <div id="fiveSCheckpointFormError" class="form-error full-width hidden" role="alert"></div>
+              <div class="button-row full-width"><button id="fiveSCancelCheckpointButton" type="button" class="btn btn-outline">ยกเลิก</button><button type="submit" class="btn btn-primary">บันทึกจุดตรวจ</button></div>
+            </form>
+            <div id="fiveSCheckpointTable" class="table-wrap"><div class="empty-state">กำลังโหลดจุดตรวจ...</div></div>
+          </article>
+        </div>
+        <article class="panel">
+          <div class="panel-title"><div><p class="eyebrow">TODAY'S ROUND</p><h3>รายการตรวจตามกะ</h3></div></div>
+          <div id="fiveSInspectionList" class="five-s-checkpoint-list"><div class="empty-state">เปิดหน้านี้เพื่อโหลดรายการตรวจ</div></div>
+        </article>
       </section>
 
       <section id="page-audit" class="page">
@@ -478,6 +514,6 @@
 
   <script src="config.js" defer></script>
   <script src="vendor/qrcode.js" defer></script>
-  <script src="app.js?v=20261017-attendance-resume-shift-status" defer></script>
+  <script src="app.js?v=20261017-daily-5s-check" defer></script>
 </body>
 </html>

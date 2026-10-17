@@ -14,6 +14,10 @@ function uploadFile(payload, currentUser) {
         return jsonResponse(false, 'You do not have permission to upload to this finding.', {});
       }
     }
+    if (valuesEqual_(payload.relatedType, 'FiveSInspection')) {
+      if (fileType !== 'Evidence') throw new Error('รูปตรวจ 5.ส ต้องจัดเก็บเป็น Evidence เท่านั้น');
+      fiveSValidatePhotoUpload_(payload.relatedId, currentUser);
+    }
 
     var folderId = cleanString_(getSetting(folderSettings[fileType]));
     if (!folderId) throw new Error(folderSettings[fileType] + ' is not configured in Settings.');

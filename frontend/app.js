@@ -72,6 +72,8 @@ const state = {
   editingMeetingPost: null,
   meetingQuizAdmin: null,
   meetingQuizExam: null,
+  fiveSBoard: null,
+  fiveSSetup: null,
   adminUsers: [],
   adminMasterLists: [],
   editingUser: null,
@@ -94,7 +96,8 @@ const PERMISSION_CATALOG = [
   'findings.close.major', 'findings.close.critical', 'dashboard.view', 'dashboard.view.all',
   'reports.view', 'reports.export', 'checklist.view', 'checklist.manage',
   'audit.plan.view', 'audit.plan.manage', 'audit.plan.generate', 'audit.plan.refresh',
-  'meeting.view', 'meeting.create', 'meeting.update.own', 'meeting.manage', 'meeting.quiz.manage', 'meeting.quiz.generate'
+  'meeting.view', 'meeting.create', 'meeting.update.own', 'meeting.manage', 'meeting.quiz.manage', 'meeting.quiz.generate',
+  'fiveS.audit', 'fiveS.view.all', 'fiveS.manage'
 ];
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -184,6 +187,16 @@ function bindEvents() {
   $('#checklistLanguage').addEventListener('change', handleAuditScopeChange);
   $('#loadChecklistButton').addEventListener('click', loadChecklist);
   $('#auditForm').addEventListener('submit', event => { event.preventDefault(); saveAudit(); });
+  $('#fiveSRefreshButton').addEventListener('click', loadFiveSPage);
+  $('#fiveSLoadButton').addEventListener('click', loadFiveSPage);
+  $('#fiveSInspectionDate').addEventListener('change', loadFiveSPage);
+  $('#fiveSShiftFilter').addEventListener('change', loadFiveSPage);
+  $('#fiveSAddCheckpointButton').addEventListener('click', () => openFiveSCheckpointEditor());
+  $('#fiveSCancelCheckpointButton').addEventListener('click', closeFiveSCheckpointEditor);
+  $('#fiveSCheckpointForm').addEventListener('submit', event => { event.preventDefault(); saveFiveSCheckpointFromForm(); });
+  $('#fiveSCheckpointTable').addEventListener('click', handleFiveSCheckpointTableClick);
+  $('#fiveSInspectionList').addEventListener('submit', handleFiveSInspectionSubmit);
+  $('#fiveSInspectionList').addEventListener('change', handleFiveSInspectionChange);
   $('#planLine').addEventListener('change', () => populateStationSelect('#planStation', $('#planLine').value, true));
   $('#loadAuditPlanButton').addEventListener('click', loadAuditPlan);
   $('#addAuditRuleButton').addEventListener('click', () => openAuditRuleEditor());
@@ -6041,6 +6054,9 @@ async function navigateTo(page) {
       }, 3000);
     }
   }
+  if (page === 'five-s') {
+    await loadFiveSPage();
+  }
   if (['audit', 'audit-plan', 'findings', 'checklist', 'admin'].includes(page)) {
     if (page === 'findings') {
       // Run master data + findings in parallel — they are independent GAS calls
@@ -6056,6 +6072,189 @@ async function navigateTo(page) {
   if (page === 'audit-plan' && !state.auditRules.length) loadAuditPlan();
   if (page === 'admin' && hasPermission('users.view')) loadUsers();
   if (page === 'admin' && String(state.user?.Role || '').toLowerCase() === 'admin') loadShiftLists();
+}
+
+async function loadFiveSPage() {
+  const dateInput = $('#fiveSInspectionDate');
+  if (!dateInput.value) dateInput.value = localDateInput(new Date());
+  $('#fiveSInspectionList').innerHTML = '<div class="empty-state">กำลังโหลดรายการตรวจ 5.ส...</div>';
+  try {
+    const canManage = hasPermission('fiveS.manage');
+    const payload = { inspectionDate: dateInput.value, shift: $('#fiveSShiftFilter').value || '' };
+    const [board, setup] = await Promise.all([
+      apiCall('getFiveSBoard', payload),
+      canManage ? apiCall('getFiveSSetupData', {}) : Promise.resolve(null)
+    ]);
+    state.fiveSBoard = board;
+    state.fiveSSetup = setup;
+    $('#fiveSShiftFilterField').classList.toggle('hidden', !board.canViewAll);
+    const filter = $('#fiveSShiftFilter');
+    const selected = filter.value;
+    filter.innerHTML = '<option value="">ทุกกะ</option>' + (board.shifts || []).map(shift =>
+      `<option value="${escapeAttr(shift.value)}">${escapeHtml(shift.label)}</option>`
+    ).join('');
+    filter.value = (board.shifts || []).some(shift => shift.value === selected) ? selected : '';
+    renderFiveSSummary(board);
+    renderFiveSInspectionList(board);
+    if (setup) renderFiveSSetup(setup);
+  } catch (error) {
+    $('#fiveSSummary').innerHTML = '';
+    $('#fiveSInspectionList').innerHTML = `<div class="empty-state">${escapeHtml(error.message || 'โหลดรายการตรวจไม่สำเร็จ')}</div>`;
+    if (hasPermission('fiveS.manage')) $('#fiveSCheckpointTable').innerHTML = '<div class="empty-state">โหลดข้อมูลจุดตรวจไม่สำเร็จ</div>';
+  }
+}
+
+function renderFiveSSummary(board) {
+  const shifts = board.summary || [];
+  const total = shifts.reduce((sum, shift) => sum + Number(shift.total || 0), 0);
+  const submitted = shifts.reduce((sum, shift) => sum + Number(shift.submitted || 0), 0);
+  const pending = Math.max(0, total - submitted);
+  $('#fiveSSummary').innerHTML = `
+    <article class="five-s-stat"><span>จุดตรวจทั้งหมด</span><strong>${total}</strong><small>วันที่ ${escapeHtml(formatDate(board.inspectionDate))}</small></article>
+    <article class="five-s-stat success"><span>ตรวจพร้อมรูปแล้ว</span><strong>${submitted}</strong><small>${shifts.map(shift => `${escapeHtml(shift.label)} ${shift.submitted}/${shift.total}`).join(' · ') || 'ยังไม่มีจุดตรวจที่มอบหมาย'}</small></article>
+    <article class="five-s-stat pending"><span>รอตรวจ</span><strong>${pending}</strong><small>${board.canViewAll ? 'รอ Leader ผู้รับผิดชอบส่งผลตรวจ' : 'จุดตรวจที่ยังไม่ได้บันทึกผล'}</small></article>`;
+}
+
+function renderFiveSSetup(setup) {
+  const shiftOptions = (setup.shifts || []).map(row => `<option value="${escapeAttr(row.value)}">${escapeHtml(row.label)}</option>`).join('');
+  const leaderOptions = (setup.leaders || []).map(row => `<option value="${escapeAttr(row.UserID)}">${escapeHtml(row.FullName || row.Username)}</option>`).join('');
+  const shiftSelect = $('#fiveSCheckpointShift');
+  const leaderSelect = $('#fiveSLeader');
+  const previousShift = shiftSelect.value;
+  const previousLeader = leaderSelect.value;
+  shiftSelect.innerHTML = '<option value="">เลือกกะ</option>' + shiftOptions;
+  leaderSelect.innerHTML = '<option value="">เลือก Leader</option>' + leaderOptions;
+  if ((setup.shifts || []).some(row => row.value === previousShift)) shiftSelect.value = previousShift;
+  if ((setup.leaders || []).some(row => row.UserID === previousLeader)) leaderSelect.value = previousLeader;
+  const rows = setup.checkpoints || [];
+  $('#fiveSCheckpointTable').innerHTML = rows.length ? `<table class="five-s-table"><thead><tr><th>หัวข้อ 5.ส</th><th>จุดตรวจ / พื้นที่</th><th>กะ</th><th>Leader</th><th>สถานะ</th><th></th></tr></thead><tbody>${rows.map(row => `
+    <tr><td>${escapeHtml(row.Category)}</td><td><strong>${escapeHtml(row.CheckpointName)}</strong><small>${escapeHtml(row.Area)} · ${escapeHtml(row.StandardText)}</small></td>
+      <td>${escapeHtml(row.Shift)}</td><td>${escapeHtml(row.LeaderName)}</td><td><span class="five-s-status ${isActiveStatus(row.ActiveStatus) ? 'active' : 'inactive'}">${isActiveStatus(row.ActiveStatus) ? 'Active' : 'Inactive'}</span></td>
+      <td><button type="button" class="btn btn-outline btn-compact" data-five-s-edit="${escapeAttr(row.CheckpointID)}">แก้ไข</button></td></tr>`).join('')}</tbody></table>`
+    : '<div class="empty-state">ยังไม่มีจุดตรวจ กด “เพิ่มจุดตรวจ” เพื่อเริ่มกำหนดรายการ</div>';
+}
+
+function isActiveStatus(value) { return !['inactive', 'false', 'no', '0'].includes(String(value || '').trim().toLowerCase()); }
+
+function openFiveSCheckpointEditor(row = null) {
+  const form = $('#fiveSCheckpointForm');
+  form.reset();
+  $('#fiveSCheckpointId').value = row?.CheckpointID || '';
+  $('#fiveSCategory').value = row?.Category || '';
+  $('#fiveSCheckpointName').value = row?.CheckpointName || '';
+  $('#fiveSArea').value = row?.Area || '';
+  $('#fiveSCheckpointShift').value = row?.Shift || '';
+  $('#fiveSLeader').value = row?.LeaderUserID || '';
+  $('#fiveSCheckpointStatus').value = row?.ActiveStatus || 'Active';
+  $('#fiveSStandardText').value = row?.StandardText || '';
+  $('#fiveSCheckpointFormError').classList.add('hidden');
+  form.classList.remove('hidden');
+  form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function closeFiveSCheckpointEditor() {
+  $('#fiveSCheckpointForm').reset();
+  $('#fiveSCheckpointId').value = '';
+  $('#fiveSCheckpointForm').classList.add('hidden');
+  $('#fiveSCheckpointFormError').classList.add('hidden');
+}
+
+async function saveFiveSCheckpointFromForm() {
+  const errorEl = $('#fiveSCheckpointFormError');
+  errorEl.classList.add('hidden');
+  try {
+    showLoading('กำลังบันทึกจุดตรวจ 5.ส...');
+    await apiCall('saveFiveSCheckpoint', {
+      checkpointId: $('#fiveSCheckpointId').value,
+      category: $('#fiveSCategory').value,
+      checkpointName: $('#fiveSCheckpointName').value.trim(),
+      area: $('#fiveSArea').value.trim(), standardText: $('#fiveSStandardText').value.trim(),
+      shift: $('#fiveSCheckpointShift').value, leaderUserId: $('#fiveSLeader').value,
+      activeStatus: $('#fiveSCheckpointStatus').value
+    });
+    closeFiveSCheckpointEditor();
+    showToast('บันทึกจุดตรวจ 5.ส แล้ว', 'success');
+    await loadFiveSPage();
+  } catch (error) {
+    errorEl.textContent = error.message || 'บันทึกจุดตรวจไม่สำเร็จ';
+    errorEl.classList.remove('hidden');
+  } finally { hideLoading(); }
+}
+
+function handleFiveSCheckpointTableClick(event) {
+  const button = event.target.closest('[data-five-s-edit]');
+  if (!button) return;
+  const row = state.fiveSSetup?.checkpoints?.find(item => item.CheckpointID === button.dataset.fiveSEdit);
+  if (row) openFiveSCheckpointEditor(row);
+}
+
+function renderFiveSInspectionList(board) {
+  const container = $('#fiveSInspectionList');
+  container.querySelectorAll('.five-s-photo-upload-preview img[src^="blob:"]').forEach(image => URL.revokeObjectURL(image.src));
+  const canSubmit = board.canInspect && board.inspectionDate === board.today;
+  const rows = board.checkpoints || [];
+  if (!rows.length) {
+    container.innerHTML = `<div class="empty-state">${board.canViewAll ? 'ยังไม่มีจุดตรวจที่เปิดใช้งาน — Admin เพิ่มจุดตรวจและมอบหมาย Leader ก่อน' : 'ยังไม่มีจุดตรวจที่มอบหมายให้คุณในกะนี้ กรุณาติดต่อ Admin'}</div>`;
+    return;
+  }
+  container.innerHTML = rows.map(row => {
+    const inspection = row.Inspection;
+    const resultLabel = inspection?.Result === 'Pass' ? 'ผ่าน' : inspection?.Result === 'NeedAction' ? 'ต้องปรับปรุง' : 'รอตรวจ';
+    const resultClass = inspection?.Result === 'Pass' ? 'pass' : inspection?.Result === 'NeedAction' ? 'needs-action' : 'waiting';
+    const photo = inspection?.PhotoURL ? `<a class="five-s-photo" href="${escapeAttr(inspection.PhotoURL)}" target="_blank" rel="noopener"><img src="${escapeAttr(driveThumbnailUrl_(inspection.PhotoURL))}" alt="รูปจุดตรวจ ${escapeAttr(row.CheckpointName)}" loading="lazy"><span>ดูรูปที่ส่งแล้ว</span></a>` : '';
+    const form = canSubmit && row.LeaderUserID === state.user?.UserID ? `
+      <form class="five-s-audit-form" data-five-s-form data-checkpoint-id="${escapeAttr(row.CheckpointID)}">
+        <div class="form-grid"><label>ผลตรวจ<select name="result" required><option value="">เลือกผลตรวจ</option><option value="Pass" ${inspection?.Result === 'Pass' ? 'selected' : ''}>ผ่านตามมาตรฐาน</option><option value="NeedAction" ${inspection?.Result === 'NeedAction' ? 'selected' : ''}>ต้องปรับปรุง</option></select></label>
+          <label class="five-s-photo-input">รูปถ่ายจุดตรวจ <span class="required-mark">บังคับ</span><input name="photo" type="file" accept="image/*" capture="environment" required><small>ต้องแนบรูปทุกจุดก่อนบันทึก${inspection ? ' · ถ่ายรูปใหม่เพื่ออัปเดตผล' : ''}</small></label>
+          <label class="full-width">หมายเหตุ${' '}<textarea name="remark" rows="2" maxlength="1000" placeholder="ระบุสิ่งที่ต้องปรับปรุง (บังคับเมื่อเลือกต้องปรับปรุง)">${escapeHtml(inspection?.Remark || '')}</textarea></label>
+        </div><div class="five-s-photo-upload-preview" aria-live="polite"></div><div class="button-row"><button type="submit" class="btn btn-primary">บันทึกผลพร้อมรูป</button></div>
+      </form>` : '';
+    const readOnly = canSubmit && row.LeaderUserID === state.user?.UserID ? '' : (inspection ? '' : '<p class="five-s-readonly-note">ยังไม่ส่งผลตรวจ</p>');
+    return `<article class="five-s-checkpoint-card">
+      <div class="five-s-card-head"><div><span class="five-s-category">${escapeHtml(row.Category)}</span><h4>${escapeHtml(row.CheckpointName)}</h4><p>${escapeHtml(row.Area)} · กะ ${escapeHtml(row.Shift)} · Leader ${escapeHtml(row.LeaderName)}</p></div><span class="five-s-status ${resultClass}">${resultLabel}</span></div>
+      <p class="five-s-standard"><strong>มาตรฐาน:</strong> ${escapeHtml(row.StandardText)}</p>
+      ${inspection ? `<div class="five-s-saved-meta">ส่งเมื่อ ${escapeHtml(inspection.SubmittedAt || '')}${inspection.Remark ? ` · ${escapeHtml(inspection.Remark)}` : ''}</div>` : ''}
+      ${photo}${form}${readOnly}</article>`;
+  }).join('');
+}
+
+function handleFiveSInspectionChange(event) {
+  const input = event.target.closest('input[name="photo"]');
+  if (!input) return;
+  const preview = input.closest('form')?.querySelector('.five-s-photo-upload-preview');
+  const file = input.files?.[0];
+  if (!preview) return;
+  if (preview.dataset.previewUrl) URL.revokeObjectURL(preview.dataset.previewUrl);
+  preview.dataset.previewUrl = file ? URL.createObjectURL(file) : '';
+  preview.innerHTML = file ? `<img src="${escapeAttr(preview.dataset.previewUrl)}" alt="ตัวอย่างรูปที่จะส่ง"><span>${escapeHtml(file.name)}</span>` : '';
+}
+
+async function handleFiveSInspectionSubmit(event) {
+  const form = event.target.closest('[data-five-s-form]');
+  if (!form) return;
+  event.preventDefault();
+  if (!form.reportValidity()) return;
+  const checkpointId = form.dataset.checkpointId;
+  const date = state.fiveSBoard?.inspectionDate || localDateInput(new Date());
+  const file = form.querySelector('input[name="photo"]')?.files?.[0];
+  const result = form.querySelector('[name="result"]')?.value || '';
+  const remark = form.querySelector('[name="remark"]')?.value.trim() || '';
+  if (!file) { showToast('กรุณาถ่ายหรือเลือกภาพของจุดตรวจนี้', 'warning'); return; }
+  if (result === 'NeedAction' && !remark) { showToast('กรุณาระบุสิ่งที่ต้องปรับปรุง', 'warning'); return; }
+  const submitButton = form.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  try {
+    showLoading('กำลังอัปโหลดรูปและบันทึกผลตรวจ...');
+    const relatedId = `${date}|${checkpointId}`;
+    const upload = await uploadFile(file, 'FiveSInspection', relatedId, 'Evidence', false);
+    if (!upload?.DriveFileURL) throw new Error('อัปโหลดรูปไม่สำเร็จ กรุณาลองอีกครั้ง');
+    await apiCall('submitFiveSInspection', { inspectionDate: date, checkpointId, result, remark, photoUrl: upload.DriveFileURL });
+    showToast('บันทึกผลตรวจพร้อมรูปแล้ว', 'success');
+    await loadFiveSPage();
+  } catch (error) {
+    showToast(error.message || 'บันทึกผลตรวจไม่สำเร็จ', 'error');
+    submitButton.disabled = false;
+  } finally { hideLoading(); }
 }
 
 function showLogin() { $('#loginView').classList.remove('hidden'); $('#appView').classList.add('hidden'); $('#username').focus(); }

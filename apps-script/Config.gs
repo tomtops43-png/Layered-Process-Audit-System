@@ -29,6 +29,8 @@ var SHEET_NAMES = {
   MEETING_QUIZ_ANSWERS: 'MeetingQuizAnswers',
   MEETING_QUIZ_EMPLOYEES: 'MeetingQuizEmployees',
   MEETING_QUIZ_ATTENDANCE: 'MeetingQuizAttendance',
+  FIVE_S_CHECKPOINTS: 'FiveSCheckpoints',
+  FIVE_S_INSPECTIONS: 'FiveSInspections',
   LISTS: 'DO_NOT_DELETE_Lists',
   ROLE_PERMISSIONS: 'RolePermissions',
   USER_PERMISSIONS: 'UserPermissions',
@@ -58,6 +60,8 @@ SHEET_HEADERS[SHEET_NAMES.MEETING_QUIZ_PARTICIPANTS] = ['ParticipantID', 'QuizID
 SHEET_HEADERS[SHEET_NAMES.MEETING_QUIZ_ANSWERS] = ['AnswerID', 'QuizID', 'MeetingDate', 'ParticipantID', 'Shift', 'FirstName', 'LastName', 'DisplayName', 'Language', 'QuestionNo', 'Question', 'SelectedOption', 'SelectedText', 'CorrectOption', 'CorrectText', 'IsCorrect', 'Result', 'SubmittedAt', 'EmployeeID'];
 SHEET_HEADERS[SHEET_NAMES.MEETING_QUIZ_EMPLOYEES] = ['EmployeeID', 'FirstName', 'LastName', 'DisplayName', 'Shift', 'ActiveStatus', 'CreatedAt', 'UpdatedAt'];
 SHEET_HEADERS[SHEET_NAMES.MEETING_QUIZ_ATTENDANCE] = ['AttendanceID', 'MeetingDate', 'EmployeeID', 'Status', 'Reason', 'MarkedAt', 'MarkedBy'];
+SHEET_HEADERS[SHEET_NAMES.FIVE_S_CHECKPOINTS] = ['CheckpointID', 'Category', 'CheckpointName', 'Area', 'StandardText', 'Shift', 'LeaderUserID', 'LeaderName', 'ActiveStatus', 'SortOrder', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'];
+SHEET_HEADERS[SHEET_NAMES.FIVE_S_INSPECTIONS] = ['InspectionID', 'InspectionDate', 'CheckpointID', 'CheckpointName', 'Category', 'Area', 'Shift', 'LeaderUserID', 'LeaderName', 'Result', 'Remark', 'PhotoURL', 'AttachmentID', 'SubmittedAt', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'];
 SHEET_HEADERS[SHEET_NAMES.LISTS] = ['ListType', 'ListValue', 'DisplayText', 'SortOrder', 'ActiveStatus'];
 SHEET_HEADERS[SHEET_NAMES.ROLE_PERMISSIONS] = ['Role', 'PermissionKey', 'Allowed', 'Description', 'UpdatedAt', 'UpdatedBy'];
 SHEET_HEADERS[SHEET_NAMES.USER_PERMISSIONS] = ['UserID', 'PermissionKey', 'Allowed', 'Reason', 'CreatedAt', 'CreatedBy', 'UpdatedAt', 'UpdatedBy'];
