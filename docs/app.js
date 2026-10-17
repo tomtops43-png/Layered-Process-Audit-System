@@ -3296,8 +3296,8 @@ function renderMeetingQuizAdmin() {
     <div class="quiz-admin-toolbar"><div><strong>${escapeHtml(model.post?.Topic || '')}</strong><div class="field-help">${escapeHtml(model.post?.MeetingDate || '')} · ${escapeHtml(statusText)}${sourceTopics.length ? `<br>หัวข้อที่ใช้: ${sourceTopics.map(escapeHtml).join(' · ')}` : ''}</div></div><div class="quiz-admin-actions">${quiz && !isDraft ? `<span class="field-help">ส่งแล้ว ${summary.submittedCount || 0}/${summary.participantCount || 0} คน${model.lastRefreshedAt ? ` · อัปเดต ${new Date(model.lastRefreshedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : ''}</span><button type="button" class="btn btn-outline" data-quiz-refresh>รีเฟรชสถานะ</button>` : ''}${canGenerate && !model.autoGenerating ? '<button type="button" class="btn btn-secondary" data-quiz-generate>✨ Gen ข้อสอบ 5 ข้อจากทุกหัวข้อวันนี้</button>' : ''}</div></div>
     ${aiSettings}
     ${generationFeedback}
-    ${quiz && !isDraft ? `<div class="quiz-status-note">ใช้ QR และข้อสอบชุดเดียวกันทุกกะ · ชื่อที่มีในทะเบียนจะใช้กะเดิมอัตโนมัติ · ชื่อใหม่เลือกกะแล้วระบบเพิ่มเข้าทะเบียนให้โดยตรวจชื่อซ้ำ · สถานะอัปเดตทุก 5 วินาที</div>${!model.employeeRosterConfigured || !Number(model.employeeRosterCount || 0) ? `<div class="quiz-status-note">ยังไม่มีรายชื่อประจำในชีต ${escapeHtml(model.rosterSheetName || 'MeetingQuizEmployees')} พนักงานใหม่เพิ่มชื่อได้จากหน้า QR โดยเลือกกะ · หากมีรายชื่อประจำให้ใส่ EmployeeID, FirstName, LastName, Shift, ActiveStatus=Active เพื่อใช้คำนวณยอดที่ต้องสอบ · วันที่ลา/ป่วยเพิ่มในชีต ${escapeHtml(model.attendanceSheetName || 'MeetingQuizAttendance')} โดยใส่ MeetingDate, EmployeeID และ Status=Leave หรือ Sick</div>` : ''}<h4>ผลสอบและรายชื่อผู้เข้าสอบ แยกตามกะ</h4>${roster}` : ''}
-    ${publicUrl ? `<section class="quiz-qr-panel"><div><h4>QR สำหรับพนักงานเข้าสอบ</h4><p class="field-help">สแกน QR แล้วพิมพ์ชื่อ–นามสกุลและเลือกภาษา · ถ้าชื่อมีในทะเบียน ระบบเลือกกะให้อัตโนมัติ · ถ้าเป็นชื่อใหม่ ให้เลือกกะเพื่อเพิ่มชื่อในทะเบียนโดยไม่สร้างชื่อซ้ำ</p><div class="quiz-qr-link">${escapeHtml(publicUrl)}</div><button type="button" class="btn btn-outline" data-quiz-copy-link="${escapeAttr(publicUrl)}">คัดลอกลิงก์ข้อสอบ</button></div>${qrSvg ? `<div class="quiz-qr-image" aria-label="QR Code สำหรับเข้าสอบ">${qrSvg}</div>` : '<div class="quiz-qr-image quiz-qr-error">ยังสร้าง QR ไม่ได้ กรุณาคัดลอกลิงก์</div>'}</section>` : ''}
+    ${quiz && !isDraft ? `<div class="quiz-status-note">ใช้ QR และข้อสอบชุดเดียวกันทุกกะ · ผู้เข้าสอบทุกคนเลือกกะปัจจุบันตอนลงชื่อ ระบบอัปเดตกะในทะเบียนและป้องกันชื่อซ้ำ · สถานะอัปเดตทุก 5 วินาที</div>${!model.employeeRosterConfigured || !Number(model.employeeRosterCount || 0) ? `<div class="quiz-status-note">ยังไม่มีรายชื่อประจำในชีต ${escapeHtml(model.rosterSheetName || 'MeetingQuizEmployees')} ผู้สอบที่ไม่มีชื่อในทะเบียนจะถูกเพิ่มโดยอัตโนมัติเมื่อพิมพ์ชื่อและนามสกุลพร้อมเลือกกะ · หากมีรายชื่อประจำให้ใส่ EmployeeID, FirstName, LastName, Shift, ActiveStatus=Active เพื่อใช้คำนวณยอดที่ต้องสอบ · วันที่ลา/ป่วยเพิ่มในชีต ${escapeHtml(model.attendanceSheetName || 'MeetingQuizAttendance')} โดยใส่ MeetingDate, EmployeeID และ Status=Leave หรือ Sick</div>` : ''}<h4>ผลสอบและรายชื่อผู้เข้าสอบ แยกตามกะ</h4>${roster}` : ''}
+    ${publicUrl ? `<section class="quiz-qr-panel"><div><h4>QR สำหรับพนักงานเข้าสอบ</h4><p class="field-help">สแกน QR แล้วพิมพ์ชื่อ–นามสกุล เลือกกะปัจจุบันและภาษา · ระบบตรวจทะเบียนและอัปเดตกะให้โดยไม่สร้างชื่อซ้ำ</p><div class="quiz-qr-link">${escapeHtml(publicUrl)}</div><button type="button" class="btn btn-outline" data-quiz-copy-link="${escapeAttr(publicUrl)}">คัดลอกลิงก์ข้อสอบ</button></div>${qrSvg ? `<div class="quiz-qr-image" aria-label="QR Code สำหรับเข้าสอบ">${qrSvg}</div>` : '<div class="quiz-qr-image quiz-qr-error">ยังสร้าง QR ไม่ได้ กรุณาคัดลอกลิงก์</div>'}</section>` : ''}
     ${isDraft ? `<div class="quiz-status-note">สร้างข้อสอบชุดเดียวของวันนี้แล้ว · แก้ไขและบันทึกได้ แต่ระบบจะไม่ Gen ชุดซ้ำ · เปิดรับรายชื่อหลังเผยแพร่</div><div id="meetingQuizEditor" data-quiz-editor-language="TH"><div class="quiz-editor-language-switch" role="group" aria-label="เลือกภาษาที่ต้องการแก้ไข"><span>ภาษา</span><button type="button" class="is-active" data-quiz-editor-language="TH" aria-pressed="true">ไทย <small>หลัก</small></button><button type="button" data-quiz-editor-language="MY" aria-pressed="false">မြန်မာ</button></div>${questionEditor}</div><div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-save>บันทึกฉบับร่าง</button><button type="button" class="btn btn-primary" data-quiz-publish>เผยแพร่และเปิดรับสอบ</button></div>` : ''}
     ${quiz && !isDraft && !participants.length ? '<div class="quiz-status-note">ยังไม่มีผู้ลงชื่อสอบในรอบนี้</div>' : ''}
     ${quiz && !isDraft && summary.allSubmitted ? '<div class="quiz-status-note">ทุกกะปิดรับรายชื่อและส่งครบแล้ว ปุ่มเฉลยรวมเปิดให้ทุกคนดูบนบอร์ด</div>' : ''}
@@ -3397,7 +3397,8 @@ async function handleMeetingQuizAdminClick(event) {
       const shiftLabel = model.shiftSessions?.find(session => String(session.shift) === String(button.dataset.quizStop))?.label || button.dataset.quizStop;
       const confirmed = await showConfirm({ title: `หยุดสอบ${shiftLabel}?`, message: 'ระบบจะปิดรับคำตอบของกะนี้และแสดง 3 อันดับจากคะแนนที่ส่งแล้ว การหยุดทำได้เมื่อทุกคนส่งหรือถูกยกเว้น/บันทึกลาแล้ว', confirmText: 'หยุดสอบ', tone: 'primary' });
       if (!confirmed) return;
-      await apiCall('stopMeetingQuizShift', { postId: model.postId, shift: button.dataset.quizStop });
+      const stopped = await apiCall('stopMeetingQuizShift', { postId: model.postId, shift: button.dataset.quizStop });
+      await showMeetingQuizWinners(shiftLabel, stopped.topThree || []);
       await refreshMeetingQuizAdmin();
       await loadMeetingBoard();
       showToast('หยุดสอบแล้ว · แสดง 3 อันดับแรกของกะนี้', 'success');
@@ -3500,12 +3501,12 @@ function renderMeetingQuizExam() {
     title.textContent = `${lang === 'MY' ? 'အစည်းအဝေး စာမေးပွဲ' : 'แบบทดสอบ'} · ${model.topic || ''}`;
     const openShiftExists = (model.shiftOptions || []).some(shift => shift.rosterStatus === 'Open');
     const noRoster = !model.employeeRosterConfigured
-      ? '<div class="quiz-status-note">พิมพ์ชื่อและนามสกุลได้เลย หากยังไม่มีในทะเบียน ให้เลือกกะเพื่อเพิ่มชื่อเข้าฐานข้อมูลอัตโนมัติ ชื่อซ้ำจะใช้ทะเบียนเดิม</div>'
+      ? '<div class="quiz-status-note">พิมพ์ชื่อและนามสกุล แล้วเลือกกะปัจจุบัน ระบบจะเพิ่มชื่อใหม่เข้าทะเบียนและป้องกันชื่อซ้ำให้อัตโนมัติ</div>'
       : (openShiftExists ? '' : '<div class="quiz-status-note">ปิดรับลงชื่อสอบครบทุกกะแล้ว กรุณาติดต่อ Leader</div>');
-    const newEmployeeShiftOptions = (model.shiftOptions || []).filter(shift => shift.rosterStatus === 'Open')
+    const registrationShiftOptions = (model.shiftOptions || []).filter(shift => shift.rosterStatus === 'Open')
       .map(shift => `<option value="${escapeHtml(shift.value)}">${escapeHtml(shift.label || shift.value)}</option>`).join('');
     const registrationForm = openShiftExists
-      ? `<form id="meetingQuizRegistrationForm" class="form-stack"><p class="quiz-registration-intro">พิมพ์ชื่อและนามสกุล · ถ้ามีในทะเบียน ระบบใช้กะเดิมให้อัตโนมัติ · ถ้าเป็นชื่อใหม่ ให้เลือกกะเพื่อบันทึกเข้าทะเบียนก่อนเริ่มสอบ</p><label>ชื่อ *<input type="text" name="firstName" autocomplete="given-name" maxlength="100" required placeholder="พิมพ์ชื่อ"></label><label>นามสกุล *<input type="text" name="lastName" autocomplete="family-name" maxlength="100" required placeholder="พิมพ์นามสกุล"></label><label>กะ <span class="field-help">เลือกเฉพาะกรณีชื่อยังไม่มีในทะเบียน</span><select name="newEmployeeShift"><option value="">เลือกกะ (กรณีชื่อใหม่)</option>${newEmployeeShiftOptions}</select></label>${meetingQuizLanguagePickerHtml(lang, true)}<div class="modal-actions"><button type="submit" class="btn btn-primary">เริ่มทำข้อสอบ 5 ข้อ</button></div></form>`
+      ? `<form id="meetingQuizRegistrationForm" class="form-stack"><p class="quiz-registration-intro">พิมพ์ชื่อและนามสกุล แล้วเลือกกะปัจจุบัน ระบบจะตรวจและอัปเดตทะเบียนพนักงานให้อัตโนมัติ</p><label>ชื่อ *<input type="text" name="firstName" autocomplete="given-name" maxlength="100" required placeholder="พิมพ์ชื่อ"></label><label>นามสกุล *<input type="text" name="lastName" autocomplete="family-name" maxlength="100" required placeholder="พิมพ์นามสกุล"></label><label>กะปัจจุบัน *<select name="employeeShift" required><option value="">เลือกกะ</option>${registrationShiftOptions}</select></label>${meetingQuizLanguagePickerHtml(lang, true)}<div class="modal-actions"><button type="submit" class="btn btn-primary">เริ่มทำข้อสอบ 5 ข้อ</button></div></form>`
       : '';
     content.innerHTML = `<p class="page-helper">${escapeHtml(model.meetingDate || '')} · ${escapeHtml(model.topic || '')}</p>${noRoster}${registrationForm}`;
     return;
@@ -3547,6 +3548,17 @@ function meetingQuizPodiumHtml(rows, shift, lang = 'TH') {
   return `<section class="quiz-podium"><strong>${escapeHtml(heading)}</strong><ol>${list.map(person => `<li><span>${person.rank === 1 ? '🥇' : (person.rank === 2 ? '🥈' : '🥉')} ${escapeHtml(person.displayName || '')}</span><b>${Number(person.score || 0)}/${Number(person.total || 5)}</b></li>`).join('')}</ol></section>`;
 }
 
+async function showMeetingQuizWinners(shiftLabel, rows) {
+  const podium = (Array.isArray(rows) ? rows : []).slice(0, 3);
+  const messageHtml = podium.length
+    ? `<ol class="confirm-podium-list">${podium.map(person => `<li><span><b>${person.rank === 1 ? '🥇' : (person.rank === 2 ? '🥈' : '🥉')} อันดับ ${Number(person.rank) || 0}</b>${escapeHtml(person.displayName || '')}</span><strong>${Number(person.score || 0)}/${Number(person.total || 5)} คะแนน</strong></li>`).join('')}</ol>`
+    : '<div class="confirm-podium-empty">ยังไม่มีผู้ส่งข้อสอบเพื่อจัดอันดับ</div>';
+  await showConfirm({
+    title: `🏆 ผลสอบกะ${shiftLabel}`,
+    icon: '🏆', tone: 'success', messageHtml, confirmOnly: true, confirmText: 'ปิด'
+  });
+}
+
 function meetingQuizPersonalReviewHtml(rows, lang) {
   const labels = lang === 'MY'
     ? { correct: '✓ မှန်ကန်သည်', wrong: '✗ မှားယွင်းသည်', rightAnswer: 'အဖြေမှန်' }
@@ -3577,7 +3589,7 @@ async function handleMeetingQuizExamSubmit(event) {
     try {
       const data = await apiCall('registerMeetingQuizParticipant', {
         ...meetingQuizScope(model), firstName: form.elements.firstName.value.trim(),
-        lastName: form.elements.lastName.value.trim(), shift: form.elements.newEmployeeShift.value,
+        lastName: form.elements.lastName.value.trim(), shift: form.elements.employeeShift.value,
         language, participantToken: model.participantToken
       });
       model.participantId = data.participantId;
@@ -4259,7 +4271,7 @@ function meetingTvQuizSlideHtml(dailyQuiz) {
     <h1 class="mtg-tv-title">QR Code ข้อสอบ</h1>
     <p class="mtg-tv-quiz-help">สแกน QR Code เพื่อทำข้อสอบของ Meeting วันนี้ · ไม่ต้อง Login</p>
     ${qrSvg ? `<div class="mtg-tv-quiz-qr" aria-label="QR Code สำหรับเข้าสอบ">${qrSvg}</div>` : '<div class="mtg-tv-quiz-error">ข้อสอบเผยแพร่แล้ว แต่ QR ยังไม่พร้อม กรุณารีเฟรชหน้า Meeting</div>'}
-    <div class="mtg-tv-quiz-caption">ข้อสอบชุดเดียว 5 ข้อ · สแกน QR พิมพ์ชื่อและนามสกุล เลือกภาษาที่ต้องการ · ระบบตรวจทะเบียนและเลือกกะให้</div>
+    <div class="mtg-tv-quiz-caption">ข้อสอบชุดเดียว 5 ข้อ · สแกน QR พิมพ์ชื่อและนามสกุล เลือกกะปัจจุบันและภาษาที่ต้องการ</div>
   </div>`;
 }
 
@@ -4474,7 +4486,8 @@ async function stopMeetingQuizFromTv(button) {
   if (!confirmed) return;
   button.disabled = true;
   try {
-    await apiCall('stopMeetingQuizShift', { postId, shift });
+    const stopped = await apiCall('stopMeetingQuizShift', { postId, shift });
+    await showMeetingQuizWinners(label, stopped.topThree || []);
     await loadMeetingBoard();
     showToast(`หยุดสอบ${label}แล้ว · แสดงอันดับ 1–3`, 'success');
   } catch (error) {
@@ -6157,11 +6170,14 @@ function showConfirm(options) {
   dialog.className = `modal confirm-modal tone-${tone}`;
   $('#confirmDialogIcon').textContent = config.icon || CONFIRM_TONE_ICONS[tone] || '?';
   $('#confirmDialogTitle').textContent = config.title || 'ยืนยันการทำรายการ';
-  $('#confirmDialogMessage').textContent = config.message || '';
+  const messageElement = $('#confirmDialogMessage');
+  if (config.messageHtml) messageElement.innerHTML = config.messageHtml;
+  else messageElement.textContent = config.message || '';
   const okButton = $('#confirmDialogOk');
   const cancelButton = $('#confirmDialogCancel');
   okButton.textContent = config.confirmText || 'ยืนยัน';
   cancelButton.textContent = config.cancelText || 'ยกเลิก';
+  cancelButton.hidden = Boolean(config.confirmOnly);
   okButton.className = `btn ${tone === 'danger' ? 'btn-danger' : 'btn-primary'}`;
   dialog.showModal();
   // Destructive prompts start on Cancel so a stray Enter cannot delete anything.
