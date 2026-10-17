@@ -3090,11 +3090,12 @@ function syncMeetingQuizAdminPolling() {
 }
 
 function meetingQuizUiQuestion(row = {}) {
+  const cleanChoices = values => (values || []).map(value => String(value || '').replace(/^\s*[A-D]\s*[.)、:：-]\s*/i, '').trim());
   return {
     questionTH: row.QuestionTH || row.questionTH || '',
-    choicesTH: row.choicesTH || [row.ChoiceATH || row.choiceATH || '', row.ChoiceBTH || row.choiceBTH || '', row.ChoiceCTH || row.choiceCTH || '', row.ChoiceDTH || row.choiceDTH || ''],
+    choicesTH: cleanChoices(row.choicesTH || [row.ChoiceATH || row.choiceATH || '', row.ChoiceBTH || row.choiceBTH || '', row.ChoiceCTH || row.choiceCTH || '', row.ChoiceDTH || row.choiceDTH || '']),
     questionMY: row.QuestionMY || row.questionMY || '',
-    choicesMY: row.choicesMY || [row.ChoiceAMY || row.choiceAMY || '', row.ChoiceBMY || row.choiceBMY || '', row.ChoiceCMY || row.choiceCMY || '', row.ChoiceDMY || row.choiceDMY || ''],
+    choicesMY: cleanChoices(row.choicesMY || [row.ChoiceAMY || row.choiceAMY || '', row.ChoiceBMY || row.choiceBMY || '', row.ChoiceCMY || row.choiceCMY || '', row.ChoiceDMY || row.choiceDMY || '']),
     correctOption: row.CorrectOption || row.correctOption || 'A',
     explanationTH: row.ExplanationTH || row.explanationTH || '',
     explanationMY: row.ExplanationMY || row.explanationMY || ''
