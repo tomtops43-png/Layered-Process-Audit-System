@@ -1088,6 +1088,15 @@ body.mtg-tv-open{overflow:hidden}
 .five-s-photo-upload-preview img{width:68px;height:68px;flex:0 0 auto;object-fit:cover;border:1px solid var(--border);border-radius:9px}
 .five-s-photo{display:inline-grid;justify-items:start;gap:5px;width:min(220px,100%);color:var(--blue);font-size:.78rem;font-weight:700;text-decoration:none}
 .five-s-photo img{display:block;width:100%;height:140px;object-fit:cover;border:1px solid var(--border);border-radius:10px;background:var(--gray-bg)}
+.five-s-reference-input input[type=file]{display:block;max-width:100%;margin-top:8px;padding:9px;border:1px solid var(--border);border-radius:9px;background:#fff}
+.five-s-reference-input small{display:block;margin-top:5px;color:var(--muted);font-size:.76rem;line-height:1.5}
+.five-s-reference-preview{display:block;margin-top:9px}
+.five-s-reference-link,.five-s-reference-photo{display:inline-grid;justify-items:start;gap:5px;max-width:100%;color:var(--blue);font-size:.78rem;font-weight:750;text-decoration:none;overflow-wrap:anywhere}
+.five-s-reference-link img{display:block;width:min(170px,100%);height:112px;object-fit:cover;border:1px solid var(--border);border-radius:9px;background:var(--gray-bg)}
+.five-s-reference-photo{padding:10px 12px;border:1px solid #d6e8f5;border-radius:11px;background:#f5faff}
+.five-s-reference-photo img{display:block;width:min(300px,100%);max-height:190px;object-fit:cover;border:1px solid var(--border);border-radius:8px;background:var(--gray-bg)}
+.five-s-table .five-s-reference-link{display:flex;align-items:center;gap:8px;margin-top:8px}
+.five-s-table .five-s-reference-link img{width:62px;height:48px;flex:0 0 auto}
 .five-s-readonly-note{padding-top:3px}
 .five-s-table{width:100%;border-collapse:collapse;font-size:.87rem}
 .five-s-table th,.five-s-table td{padding:11px 12px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}

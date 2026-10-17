@@ -18,6 +18,11 @@ function uploadFile(payload, currentUser) {
       if (fileType !== 'Evidence') throw new Error('รูปตรวจ 5.ส ต้องจัดเก็บเป็น Evidence เท่านั้น');
       fiveSValidatePhotoUpload_(payload.relatedId, currentUser);
     }
+    if (valuesEqual_(payload.relatedType, 'FiveSCheckpoint')) {
+      if (fileType !== 'Evidence') throw new Error('รูปอ้างอิงจุดตรวจ 5.ส ต้องจัดเก็บเป็น Evidence เท่านั้น');
+      if (!fiveSCanManageCheckpoints_(currentUser)) throw new Error('คุณไม่มีสิทธิ์จัดการรูปอ้างอิงจุดตรวจ 5.ส');
+      if (!fiveSCheckpointById_(payload.relatedId)) throw new Error('ไม่พบจุดตรวจ 5.ส สำหรับแนบรูปอ้างอิง');
+    }
 
     var folderId = cleanString_(getSetting(folderSettings[fileType]));
     if (!folderId) throw new Error(folderSettings[fileType] + ' is not configured in Settings.');
@@ -65,6 +70,22 @@ function uploadFile(payload, currentUser) {
       AttachmentID: attachmentId, DriveFileID: file.getId(), DriveFileURL: fileUrl,
       FileName: safeName, MimeType: payload.mimeType, FileSize: bytes.length
     });
+  } catch (error) {
+    return jsonResponse(false, safeErrorMessage_(error), {});
+  }
+}
+
+/** Checkpoint managers can upload a reference photo only to an existing 5S checkpoint. */
+function uploadFiveSCheckpointReferencePhoto(payload, currentUser) {
+  try {
+    if (!fiveSCanManageCheckpoints_(currentUser)) throw new Error('คุณไม่มีสิทธิ์จัดการรูปอ้างอิงจุดตรวจ 5.ส');
+    requireFields_(payload, ['checkpointId', 'fileName', 'mimeType', 'base64Data']);
+    if (String(payload.mimeType).toLowerCase().indexOf('image/') !== 0) throw new Error('กรุณาเลือกไฟล์รูปภาพ');
+    return uploadFile({
+      relatedType: 'FiveSCheckpoint', relatedId: cleanString_(payload.checkpointId),
+      fileType: 'Evidence', fileName: payload.fileName, mimeType: payload.mimeType,
+      base64Data: payload.base64Data, remark: '5S checkpoint reference photo'
+    }, currentUser);
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }

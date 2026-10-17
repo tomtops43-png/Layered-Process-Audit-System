@@ -216,6 +216,7 @@
               <label>Leader ผู้รับผิดชอบ<select id="fiveSLeader" required><option value="">เลือก Leader</option></select></label>
               <label>สถานะ<select id="fiveSCheckpointStatus"><option>Active</option><option>Inactive</option></select></label>
               <label class="full-width">มาตรฐาน/สิ่งที่ต้องตรวจ<textarea id="fiveSStandardText" rows="3" maxlength="1000" required placeholder="อธิบายสภาพที่ต้องรักษา หรือจุดที่ต้องตรวจ"></textarea></label>
+              <label class="full-width five-s-reference-input">รูปอ้างอิงตำแหน่ง <span class="optional-mark">ไม่บังคับ</span><input id="fiveSReferencePhoto" type="file" accept="image/*"><small>ใช้ช่วยจำตำแหน่งจุดตรวจ รูปนี้ไม่แทนรูปหลักฐานที่ Leader ต้องถ่ายตอนตรวจ</small><input id="fiveSReferencePhotoURL" type="hidden"><span id="fiveSReferencePhotoPreview" class="five-s-reference-preview" aria-live="polite"></span></label>
               <div id="fiveSCheckpointFormError" class="form-error full-width hidden" role="alert"></div>
               <div class="button-row full-width"><button id="fiveSCancelCheckpointButton" type="button" class="btn btn-outline">ยกเลิก</button><button type="submit" class="btn btn-primary">บันทึกจุดตรวจ</button></div>
             </form>

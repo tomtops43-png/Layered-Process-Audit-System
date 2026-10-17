@@ -194,6 +194,7 @@ function bindEvents() {
   $('#fiveSAddCheckpointButton').addEventListener('click', () => openFiveSCheckpointEditor());
   $('#fiveSCancelCheckpointButton').addEventListener('click', closeFiveSCheckpointEditor);
   $('#fiveSCheckpointForm').addEventListener('submit', event => { event.preventDefault(); saveFiveSCheckpointFromForm(); });
+  $('#fiveSReferencePhoto').addEventListener('change', handleFiveSReferencePhotoChange);
   $('#fiveSCheckpointTable').addEventListener('click', handleFiveSCheckpointTableClick);
   $('#fiveSInspectionList').addEventListener('submit', handleFiveSInspectionSubmit);
   $('#fiveSInspectionList').addEventListener('change', handleFiveSInspectionChange);
@@ -382,7 +383,7 @@ const API_MAX_TIMEOUT_ATTEMPTS = 2;
 // Actions that change server state: a dropped connection may mean the write DID
 // land, so replay them only when the server explicitly refused the request.
 const WRITE_ACTIONS = [
-  'saveAudit', 'uploadFile', 'updateFinding', 'submitFinding', 'verifyFinding', 'closeFinding',
+  'saveAudit', 'uploadFile', 'uploadFiveSCheckpointReferencePhoto', 'updateFinding', 'submitFinding', 'verifyFinding', 'closeFinding',
   'saveMeetingPost', 'deleteMeetingPost', 'updateMeetingPostStatus', 'acknowledgeMeetingPost',
   'convertMeetingSlideFile', 'generateMeetingQuiz', 'saveMeetingQuizApiKey', 'saveMeetingQuizDraft', 'publishMeetingQuiz',
   'lockMeetingQuizRoster', 'excuseMeetingQuizParticipant', 'registerMeetingQuizParticipant', 'submitMeetingQuiz',
@@ -418,7 +419,7 @@ function releaseApiSlot() {
 }
 
 async function apiCall(action, payload = {}, options = {}) {
-  const TIMEOUT_MS = (action === 'uploadFile' || action === 'saveAudit' || action === 'convertMeetingSlideFile' || action === 'generateMeetingQuiz') ? 90000 : 45000;
+  const TIMEOUT_MS = (action === 'uploadFile' || action === 'uploadFiveSCheckpointReferencePhoto' || action === 'saveAudit' || action === 'convertMeetingSlideFile' || action === 'generateMeetingQuiz') ? 90000 : 45000;
   // Writes are always something a user is standing in front of; reads are only
   // urgent when the caller says so (background refreshes pass priority 'normal').
   const priority = options.priority || (WRITE_ACTIONS.includes(action) ? 'high' : 'normal');
@@ -2866,6 +2867,15 @@ async function uploadFile(file, relatedType, relatedId, fileType, manageLoading 
   } finally {
     if (manageLoading) hideLoading();
   }
+}
+
+async function uploadFiveSCheckpointReferencePhoto(file, checkpointId) {
+  if (!file) throw new Error('กรุณาเลือกภาพอ้างอิงตำแหน่ง');
+  const compressed = String(file.type || '').startsWith('image/') ? await compressImage(file) : file;
+  const base64Data = await fileToBase64(compressed);
+  return apiCall('uploadFiveSCheckpointReferencePhoto', {
+    checkpointId, fileName: file.name.replace(/\.[^.]+$/, '.jpg'), mimeType: 'image/jpeg', base64Data
+  });
 }
 
 // ===== Morning Meeting Board =====
@@ -6128,7 +6138,7 @@ function renderFiveSSetup(setup) {
   if ((setup.leaders || []).some(row => row.UserID === previousLeader)) leaderSelect.value = previousLeader;
   const rows = setup.checkpoints || [];
   $('#fiveSCheckpointTable').innerHTML = rows.length ? `<table class="five-s-table"><thead><tr><th>หัวข้อ 5.ส</th><th>จุดตรวจ / พื้นที่</th><th>กะ</th><th>Leader</th><th>สถานะ</th><th></th></tr></thead><tbody>${rows.map(row => `
-    <tr><td>${escapeHtml(row.Category)}</td><td><strong>${escapeHtml(row.CheckpointName)}</strong><small>${escapeHtml(row.Area)} · ${escapeHtml(row.StandardText)}</small></td>
+    <tr><td>${escapeHtml(row.Category)}</td><td><strong>${escapeHtml(row.CheckpointName)}</strong><small>${escapeHtml(row.Area)} · ${escapeHtml(row.StandardText)}</small>${row.ReferencePhotoURL ? `<a class="five-s-reference-link" href="${escapeAttr(row.ReferencePhotoURL)}" target="_blank" rel="noopener"><img src="${escapeAttr(driveThumbnailUrl_(row.ReferencePhotoURL))}" alt="รูปอ้างอิง ${escapeAttr(row.CheckpointName)}" loading="lazy"><span>ดูรูปอ้างอิง</span></a>` : ''}</td>
       <td>${escapeHtml(row.Shift)}</td><td>${escapeHtml(row.LeaderName)}</td><td><span class="five-s-status ${isActiveStatus(row.ActiveStatus) ? 'active' : 'inactive'}">${isActiveStatus(row.ActiveStatus) ? 'Active' : 'Inactive'}</span></td>
       <td><button type="button" class="btn btn-outline btn-compact" data-five-s-edit="${escapeAttr(row.CheckpointID)}">แก้ไข</button></td></tr>`).join('')}</tbody></table>`
     : '<div class="empty-state">ยังไม่มีจุดตรวจ กด “เพิ่มจุดตรวจ” เพื่อเริ่มกำหนดรายการ</div>';
@@ -6147,14 +6157,22 @@ function openFiveSCheckpointEditor(row = null) {
   $('#fiveSLeader').value = row?.LeaderUserID || '';
   $('#fiveSCheckpointStatus').value = row?.ActiveStatus || 'Active';
   $('#fiveSStandardText').value = row?.StandardText || '';
+  $('#fiveSReferencePhotoURL').value = row?.ReferencePhotoURL || '';
+  $('#fiveSReferencePhoto').value = '';
+  renderFiveSReferencePhotoPreview(row?.ReferencePhotoURL || '');
   $('#fiveSCheckpointFormError').classList.add('hidden');
   form.classList.remove('hidden');
   form.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function closeFiveSCheckpointEditor() {
+  const preview = $('#fiveSReferencePhotoPreview');
+  if (preview.dataset.previewUrl) URL.revokeObjectURL(preview.dataset.previewUrl);
+  preview.dataset.previewUrl = '';
+  preview.innerHTML = '';
   $('#fiveSCheckpointForm').reset();
   $('#fiveSCheckpointId').value = '';
+  $('#fiveSReferencePhotoURL').value = '';
   $('#fiveSCheckpointForm').classList.add('hidden');
   $('#fiveSCheckpointFormError').classList.add('hidden');
 }
@@ -6162,23 +6180,58 @@ function closeFiveSCheckpointEditor() {
 async function saveFiveSCheckpointFromForm() {
   const errorEl = $('#fiveSCheckpointFormError');
   errorEl.classList.add('hidden');
+  let savedCheckpointId = $('#fiveSCheckpointId').value;
+  let checkpointSaved = false;
   try {
     showLoading('กำลังบันทึกจุดตรวจ 5.ส...');
-    await apiCall('saveFiveSCheckpoint', {
-      checkpointId: $('#fiveSCheckpointId').value,
+    const payload = {
+      checkpointId: savedCheckpointId,
       category: $('#fiveSCategory').value,
       checkpointName: $('#fiveSCheckpointName').value.trim(),
       area: $('#fiveSArea').value.trim(), standardText: $('#fiveSStandardText').value.trim(),
       shift: $('#fiveSCheckpointShift').value, leaderUserId: $('#fiveSLeader').value,
-      activeStatus: $('#fiveSCheckpointStatus').value
-    });
+      activeStatus: $('#fiveSCheckpointStatus').value,
+      referencePhotoURL: $('#fiveSReferencePhotoURL').value
+    };
+    const firstSave = await apiCall('saveFiveSCheckpoint', payload);
+    checkpointSaved = true;
+    savedCheckpointId = firstSave.checkpoint?.CheckpointID || savedCheckpointId;
+    if (!savedCheckpointId) throw new Error('บันทึกจุดตรวจแล้ว แต่ไม่ได้รับรหัสจุดตรวจ กรุณารีเฟรชก่อนลองอีกครั้ง');
+    $('#fiveSCheckpointId').value = savedCheckpointId;
+    const file = $('#fiveSReferencePhoto').files?.[0];
+    if (file) {
+      const uploaded = await uploadFiveSCheckpointReferencePhoto(file, savedCheckpointId);
+      if (!uploaded.DriveFileURL) throw new Error('อัปโหลดรูปแล้วแต่ไม่ได้รับลิงก์รูป กรุณาลองบันทึกอีกครั้ง');
+      $('#fiveSReferencePhotoURL').value = uploaded.DriveFileURL;
+      $('#fiveSReferencePhoto').value = '';
+      renderFiveSReferencePhotoPreview(uploaded.DriveFileURL);
+      await apiCall('saveFiveSCheckpoint', { ...payload, checkpointId: savedCheckpointId, referencePhotoURL: uploaded.DriveFileURL });
+    }
     closeFiveSCheckpointEditor();
     showToast('บันทึกจุดตรวจ 5.ส แล้ว', 'success');
     await loadFiveSPage();
   } catch (error) {
-    errorEl.textContent = error.message || 'บันทึกจุดตรวจไม่สำเร็จ';
+    errorEl.textContent = checkpointSaved
+      ? `บันทึกข้อมูลจุดตรวจแล้ว แต่รูปอ้างอิงยังไม่เสร็จ: ${error.message || 'กรุณาตรวจสอบแล้วกดบันทึกอีกครั้ง'}`
+      : (error.message || 'บันทึกจุดตรวจไม่สำเร็จ');
     errorEl.classList.remove('hidden');
   } finally { hideLoading(); }
+}
+
+function renderFiveSReferencePhotoPreview(url = '') {
+  const preview = $('#fiveSReferencePhotoPreview');
+  if (preview.dataset.previewUrl) URL.revokeObjectURL(preview.dataset.previewUrl);
+  preview.dataset.previewUrl = '';
+  preview.innerHTML = url ? `<a class="five-s-reference-link" href="${escapeAttr(url)}" target="_blank" rel="noopener"><img src="${escapeAttr(driveThumbnailUrl_(url))}" alt="ตัวอย่างรูปอ้างอิงตำแหน่ง" loading="lazy"><span>ดูรูปอ้างอิงปัจจุบัน</span></a>` : '';
+}
+
+function handleFiveSReferencePhotoChange(event) {
+  const preview = $('#fiveSReferencePhotoPreview');
+  if (preview.dataset.previewUrl) URL.revokeObjectURL(preview.dataset.previewUrl);
+  const file = event.target.files?.[0];
+  if (!file) { renderFiveSReferencePhotoPreview($('#fiveSReferencePhotoURL').value); return; }
+  preview.dataset.previewUrl = URL.createObjectURL(file);
+  preview.innerHTML = `<span class="five-s-reference-link"><img src="${escapeAttr(preview.dataset.previewUrl)}" alt="ตัวอย่างรูปอ้างอิงตำแหน่ง"><span>${escapeHtml(file.name)} · รูปใหม่จะแทนที่รูปเดิม</span></span>`;
 }
 
 function handleFiveSCheckpointTableClick(event) {
@@ -6202,6 +6255,7 @@ function renderFiveSInspectionList(board) {
     const resultLabel = inspection?.Result === 'Pass' ? 'ผ่าน' : inspection?.Result === 'NeedAction' ? 'ต้องปรับปรุง' : 'รอตรวจ';
     const resultClass = inspection?.Result === 'Pass' ? 'pass' : inspection?.Result === 'NeedAction' ? 'needs-action' : 'waiting';
     const photo = inspection?.PhotoURL ? `<a class="five-s-photo" href="${escapeAttr(inspection.PhotoURL)}" target="_blank" rel="noopener"><img src="${escapeAttr(driveThumbnailUrl_(inspection.PhotoURL))}" alt="รูปจุดตรวจ ${escapeAttr(row.CheckpointName)}" loading="lazy"><span>ดูรูปที่ส่งแล้ว</span></a>` : '';
+    const referencePhoto = row.ReferencePhotoURL ? `<a class="five-s-reference-photo" href="${escapeAttr(row.ReferencePhotoURL)}" target="_blank" rel="noopener"><span>📍 รูปอ้างอิงตำแหน่ง</span><img src="${escapeAttr(driveThumbnailUrl_(row.ReferencePhotoURL))}" alt="รูปอ้างอิงตำแหน่ง ${escapeAttr(row.CheckpointName)}" loading="lazy"></a>` : '';
     const form = canSubmit && row.LeaderUserID === state.user?.UserID ? `
       <form class="five-s-audit-form" data-five-s-form data-checkpoint-id="${escapeAttr(row.CheckpointID)}">
         <div class="form-grid"><label>ผลตรวจ<select name="result" required><option value="">เลือกผลตรวจ</option><option value="Pass" ${inspection?.Result === 'Pass' ? 'selected' : ''}>ผ่านตามมาตรฐาน</option><option value="NeedAction" ${inspection?.Result === 'NeedAction' ? 'selected' : ''}>ต้องปรับปรุง</option></select></label>
@@ -6212,6 +6266,7 @@ function renderFiveSInspectionList(board) {
     const readOnly = canSubmit && row.LeaderUserID === state.user?.UserID ? '' : (inspection ? '' : '<p class="five-s-readonly-note">ยังไม่ส่งผลตรวจ</p>');
     return `<article class="five-s-checkpoint-card">
       <div class="five-s-card-head"><div><span class="five-s-category">${escapeHtml(row.Category)}</span><h4>${escapeHtml(row.CheckpointName)}</h4><p>${escapeHtml(row.Area)} · กะ ${escapeHtml(row.Shift)} · Leader ${escapeHtml(row.LeaderName)}</p></div><span class="five-s-status ${resultClass}">${resultLabel}</span></div>
+      ${referencePhoto}
       <p class="five-s-standard"><strong>มาตรฐาน:</strong> ${escapeHtml(row.StandardText)}</p>
       ${inspection ? `<div class="five-s-saved-meta">ส่งเมื่อ ${escapeHtml(inspection.SubmittedAt || '')}${inspection.Remark ? ` · ${escapeHtml(inspection.Remark)}` : ''}</div>` : ''}
       ${photo}${form}${readOnly}</article>`;

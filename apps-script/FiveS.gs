@@ -13,6 +13,12 @@ function ensureFiveSSheets_() {
     if (!headers.length) {
       sheet.getRange(1, 1, 1, SHEET_HEADERS[name].length).setValues([SHEET_HEADERS[name]]);
       invalidateSheetMatrixCache_(name);
+    } else {
+      var missing = SHEET_HEADERS[name].filter(function (header) { return headers.indexOf(header) === -1; });
+      if (missing.length) {
+        sheet.getRange(1, headers.length + 1, 1, missing.length).setValues([missing]);
+        invalidateSheetMatrixCache_(name);
+      }
     }
     _SHEET_HANDLE_MEMO_[name] = sheet;
   });
@@ -102,7 +108,8 @@ function getFiveSBoard(payload, currentUser) {
       return {
         CheckpointID: cleanString_(row.CheckpointID), Category: cleanString_(row.Category),
         CheckpointName: cleanString_(row.CheckpointName), Area: cleanString_(row.Area),
-        StandardText: cleanString_(row.StandardText), Shift: cleanString_(row.Shift),
+        StandardText: cleanString_(row.StandardText), ReferencePhotoURL: cleanString_(row.ReferencePhotoURL),
+        Shift: cleanString_(row.Shift),
         LeaderUserID: cleanString_(row.LeaderUserID), LeaderName: cleanString_(row.LeaderName),
         Inspection: inspection ? {
           InspectionDate: date, Result: cleanString_(inspection.Result), Remark: cleanString_(inspection.Remark),
@@ -155,12 +162,25 @@ function saveFiveSCheckpoint(payload, currentUser) {
       var checkpointId = cleanString_(payload.checkpointId);
       var existing = checkpointId ? fiveSCheckpointById_(checkpointId) : null;
       if (checkpointId && !existing) throw new Error('ไม่พบจุดตรวจ 5.ส ที่ต้องการแก้ไข');
+      var referencePhotoUrl = Object.prototype.hasOwnProperty.call(payload, 'referencePhotoURL')
+        ? cleanString_(payload.referencePhotoURL)
+        : cleanString_(existing && existing.ReferencePhotoURL);
+      if (referencePhotoUrl) {
+        var hasReferenceAttachment = getRowsAsObjects(SHEET_NAMES.ATTACHMENTS).some(function (attachment) {
+          return valuesEqual_(attachment.RelatedType, 'FiveSCheckpoint') &&
+            valuesEqual_(attachment.RelatedID, checkpointId) &&
+            valuesEqual_(attachment.FileType, 'Evidence') &&
+            cleanString_(attachment.DriveFileURL) === referencePhotoUrl;
+        });
+        if (!hasReferenceAttachment) throw new Error('รูปอ้างอิงต้องอัปโหลดผ่านระบบก่อนบันทึก');
+      }
       var sortOrder = existing ? toNumber_(existing.SortOrder) : getRowsAsObjects(SHEET_NAMES.FIVE_S_CHECKPOINTS).reduce(function (max, row) {
         return Math.max(max, toNumber_(row.SortOrder));
       }, 0) + 1;
       var row = {
         CheckpointID: checkpointId || generateIdWithoutLock_('FSC', SHEET_NAMES.FIVE_S_CHECKPOINTS, 'CheckpointID', getPeriodMonth(new Date())),
         Category: category, CheckpointName: checkpointName, Area: area, StandardText: standardText,
+        ReferencePhotoURL: referencePhotoUrl,
         Shift: shift.value, LeaderUserID: leader.UserID, LeaderName: leader.FullName,
         ActiveStatus: activeStatus, SortOrder: sortOrder,
         CreatedAt: existing ? existing.CreatedAt : timestamp,

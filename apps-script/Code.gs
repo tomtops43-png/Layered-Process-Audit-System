@@ -123,6 +123,7 @@ function buildApiHandlers_(payload) {
     getFiveSBoard: function (user) { return getFiveSBoard(payload, user); },
     getFiveSSetupData: function (user) { return getFiveSSetupData(payload, user); },
     saveFiveSCheckpoint: function (user) { return saveFiveSCheckpoint(payload, user); },
+    uploadFiveSCheckpointReferencePhoto: function (user) { return uploadFiveSCheckpointReferencePhoto(payload, user); },
     submitFiveSInspection: function (user) { return submitFiveSInspection(payload, user); },
     acknowledgeMeetingPost: function (user) { return acknowledgeMeetingPost(payload, user); },
     getMyPendingMeetingAcks: function (user) { return getMyPendingMeetingAcks(payload, user); },
