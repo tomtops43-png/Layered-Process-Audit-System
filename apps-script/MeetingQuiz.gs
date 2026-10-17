@@ -372,7 +372,7 @@ function meetingQuizEmployeeName_(employee) {
 }
 
 function meetingQuizNormalizeEmployeeName_(name) {
-  return cleanString_(name).toLowerCase().replace(/\s+/g, ' ');
+  return cleanString_(name).normalize('NFC').toLowerCase().replace(/\s+/g, ' ');
 }
 
 /** The first active roster row for an exact full name is the canonical entry. */
@@ -398,7 +398,7 @@ function meetingQuizRosterRows_() {
 }
 
 function meetingQuizRosterConfigured_() {
-  return meetingQuizRosterRows_().length > 0;
+  return meetingQuizUniqueRosterRows_(meetingQuizRosterRows_()).length > 0;
 }
 
 function meetingQuizAttendanceMap_(meetingDate) {
@@ -458,20 +458,17 @@ function meetingQuizEmployeesForRegistration_(quiz) {
   });
 }
 
-function meetingQuizEmployeeForRegistration_(employeeId) {
-  var id = cleanString_(employeeId).toLowerCase();
-  if (!id) throw new Error('กรุณาเลือกชื่อจากทะเบียนพนักงาน');
-  var allMatches = meetingQuizRosterRows_().filter(function (row) { return valuesEqual_(row.EmployeeID, employeeId); });
-  var matches = meetingQuizUniqueRosterRows_(meetingQuizRosterRows_()).filter(function (row) { return valuesEqual_(row.EmployeeID, employeeId); });
-  if (!matches.length) {
-    if (allMatches.length) throw new Error('ชื่อนี้ซ้ำในชีต MeetingQuizEmployees ระบบนับแถว Active แรกเป็นคนเดียว กรุณาเลือกชื่อนั้น');
-    throw new Error('ไม่พบชื่อในทะเบียนพนักงาน กรุณาเลือกชื่อใหม่');
-  }
-  if (matches.length > 1) throw new Error('รหัสพนักงานซ้ำในชีต MeetingQuizEmployees กรุณาแก้ให้ไม่ซ้ำ');
-  var employee = matches[0];
-  if (!isActive_(employee.ActiveStatus)) throw new Error('รายชื่อนี้ไม่อยู่ในสถานะ Active กรุณาติดต่อผู้ดูแล');
-  if (!meetingQuizEmployeeName_(employee)) throw new Error('ทะเบียนพนักงานยังไม่มีชื่อ กรุณาแจ้งผู้ดูแลให้ตรวจชีต');
-  return employee;
+function meetingQuizEmployeeForRegistration_(firstName, lastName) {
+  var first = cleanString_(firstName);
+  var last = cleanString_(lastName);
+  if (!first || !last) throw new Error('กรุณากรอกชื่อและนามสกุลให้ครบ');
+  var fullName = meetingQuizNormalizeEmployeeName_(first + ' ' + last);
+  var matches = meetingQuizUniqueRosterRows_(meetingQuizRosterRows_()).filter(function (row) {
+    return meetingQuizNormalizeEmployeeName_(meetingQuizEmployeeName_(row)) === fullName;
+  });
+  if (!matches.length) throw new Error('ไม่พบชื่อและนามสกุลนี้ในทะเบียนพนักงาน กรุณาตรวจสอบการสะกดหรือติดต่อ Leader');
+  // Duplicate full names are already collapsed to the first active roster row.
+  return matches[0];
 }
 
 /** Match legacy QR registrations to a new roster only when the full name is unique. */
@@ -1151,7 +1148,6 @@ function getMeetingQuiz(payload, user) {
       submittedCount: counts.submitted, allSubmitted: meetingQuizAllSubmitted_(quiz),
       shiftAllSubmitted: shiftSession.allSubmitted,
       employeeRosterConfigured: meetingQuizRosterConfigured_(),
-      employees: participant ? [] : meetingQuizEmployeesForRegistration_(quiz),
       participant: participant ? {
         participantId: participant.ParticipantID, displayName: participant.DisplayName,
         employeeId: cleanString_(participant.EmployeeID), language: participant.Language,
@@ -1197,26 +1193,26 @@ function registerMeetingQuizParticipant(payload, user) {
     var employeeId = '';
     var shift;
     if (rosterConfigured) {
-      employee = meetingQuizEmployeeForRegistration_(payload.employeeId);
+      employee = meetingQuizEmployeeForRegistration_(first, last);
       employeeId = cleanString_(employee.EmployeeID);
       var absence = meetingQuizAttendanceMap_(quiz.MeetingDate)[employeeId.toLowerCase()];
       if (absence) throw new Error('รายชื่อนี้ถูกทำเครื่องหมายว่า ' + absence + ' จึงไม่อยู่ในรายชื่อเข้าสอบวันนี้');
       var shiftOption = meetingQuizShiftOptions_(quiz).filter(function (row) { return valuesEqual_(row.value, employee.Shift); })[0];
       if (!shiftOption) throw new Error('กะของพนักงานไม่ตรงกับกะที่เปิดสอบ กรุณาแก้ทะเบียนพนักงาน');
       shift = shiftOption.value;
-      var alreadyRegistered = meetingQuizParticipants_(quiz.QuizID).filter(function (row) {
-        return valuesEqual_(row.EmployeeID, employeeId);
-      })[0];
+      var rosterRows = meetingQuizRosterRows_();
+      var alreadyRegistered = meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(quiz.QuizID), rosterRows).some(function (row) {
+        return valuesEqual_(meetingQuizResolveParticipantEmployeeId_(row, rosterRows), employeeId);
+      });
       if (alreadyRegistered) throw new Error('ชื่อนี้ลงทะเบียนข้อสอบแล้ว กรุณาเปิดจากอุปกรณ์ที่ใช้ลงชื่อเดิม หรือติดต่อ Leader');
-      first = cleanString_(employee.FirstName) || meetingQuizEmployeeName_(employee);
-      last = cleanString_(employee.LastName);
+      first = cleanString_(employee.FirstName) || first;
+      last = cleanString_(employee.LastName) || last;
     } else {
-      if (!first || !last) throw new Error('ยังไม่มีรายชื่อในชีต MeetingQuizEmployees กรุณาให้ผู้ดูแลเพิ่มทะเบียนพนักงานก่อน');
-      shift = meetingQuizNormalizeShift_(quiz, payload.shift);
+      throw new Error('ยังไม่มีทะเบียนพนักงานที่ใช้งาน กรุณาให้ผู้ดูแลเพิ่มรายชื่อในชีต MeetingQuizEmployees ก่อนเข้าสอบ');
     }
     var shiftSession = meetingQuizShiftSessions_(quiz).filter(function (row) { return valuesEqual_(row.shift, shift); })[0];
     if (shiftSession.rosterStatus !== 'Open') throw new Error(shiftSession.examStopped ? 'กะนี้หยุดสอบแล้ว' : 'ปิดรับรายชื่อกะนี้แล้ว');
-    var displayName = rosterConfigured ? meetingQuizEmployeeName_(employee) : first + ' ' + last;
+    var displayName = meetingQuizEmployeeName_(employee);
     var newToken = newMeetingQuizToken_();
     var now = formatDateTimeBangkok(new Date());
     var participantId = generateId('MQP', SHEET_NAMES.MEETING_QUIZ_PARTICIPANTS, 'ParticipantID', getPeriodMonth(new Date()));

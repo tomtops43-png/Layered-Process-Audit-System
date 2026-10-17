@@ -3296,8 +3296,8 @@ function renderMeetingQuizAdmin() {
     <div class="quiz-admin-toolbar"><div><strong>${escapeHtml(model.post?.Topic || '')}</strong><div class="field-help">${escapeHtml(model.post?.MeetingDate || '')} · ${escapeHtml(statusText)}${sourceTopics.length ? `<br>หัวข้อที่ใช้: ${sourceTopics.map(escapeHtml).join(' · ')}` : ''}</div></div><div class="quiz-admin-actions">${quiz && !isDraft ? `<span class="field-help">ส่งแล้ว ${summary.submittedCount || 0}/${summary.participantCount || 0} คน${model.lastRefreshedAt ? ` · อัปเดต ${new Date(model.lastRefreshedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : ''}</span><button type="button" class="btn btn-outline" data-quiz-refresh>รีเฟรชสถานะ</button>` : ''}${canGenerate && !model.autoGenerating ? '<button type="button" class="btn btn-secondary" data-quiz-generate>✨ Gen ข้อสอบ 5 ข้อจากทุกหัวข้อวันนี้</button>' : ''}</div></div>
     ${aiSettings}
     ${generationFeedback}
-    ${quiz && !isDraft ? `<div class="quiz-status-note">ใช้ QR และข้อสอบชุดเดียวกันทุกกะ · พนักงานเลือกชื่อจากทะเบียน ระบบกำหนดกะให้อัตโนมัติ · สถานะอัปเดตทุก 5 วินาที</div>${!model.employeeRosterConfigured || !Number(model.employeeRosterCount || 0) ? `<div class="quiz-status-note">เพิ่มรายชื่อในชีต ${escapeHtml(model.rosterSheetName || 'MeetingQuizEmployees')} ก่อนเปิด QR: EmployeeID, FirstName, LastName (หรือ DisplayName), Shift, ActiveStatus=Active · วันที่ลา/ป่วยให้เพิ่มในชีต ${escapeHtml(model.attendanceSheetName || 'MeetingQuizAttendance')} โดยใส่ MeetingDate, EmployeeID และ Status=Leave หรือ Sick</div>` : ''}<h4>ผลสอบและรายชื่อผู้เข้าสอบ แยกตามกะ</h4>${roster}` : ''}
-    ${publicUrl ? `<section class="quiz-qr-panel"><div><h4>QR สำหรับพนักงานเข้าสอบ</h4><p class="field-help">พนักงานสแกน QR นี้แล้วเลือกชื่อตัวเองจากทะเบียนและเลือกภาษา ไม่ต้อง Login; ระบบอ่านกะจากทะเบียนให้</p><div class="quiz-qr-link">${escapeHtml(publicUrl)}</div><button type="button" class="btn btn-outline" data-quiz-copy-link="${escapeAttr(publicUrl)}">คัดลอกลิงก์ข้อสอบ</button></div>${qrSvg ? `<div class="quiz-qr-image" aria-label="QR Code สำหรับเข้าสอบ">${qrSvg}</div>` : '<div class="quiz-qr-image quiz-qr-error">ยังสร้าง QR ไม่ได้ กรุณาคัดลอกลิงก์</div>'}</section>` : ''}
+    ${quiz && !isDraft ? `<div class="quiz-status-note">ใช้ QR และข้อสอบชุดเดียวกันทุกกะ · พนักงานพิมพ์ชื่อและนามสกุล ระบบตรวจทะเบียนแล้วกำหนดกะให้อัตโนมัติ · สถานะอัปเดตทุก 5 วินาที</div>${!model.employeeRosterConfigured || !Number(model.employeeRosterCount || 0) ? `<div class="quiz-status-note">เพิ่มรายชื่อในชีต ${escapeHtml(model.rosterSheetName || 'MeetingQuizEmployees')} ก่อนเปิด QR: EmployeeID, FirstName, LastName (หรือ DisplayName), Shift, ActiveStatus=Active · วันที่ลา/ป่วยให้เพิ่มในชีต ${escapeHtml(model.attendanceSheetName || 'MeetingQuizAttendance')} โดยใส่ MeetingDate, EmployeeID และ Status=Leave หรือ Sick</div>` : ''}<h4>ผลสอบและรายชื่อผู้เข้าสอบ แยกตามกะ</h4>${roster}` : ''}
+    ${publicUrl ? `<section class="quiz-qr-panel"><div><h4>QR สำหรับพนักงานเข้าสอบ</h4><p class="field-help">พนักงานสแกน QR แล้วพิมพ์ชื่อและนามสกุลตามทะเบียน จากนั้นเลือกภาษา ไม่ต้อง Login; ระบบตรวจชื่อและกำหนดกะจากทะเบียนให้</p><div class="quiz-qr-link">${escapeHtml(publicUrl)}</div><button type="button" class="btn btn-outline" data-quiz-copy-link="${escapeAttr(publicUrl)}">คัดลอกลิงก์ข้อสอบ</button></div>${qrSvg ? `<div class="quiz-qr-image" aria-label="QR Code สำหรับเข้าสอบ">${qrSvg}</div>` : '<div class="quiz-qr-image quiz-qr-error">ยังสร้าง QR ไม่ได้ กรุณาคัดลอกลิงก์</div>'}</section>` : ''}
     ${isDraft ? `<div class="quiz-status-note">สร้างข้อสอบชุดเดียวของวันนี้แล้ว · แก้ไขและบันทึกได้ แต่ระบบจะไม่ Gen ชุดซ้ำ · เปิดรับรายชื่อหลังเผยแพร่</div><div id="meetingQuizEditor" data-quiz-editor-language="TH"><div class="quiz-editor-language-switch" role="group" aria-label="เลือกภาษาที่ต้องการแก้ไข"><span>ภาษา</span><button type="button" class="is-active" data-quiz-editor-language="TH" aria-pressed="true">ไทย <small>หลัก</small></button><button type="button" data-quiz-editor-language="MY" aria-pressed="false">မြန်မာ</button></div>${questionEditor}</div><div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-save>บันทึกฉบับร่าง</button><button type="button" class="btn btn-primary" data-quiz-publish>เผยแพร่และเปิดรับสอบ</button></div>` : ''}
     ${quiz && !isDraft && !participants.length ? '<div class="quiz-status-note">ยังไม่มีผู้ลงชื่อสอบในรอบนี้</div>' : ''}
     ${quiz && !isDraft && summary.allSubmitted ? '<div class="quiz-status-note">ทุกกะปิดรับรายชื่อและส่งครบแล้ว ปุ่มเฉลยรวมเปิดให้ทุกคนดูบนบอร์ด</div>' : ''}
@@ -3498,25 +3498,14 @@ function renderMeetingQuizExam() {
   }
   if (!model.participant) {
     title.textContent = `${lang === 'MY' ? 'အစည်းအဝေး စာမေးပွဲ' : 'แบบทดสอบ'} · ${model.topic || ''}`;
-    const employees = model.employees || [];
-    const available = employees.filter(employee => (model.shiftOptions || []).some(shift => String(shift.value).toLowerCase() === String(employee.shift).toLowerCase() && shift.rosterStatus === 'Open'));
-    const closedOnly = employees.length > 0 && available.length === 0;
-    const employeeNameCounts = available.reduce((counts, employee) => {
-      const key = String(employee.displayName || '').trim().toLowerCase();
-      counts[key] = (counts[key] || 0) + 1;
-      return counts;
-    }, {});
-    const employeeField = `<label>เลือกชื่อจากทะเบียนพนักงาน *<select name="employeeId" required><option value="">เลือกชื่อของคุณ</option>${available.map(employee => {
-      const duplicate = employeeNameCounts[String(employee.displayName || '').trim().toLowerCase()] > 1;
-      const idSuffix = duplicate ? ` · รหัส ${employee.employeeId}` : '';
-      return `<option value="${escapeAttr(employee.employeeId)}">${escapeHtml(employee.displayName)}${escapeHtml(idSuffix)} · ${escapeHtml(employee.shiftLabel || employee.shift)}</option>`;
-    }).join('')}</select></label>`;
+    const openShiftExists = (model.shiftOptions || []).some(shift => shift.rosterStatus === 'Open');
     const noRoster = !model.employeeRosterConfigured
-      ? '<div class="quiz-status-note">ยังไม่มีรายชื่อให้เลือก ผู้ดูแลต้องเพิ่มรายชื่อในชีต MeetingQuizEmployees ก่อน</div>'
-      : (closedOnly
-        ? '<div class="quiz-status-note">รายชื่อกะของคุณปิดรับแล้ว หรือทุกคนในกะลงชื่อครบแล้ว กรุณาติดต่อ Leader</div>'
-        : (available.length ? '' : '<div class="quiz-status-note">ยังไม่มีรายชื่อพนักงานที่เปิดรับสอบในวันนี้ กรุณาติดต่อ Leader</div>'));
-    content.innerHTML = `<p class="page-helper">${escapeHtml(model.meetingDate || '')} · ${escapeHtml(model.topic || '')}</p>${noRoster}${available.length ? `<form id="meetingQuizRegistrationForm" class="form-stack"><p class="quiz-registration-intro">ข้อสอบชุดเดียวกันทุกกะ · เลือกชื่อตัวเองและภาษาที่ต้องการก่อนเริ่ม ระบบจะเลือกกะตามทะเบียนให้</p>${employeeField}${meetingQuizLanguagePickerHtml(lang, true)}<div class="modal-actions"><button type="submit" class="btn btn-primary">เริ่มทำข้อสอบ 5 ข้อ</button></div></form>` : ''}`;
+      ? '<div class="quiz-status-note">ยังไม่มีทะเบียนพนักงานที่ใช้งาน ผู้ดูแลต้องเพิ่มรายชื่อในชีต MeetingQuizEmployees ก่อน</div>'
+      : (openShiftExists ? '' : '<div class="quiz-status-note">ปิดรับลงชื่อสอบครบทุกกะแล้ว กรุณาติดต่อ Leader</div>');
+    const registrationForm = model.employeeRosterConfigured && openShiftExists
+      ? `<form id="meetingQuizRegistrationForm" class="form-stack"><p class="quiz-registration-intro">พิมพ์ชื่อและนามสกุลให้ตรงกับทะเบียน ระบบจะตรวจสอบและเลือกกะให้อัตโนมัติ จากนั้นเลือกภาษาข้อสอบ</p><label>ชื่อ *<input type="text" name="firstName" autocomplete="given-name" maxlength="100" required placeholder="พิมพ์ชื่อ"></label><label>นามสกุล *<input type="text" name="lastName" autocomplete="family-name" maxlength="100" required placeholder="พิมพ์นามสกุล"></label>${meetingQuizLanguagePickerHtml(lang, true)}<div class="modal-actions"><button type="submit" class="btn btn-primary">เริ่มทำข้อสอบ 5 ข้อ</button></div></form>`
+      : '';
+    content.innerHTML = `<p class="page-helper">${escapeHtml(model.meetingDate || '')} · ${escapeHtml(model.topic || '')}</p>${noRoster}${registrationForm}`;
     return;
   }
   if (String(model.participant.status || '').toLowerCase() === 'excused') {
@@ -3585,7 +3574,8 @@ async function handleMeetingQuizExamSubmit(event) {
     const language = form.elements.language.value;
     try {
       const data = await apiCall('registerMeetingQuizParticipant', {
-        ...meetingQuizScope(model), employeeId: form.elements.employeeId.value, language, participantToken: model.participantToken
+        ...meetingQuizScope(model), firstName: form.elements.firstName.value.trim(),
+        lastName: form.elements.lastName.value.trim(), language, participantToken: model.participantToken
       });
       model.participantId = data.participantId;
       model.participantToken = data.participantToken;
@@ -4265,7 +4255,7 @@ function meetingTvQuizSlideHtml(dailyQuiz) {
     <h1 class="mtg-tv-title">QR Code ข้อสอบ</h1>
     <p class="mtg-tv-quiz-help">สแกน QR Code เพื่อทำข้อสอบของ Meeting วันนี้ · ไม่ต้อง Login</p>
     ${qrSvg ? `<div class="mtg-tv-quiz-qr" aria-label="QR Code สำหรับเข้าสอบ">${qrSvg}</div>` : '<div class="mtg-tv-quiz-error">ข้อสอบเผยแพร่แล้ว แต่ QR ยังไม่พร้อม กรุณารีเฟรชหน้า Meeting</div>'}
-    <div class="mtg-tv-quiz-caption">ข้อสอบชุดเดียว 5 ข้อ · สแกน QR เลือกชื่อตัวเองและภาษาที่ต้องการ · ระบบเลือกกะจากทะเบียน</div>
+    <div class="mtg-tv-quiz-caption">ข้อสอบชุดเดียว 5 ข้อ · สแกน QR พิมพ์ชื่อและนามสกุล เลือกภาษาที่ต้องการ · ระบบตรวจทะเบียนและเลือกกะให้</div>
   </div>`;
 }
 
