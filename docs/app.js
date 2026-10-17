@@ -165,6 +165,7 @@ function bindEvents() {
   window.addEventListener('resize', () => { if (window.innerWidth >= 768) closeMobileDrawer(); }, { passive: true });
   $$('#mainNav [data-page]').forEach(button => button.addEventListener('click', () => navigateTo(button.dataset.page)));
   $('#refreshDashboard').addEventListener('click', loadDashboard);
+  $('#ldMeetingQuiz').addEventListener('click', handleLeaderMeetingQuizClick);
   $('#auditLine').addEventListener('change', () => {
     handleAuditLineChange();
     handleAuditScopeChange();
@@ -706,6 +707,9 @@ async function loadDashboard() {
   const isLeaderRole = role === 'Leader' || role === 'Supervisor';
   const isMgrRole = role === 'Manager' || role === 'Viewer' || role === 'Customer'; // Viewer/Customer see the Manager-style dashboard
   const isDirRole = role === 'Admin';
+  $('#ldMeetingQuizSection')?.classList.toggle('hidden', !hasPermission('meeting.view'));
+  if (isLeaderRole) syncLeaderMeetingQuizPolling();
+  else stopLeaderMeetingQuizPolling();
   $('#leaderDashboard').classList.toggle('hidden', !isLeaderRole);
   $('#mgrDashboard').classList.toggle('hidden', !isMgrRole);
   $('#dirDashboard').classList.toggle('hidden', !isDirRole);
@@ -936,6 +940,78 @@ async function loadLeaderDashboard() {
   $('#ldFindings').innerHTML = '<div class="empty-state">กำลังโหลด...</div>';
   if (needsProdPlan) await ensureProductionPlan();
   await fetchLeaderDashData(ldKey, today, rolesToFetch, false);
+}
+
+function stopLeaderMeetingQuizPolling() {
+  if (window._leaderMeetingQuizPoll) clearInterval(window._leaderMeetingQuizPoll);
+  window._leaderMeetingQuizPoll = null;
+}
+
+function syncLeaderMeetingQuizPolling() {
+  stopLeaderMeetingQuizPolling();
+  const dashboard = $('#page-dashboard');
+  const role = String(state.user?.Role || '');
+  if (!dashboard?.classList.contains('active-page') || !['Leader', 'Supervisor'].includes(role) || !hasPermission('meeting.view')) return;
+  loadLeaderMeetingQuizStatus();
+  window._leaderMeetingQuizPoll = setInterval(() => {
+    if (document.visibilityState !== 'visible' || !dashboard.classList.contains('active-page')) return;
+    loadLeaderMeetingQuizStatus();
+  }, 5000);
+}
+
+async function loadLeaderMeetingQuizStatus() {
+  const panel = $('#ldMeetingQuiz');
+  if (!panel || !hasPermission('meeting.view') || state.leaderMeetingQuizRefreshPromise) return;
+  state.leaderMeetingQuizRefreshPromise = (async () => {
+    try {
+      const meetingDate = localDateInput(new Date());
+      const data = await apiCall('getMeetingPosts', { meetingDate, lineId: 'ALL' }, { priority: 'low' });
+      const posts = [...(data.posts || []), ...(data.carryOver || [])];
+      const quizPost = posts.find(row => String(row.MeetingDate || '').slice(0, 10) === meetingDate && row.MeetingQuiz?.available);
+      const draftPost = posts.find(row => String(row.MeetingDate || '').slice(0, 10) === meetingDate && row.MeetingQuiz?.hasDraft && row.MeetingQuiz?.canManage);
+      if (!quizPost) {
+        const message = draftPost ? 'มีข้อสอบฉบับร่าง รอตรวจและเผยแพร่' : 'วันนี้ยังไม่มีข้อสอบที่เผยแพร่';
+        panel.innerHTML = `<div class="leader-meeting-quiz-empty"><span>${escapeHtml(message)}</span><button type="button" class="btn btn-outline btn-compact" data-leader-meeting-go>เปิด Meeting</button></div>`;
+        return;
+      }
+      const quiz = quizPost.MeetingQuiz || {};
+      const sessions = quiz.shiftSessions || [];
+      const submitted = Number(quiz.submittedCount || 0);
+      const total = Number(quiz.participantCount || 0);
+      const pending = Math.max(0, total - submitted);
+      const sessionHtml = sessions.map(session => `<span class="leader-meeting-quiz-shift"><strong>${escapeHtml(session.label || session.shift)}</strong>${Number(session.submittedCount || 0)}/${Number(session.participantCount || 0)} คน</span>`).join('');
+      const refreshedAt = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const progressMessage = pending
+        ? `รอส่งอีก ${pending} คน`
+        : quiz.allSubmitted
+          ? 'ส่งครบแล้ว · เปิดดูเฉลยรวมได้'
+          : total
+            ? 'ทุกคนที่ลงชื่อส่งแล้ว · รอปิดรับรายชื่อทั้งสองกะเพื่อเปิดเฉลยรวม'
+            : 'ยังไม่มีผู้ลงชื่อสอบ';
+      panel.innerHTML = `<div class="leader-meeting-quiz-card"><div class="leader-meeting-quiz-top"><div><strong>${escapeHtml(quiz.sourceTitle || 'Meeting วันนี้')}</strong><small>ติดตามส่งคำตอบอัตโนมัติ · อัปเดต ${refreshedAt}</small></div><span class="leader-meeting-quiz-total">ส่งแล้ว ${submitted}/${total} คน</span></div><div class="leader-meeting-quiz-shifts">${sessionHtml}</div><div class="leader-meeting-quiz-foot"><span>${progressMessage}</span>${quiz.canManage ? `<button type="button" class="btn btn-primary btn-compact" data-leader-quiz-results="${escapeAttr(quizPost.PostID)}">ดูผลสอบรายคน</button>` : '<button type="button" class="btn btn-outline btn-compact" data-leader-meeting-go>เปิด Meeting</button>'}</div></div>`;
+      if (quiz.allSubmitted) stopLeaderMeetingQuizPolling();
+    } catch (error) {
+      if (error.message) {
+        console.warn('Meeting quiz dashboard status refresh failed:', error.message);
+        panel.innerHTML = `<div class="leader-meeting-quiz-empty"><span>โหลดสถานะข้อสอบไม่สำเร็จ · ${escapeHtml(error.message)}</span><button type="button" class="btn btn-outline btn-compact" data-leader-meeting-go>เปิด Meeting</button></div>`;
+      }
+    } finally {
+      state.leaderMeetingQuizRefreshPromise = null;
+    }
+  })();
+  return state.leaderMeetingQuizRefreshPromise;
+}
+
+async function handleLeaderMeetingQuizClick(event) {
+  const results = event.target.closest('[data-leader-quiz-results]');
+  if (results) {
+    const postId = results.dataset.leaderQuizResults;
+    await navigateTo('meeting');
+    if (findMeetingPost(postId)?.MeetingQuiz?.canManage) await openMeetingQuizAdmin(postId);
+    else showToast('เปิด Meeting เพื่อดูผลสอบและรายชื่อผู้ส่งแล้ว', 'info');
+    return;
+  }
+  if (event.target.closest('[data-leader-meeting-go]')) await navigateTo('meeting');
 }
 
 function renderLeaderFromData(d) {
@@ -3086,7 +3162,7 @@ function syncMeetingQuizAdminPolling() {
     if (!current || current.refreshPromise) return;
     current.silentStatusRefresh = true;
     refreshMeetingQuizAdmin(current.quiz?.QuizID || '');
-  }, 15000);
+  }, 5000);
 }
 
 function meetingQuizUiQuestion(row = {}) {
@@ -3168,7 +3244,7 @@ function renderMeetingQuizAdmin() {
     <div class="quiz-admin-toolbar"><div><strong>${escapeHtml(model.post?.Topic || '')}</strong><div class="field-help">${escapeHtml(model.post?.MeetingDate || '')} · ${escapeHtml(statusText)}${sourceTopics.length ? `<br>หัวข้อที่ใช้: ${sourceTopics.map(escapeHtml).join(' · ')}` : ''}</div></div><div class="quiz-admin-actions">${quiz && !isDraft ? `<span class="field-help">ส่งแล้ว ${summary.submittedCount || 0}/${summary.participantCount || 0} คน${model.lastRefreshedAt ? ` · อัปเดต ${new Date(model.lastRefreshedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : ''}</span><button type="button" class="btn btn-outline" data-quiz-refresh>รีเฟรชสถานะ</button>` : ''}${canGenerate && !model.autoGenerating ? '<button type="button" class="btn btn-secondary" data-quiz-generate>✨ Gen ข้อสอบ 5 ข้อจากทุกหัวข้อวันนี้</button>' : ''}</div></div>
     ${aiSettings}
     ${generationFeedback}
-    ${quiz && !isDraft ? `<div class="quiz-status-note">ใช้ข้อสอบและ QR Code ชุดเดียวกันได้ทั้งกะเช้าและกะดึก · รายชื่อและเวลาปิดรับแยกตามกะ · สถานะอัปเดตอัตโนมัติทุก 15 วินาที</div><h4>รายชื่อผู้เข้าสอบแยกตามกะ</h4>${roster}` : ''}
+    ${quiz && !isDraft ? `<div class="quiz-status-note">ใช้ข้อสอบและ QR Code ชุดเดียวกันได้ทั้งกะเช้าและกะดึก · รายชื่อและเวลาปิดรับแยกตามกะ · สถานะอัปเดตอัตโนมัติทุก 5 วินาที</div><h4>ผลสอบและรายชื่อผู้เข้าสอบ แยกตามกะ</h4>${roster}` : ''}
     ${publicUrl ? `<section class="quiz-qr-panel"><div><h4>QR สำหรับพนักงานเข้าสอบ</h4><p class="field-help">พนักงานสแกน QR นี้แล้วกรอกชื่อ–นามสกุลและเลือกกะได้เลย ไม่ต้อง Login</p><div class="quiz-qr-link">${escapeHtml(publicUrl)}</div><button type="button" class="btn btn-outline" data-quiz-copy-link="${escapeAttr(publicUrl)}">คัดลอกลิงก์ข้อสอบ</button></div>${qrSvg ? `<div class="quiz-qr-image" aria-label="QR Code สำหรับเข้าสอบ">${qrSvg}</div>` : '<div class="quiz-qr-image quiz-qr-error">ยังสร้าง QR ไม่ได้ กรุณาคัดลอกลิงก์</div>'}</section>` : ''}
     ${isDraft ? `<div class="quiz-status-note">สร้างข้อสอบชุดเดียวของวันนี้แล้ว · แก้ไขและบันทึกได้ แต่ระบบจะไม่ Gen ชุดซ้ำ · เปิดรับรายชื่อหลังเผยแพร่</div><div id="meetingQuizEditor" data-quiz-editor-language="TH"><div class="quiz-editor-language-switch" role="group" aria-label="เลือกภาษาที่ต้องการแก้ไข"><span>ภาษา</span><button type="button" class="is-active" data-quiz-editor-language="TH" aria-pressed="true">ไทย <small>หลัก</small></button><button type="button" data-quiz-editor-language="MY" aria-pressed="false">မြန်မာ</button></div>${questionEditor}</div><div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-save>บันทึกฉบับร่าง</button><button type="button" class="btn btn-primary" data-quiz-publish>เผยแพร่และเปิดรับสอบ</button></div>` : ''}
     ${quiz && !isDraft && !participants.length ? '<div class="quiz-status-note">ยังไม่มีผู้ลงชื่อสอบในรอบนี้</div>' : ''}
@@ -3357,7 +3433,7 @@ function renderMeetingQuizExam() {
   const lang = model.language === 'MY' ? 'MY' : 'TH';
   if (model.mode === 'globalReview') {
     title.textContent = lang === 'MY' ? 'အဖြေများနှင့် ရှင်းလင်းချက်' : 'เฉลยรวม';
-    content.innerHTML = `${meetingQuizLanguagePickerHtml(lang)}${meetingQuizAnswerKeyHtml(model.questions || [], lang)}${model.publicMode ? `<div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-back-result>${lang === 'MY' ? 'ရလဒ်သို့ ပြန်သွားရန်' : 'กลับไปผลสอบของฉัน'}</button></div>` : ''}`;
+    content.innerHTML = `${model.publicMode ? '' : meetingQuizLanguagePickerHtml(lang)}${meetingQuizAnswerKeyHtml(model.questions || [], lang)}${model.publicMode ? `<div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-back-result>${lang === 'MY' ? 'ရလဒ်သို့ ပြန်သွားရန်' : 'กลับไปผลสอบของฉัน'}</button></div>` : ''}`;
     return;
   }
   if (!model.participant) {
@@ -3385,12 +3461,12 @@ function renderMeetingQuizExam() {
       ? `<div class="quiz-status-note">${lang === 'MY' ? 'အလုပ်သမားအားလုံး တင်သွင်းပြီးပါပြီ' : 'ทุกคนส่งข้อสอบครบแล้ว'}</div><div class="modal-actions"><button type="button" class="btn btn-primary" data-quiz-global-key>${lang === 'MY' ? 'အဖြေများကို ကြည့်ရန်' : 'ดูเฉลยรวม'}</button><button type="button" class="btn btn-outline" data-quiz-finish>${lang === 'MY' ? 'ပိတ်ရန်' : 'ปิดผลสอบ'}</button></div>`
       : `<div class="quiz-status-note">${lang === 'MY' ? 'အဖြေစုစုပေါင်းကို နှစ်ဆိုင်းလုံး ပိတ်ပြီး လူတိုင်း တင်သွင်းသည့်အခါ ပြသပါမည်' : 'เฉลยรวมจะแสดงเมื่อปิดรับทั้งสองกะและทุกคนส่งข้อสอบแล้ว'}<div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-check-key>${lang === 'MY' ? 'အဖြေအခြေအနေကို စစ်ဆေးရန်' : 'ตรวจสอบสถานะเฉลยรวม'}</button><button type="button" class="btn btn-primary" data-quiz-finish>${lang === 'MY' ? 'ပိတ်ရန်' : 'ปิดผลสอบ'}</button></div></div>`)
       : `<div class="modal-actions"><button type="button" class="btn btn-primary" data-quiz-finish>${lang === 'MY' ? 'ပြီးပါပြီ / နောက်လူအတွက် ပိတ်ရန်' : 'เสร็จแล้ว / ให้คนถัดไปทำ'}</button></div>`;
-    content.innerHTML = `${meetingQuizLanguagePickerHtml(lang)}<div class="quiz-score">${lang === 'MY' ? 'ရမှတ်' : 'คะแนน'} ${model.review.score}/${model.review.total}</div>${meetingQuizPersonalReviewHtml(rows, lang)}${publicKeyActions}`;
+    content.innerHTML = `<div class="quiz-score">${lang === 'MY' ? 'ရမှတ်' : 'คะแนน'} ${model.review.score}/${model.review.total}</div>${meetingQuizPersonalReviewHtml(rows, lang)}${publicKeyActions}`;
     return;
   }
   const choices = ['A', 'B', 'C', 'D'];
   const questions = model.questions || [];
-  content.innerHTML = `<div class="quiz-status-note">${escapeHtml(model.participant.displayName || '')} · ${lang === 'TH' ? 'ตอบให้ครบทุกข้อ แล้วส่งคำตอบ' : 'အဖြေအားလုံးကို ရွေးပြီး တင်သွင်းပါ'}</div>${meetingQuizLanguagePickerHtml(lang)}<form id="meetingQuizAnswerForm">${questions.map(q => `<fieldset class="quiz-exam-question"><legend>${meetingQuizQuestionNumber(q.QuestionNo)}. ${escapeHtml(q['Question' + lang] || '')}</legend>${choices.map(choice => `<label class="quiz-exam-choice"><input type="radio" name="q${meetingQuizQuestionNumber(q.QuestionNo)}" value="${choice}" ${model.answers[meetingQuizQuestionNumber(q.QuestionNo)] === choice ? 'checked' : ''} required><span>${choice}. ${escapeHtml(q['Choice' + choice + lang] || '')}</span></label>`).join('')}</fieldset>`).join('')}<div class="modal-actions"><button type="submit" class="btn btn-primary">${lang === 'MY' ? 'စာမေးပွဲတင်သွင်းရန်' : 'ส่งข้อสอบ'}</button></div></form>`;
+  content.innerHTML = `<div class="quiz-status-note">${escapeHtml(model.participant.displayName || '')} · ${lang === 'TH' ? 'ภาษาไทย · ตอบให้ครบทุกข้อ แล้วส่งคำตอบ' : 'မြန်မာဘာသာ · အဖြေအားလုံးကို ရွေးပြီး တင်သွင်းပါ'}</div><form id="meetingQuizAnswerForm">${questions.map(q => `<fieldset class="quiz-exam-question"><legend>${meetingQuizQuestionNumber(q.QuestionNo)}. ${escapeHtml(q['Question' + lang] || '')}</legend>${choices.map(choice => `<label class="quiz-exam-choice"><input type="radio" name="q${meetingQuizQuestionNumber(q.QuestionNo)}" value="${choice}" ${model.answers[meetingQuizQuestionNumber(q.QuestionNo)] === choice ? 'checked' : ''} required><span>${choice}. ${escapeHtml(q['Choice' + choice + lang] || '')}</span></label>`).join('')}</fieldset>`).join('')}<div class="modal-actions"><button type="submit" class="btn btn-primary">${lang === 'MY' ? 'စာမေးပွဲတင်သွင်းရန်' : 'ส่งข้อสอบ'}</button></div></form>`;
 }
 
 function meetingQuizQuestionNumber(value) { const number = Number(value); return Number.isFinite(number) ? number : 0; }
@@ -3447,7 +3523,7 @@ async function handleMeetingQuizExamSubmit(event) {
     const submitted = Object.keys(answers).map(questionNo => ({ questionNo: Number(questionNo), choice: answers[questionNo] }));
     try {
       showLoading('กำลังส่งข้อสอบ...');
-      const data = await apiCall('submitMeetingQuiz', { ...meetingQuizScope(model), quizId: model.quizId, participantToken: model.participantToken, language: model.language, answers: submitted });
+      const data = await apiCall('submitMeetingQuiz', { ...meetingQuizScope(model), quizId: model.quizId, participantToken: model.participantToken, language: model.participant?.language || model.language, answers: submitted });
       model.review = data.review;
       model.allSubmitted = Boolean(data.allSubmitted);
       model.participant.status = 'Submitted';
@@ -5753,7 +5829,11 @@ async function navigateTo(page) {
     const draft = getAuditDraft();
     if (draft) restoreAuditDraft(draft);
   }
-  if (page === 'dashboard') loadDashboard(false);
+  if (page === 'dashboard') {
+    loadDashboard(false);
+  } else {
+    stopLeaderMeetingQuizPolling();
+  }
   if (page === 'meeting') {
     // Show the board first, then refresh the digest and master data in parallel.
     await loadMeetingPage();
@@ -5762,9 +5842,9 @@ async function navigateTo(page) {
         const board = $('#page-meeting');
         if (document.visibilityState !== 'visible' || !board?.classList.contains('active-page')) return;
         const posts = [...(state.meetingPosts || []), ...(state.meetingCarryOver || [])];
-        if (!posts.some(post => post.MeetingQuiz?.available && !post.MeetingQuiz.allSubmitted)) return;
+        if ($('#meetingQuizAdminDialog')?.open || !posts.some(post => post.MeetingQuiz?.available && !post.MeetingQuiz.allSubmitted)) return;
         loadMeetingBoard();
-      }, 30000);
+      }, 5000);
     }
   }
   if (['audit', 'audit-plan', 'findings', 'checklist', 'admin'].includes(page)) {

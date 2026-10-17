@@ -9,7 +9,7 @@
   <!-- The first API call happens seconds after load; warm the TLS connection now. -->
   <link rel="preconnect" href="https://script.google.com" crossorigin>
   <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
-  <link rel="stylesheet" href="style.css?v=20261017-quiz-language-choice">
+  <link rel="stylesheet" href="style.css?v=20261017-quiz-results-live-status">
 </head>
 <body>
   <div id="publicQuizView" class="login-view public-quiz-view hidden">
@@ -76,6 +76,10 @@
           <div class="ld-section">
             <div class="ld-section-title">📋 งานตรวจวันนี้</div>
             <div id="ldTasks"></div>
+          </div>
+          <div class="ld-section" id="ldMeetingQuizSection">
+            <div class="ld-section-title">📝 แบบทดสอบ Meeting วันนี้</div>
+            <div id="ldMeetingQuiz" class="leader-meeting-quiz"><div class="empty-state">กำลังโหลดสถานะข้อสอบ...</div></div>
           </div>
           <div class="ld-section">
             <div class="ld-section-title mgr-shift-digest-title">
@@ -474,6 +478,6 @@
 
   <script src="config.js" defer></script>
   <script src="vendor/qrcode.js" defer></script>
-  <script src="app.js?v=20261017-quiz-language-choice" defer></script>
+  <script src="app.js?v=20261017-quiz-results-live-status" defer></script>
 </body>
 </html>
