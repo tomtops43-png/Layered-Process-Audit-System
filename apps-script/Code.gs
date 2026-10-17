@@ -107,6 +107,7 @@ function buildApiHandlers_(payload) {
     getLeaderDashboardBatch: function (user) { return getLeaderDashboardBatch(payload, user); },
     getFindingShiftDigest: function (user) { return getFindingShiftDigest(payload, user); },
     getMeetingPosts: function (user) { return getMeetingPosts(payload, user); },
+    getMeetingQuizStatus: function (user) { return getMeetingQuizStatus(payload, user); },
     getMeetingQuiz: function (user) { return getMeetingQuiz(payload, user); },
     getMeetingQuizAdmin: function (user) { return getMeetingQuizAdmin(payload, user); },
     saveMeetingQuizApiKey: function (user) { return saveMeetingQuizApiKey(payload, user); },

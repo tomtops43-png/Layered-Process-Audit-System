@@ -64,6 +64,7 @@ const state = {
   meetingCanCreate: false,
   meetingCanManage: false,
   meetingCanManageQuiz: false,
+  meetingQuizBoardStatusRefreshPromise: null,
   meetingTvIndex: 0,
   meetingPendingAcks: [],
   meetingFindingDigest: null,
@@ -965,16 +966,13 @@ async function loadLeaderMeetingQuizStatus() {
   state.leaderMeetingQuizRefreshPromise = (async () => {
     try {
       const meetingDate = localDateInput(new Date());
-      const data = await apiCall('getMeetingPosts', { meetingDate, lineId: 'ALL' }, { priority: 'low' });
-      const posts = [...(data.posts || []), ...(data.carryOver || [])];
-      const quizPost = posts.find(row => String(row.MeetingDate || '').slice(0, 10) === meetingDate && row.MeetingQuiz?.available);
-      const draftPost = posts.find(row => String(row.MeetingDate || '').slice(0, 10) === meetingDate && row.MeetingQuiz?.hasDraft && row.MeetingQuiz?.canManage);
-      if (!quizPost) {
-        const message = draftPost ? 'มีข้อสอบฉบับร่าง รอตรวจและเผยแพร่' : 'วันนี้ยังไม่มีข้อสอบที่เผยแพร่';
+      const data = await apiCall('getMeetingQuizStatus', { meetingDates: [meetingDate] }, { priority: 'low', quiet: true });
+      const quiz = data.summariesByDate?.[meetingDate] || null;
+      if (!quiz || !quiz.available) {
+        const message = quiz?.hasDraft && quiz?.canManage ? 'มีข้อสอบฉบับร่าง รอตรวจและเผยแพร่' : 'วันนี้ยังไม่มีข้อสอบที่เผยแพร่';
         panel.innerHTML = `<div class="leader-meeting-quiz-empty"><span>${escapeHtml(message)}</span><button type="button" class="btn btn-outline btn-compact" data-leader-meeting-go>เปิด Meeting</button></div>`;
         return;
       }
-      const quiz = quizPost.MeetingQuiz || {};
       const sessions = quiz.shiftSessions || [];
       const submitted = Number(quiz.submittedCount || 0);
       const total = Number(quiz.participantCount || 0);
@@ -988,7 +986,7 @@ async function loadLeaderMeetingQuizStatus() {
           : total
             ? 'ทุกคนที่ลงชื่อส่งแล้ว · รอปิดรับรายชื่อทั้งสองกะเพื่อเปิดเฉลยรวม'
             : 'ยังไม่มีผู้ลงชื่อสอบ';
-      panel.innerHTML = `<div class="leader-meeting-quiz-card"><div class="leader-meeting-quiz-top"><div><strong>${escapeHtml(quiz.sourceTitle || 'Meeting วันนี้')}</strong><small>ติดตามส่งคำตอบอัตโนมัติ · อัปเดต ${refreshedAt}</small></div><span class="leader-meeting-quiz-total">ส่งแล้ว ${submitted}/${total} คน</span></div><div class="leader-meeting-quiz-shifts">${sessionHtml}</div><div class="leader-meeting-quiz-foot"><span>${progressMessage}</span>${quiz.canManage ? `<button type="button" class="btn btn-primary btn-compact" data-leader-quiz-results="${escapeAttr(quizPost.PostID)}">ดูผลสอบรายคน</button>` : '<button type="button" class="btn btn-outline btn-compact" data-leader-meeting-go>เปิด Meeting</button>'}</div></div>`;
+      panel.innerHTML = `<div class="leader-meeting-quiz-card"><div class="leader-meeting-quiz-top"><div><strong>${escapeHtml(quiz.sourceTitle || 'Meeting วันนี้')}</strong><small>ติดตามส่งคำตอบอัตโนมัติ · อัปเดต ${refreshedAt}</small></div><span class="leader-meeting-quiz-total">ส่งแล้ว ${submitted}/${total} คน</span></div><div class="leader-meeting-quiz-shifts">${sessionHtml}</div><div class="leader-meeting-quiz-foot"><span>${progressMessage}</span>${quiz.canManage ? `<button type="button" class="btn btn-primary btn-compact" data-leader-quiz-results="${escapeAttr(quiz.postId)}">ดูผลสอบรายคน</button>` : '<button type="button" class="btn btn-outline btn-compact" data-leader-meeting-go>เปิด Meeting</button>'}</div></div>`;
       if (quiz.allSubmitted) stopLeaderMeetingQuizPolling();
     } catch (error) {
       if (error.message) {
@@ -2940,6 +2938,39 @@ async function loadMeetingBoard(prefetched = null) {
   } catch (error) {
     container.innerHTML = emptyHtml(error.message);
     showToast(error.message, 'error');
+  }
+}
+
+async function refreshMeetingQuizBoardStatus() {
+  if (state.meetingQuizBoardStatusRefreshPromise) return state.meetingQuizBoardStatusRefreshPromise;
+  const posts = [...(state.meetingPosts || []), ...(state.meetingCarryOver || [])];
+  const meetingDates = [...new Set(posts.map(post => String(post.MeetingDate || '').slice(0, 10)).filter(Boolean))];
+  if (!meetingDates.length) return;
+  const request = (async () => {
+    const data = await apiCall('getMeetingQuizStatus', { meetingDates }, { priority: 'low', quiet: true });
+    const summaries = data.summariesByDate || {};
+    let changed = false;
+    posts.forEach(post => {
+      const date = String(post.MeetingDate || '').slice(0, 10);
+      const next = summaries[date];
+      if (!next) return;
+      if (JSON.stringify(post.MeetingQuiz || {}) !== JSON.stringify(next)) {
+        post.MeetingQuiz = next;
+        changed = true;
+      }
+    });
+    if (changed && $('#page-meeting')?.classList.contains('active-page')) {
+      renderMeetingBoard();
+      refreshMeetingTvQuizStatus();
+    }
+  })();
+  state.meetingQuizBoardStatusRefreshPromise = request;
+  try {
+    await request;
+  } catch (error) {
+    console.warn('Meeting quiz board status refresh failed:', error.message || error);
+  } finally {
+    if (state.meetingQuizBoardStatusRefreshPromise === request) state.meetingQuizBoardStatusRefreshPromise = null;
   }
 }
 
@@ -5982,7 +6013,7 @@ async function navigateTo(page) {
         if (document.visibilityState !== 'visible' || !board?.classList.contains('active-page')) return;
         const posts = [...(state.meetingPosts || []), ...(state.meetingCarryOver || [])];
         if ($('#meetingQuizAdminDialog')?.open || !posts.some(post => post.MeetingQuiz?.available && !post.MeetingQuiz.allSubmitted)) return;
-        loadMeetingBoard();
+        refreshMeetingQuizBoardStatus();
       }, 5000);
     }
   }

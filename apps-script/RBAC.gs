@@ -158,6 +158,7 @@ function hasApiAccess_(user, action) {
     getDirectorDashboardData: ['dashboard.view.all'],
     getMonthlyReport: ['reports.view'], exportReportCsv: ['reports.export'],
     getMeetingPosts: ['meeting.view'],
+    getMeetingQuizStatus: ['meeting.view'],
     getMeetingQuiz: ['meeting.view'],
     registerMeetingQuizParticipant: ['meeting.view'],
     submitMeetingQuiz: ['meeting.view'],

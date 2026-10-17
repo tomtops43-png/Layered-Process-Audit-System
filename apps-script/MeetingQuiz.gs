@@ -163,6 +163,52 @@ function meetingQuizSummaryForPost_(post, user, summaryCache) {
   return summary;
 }
 
+/** Lightweight polling endpoint: returns quiz progress only, without reloading slide/post bodies. */
+function getMeetingQuizStatus(payload, user) {
+  try {
+    requirePermission_(user, 'meeting.view');
+    ensureMeetingQuizSheets_();
+    var requestedDates = Array.isArray(payload.meetingDates) ? payload.meetingDates : [];
+    var dates = [];
+    requestedDates.forEach(function (value) {
+      var date = dateOnly_(value);
+      if (date && dates.indexOf(date) === -1 && dates.length < 10) dates.push(date);
+    });
+    if (!dates.length) dates.push(dateOnly_(payload.meetingDate) || formatDateBangkok_(new Date()));
+
+    var summariesByDate = {};
+    dates.forEach(function (date) {
+      var posts = meetingQuizPostsForDate_(date).filter(function (row) {
+        return canSeeMeetingPost_(user, row);
+      });
+      if (!posts.length) return;
+      var summary = meetingQuizSummaryForPost_(posts[0], user, { sheetsReady: true, byDate: {} });
+      summariesByDate[date] = {
+        postId: cleanString_(posts[0].PostID), available: Boolean(summary.available),
+        hasDraft: Boolean(summary.hasDraft), canManage: Boolean(summary.canManage),
+        canGenerate: Boolean(summary.canGenerate), quizId: cleanString_(summary.quizId),
+        publicToken: cleanString_(summary.publicToken), sourceTitle: cleanString_(summary.sourceTitle),
+        versionNo: toNumber_(summary.versionNo), rosterLocked: Boolean(summary.rosterLocked),
+        slideCount: toNumber_(summary.slideCount) || meetingQuizSlideCount_(meetingQuizPostsForDate_(date)),
+        sourcePostCount: toNumber_(summary.sourcePostCount),
+        allSubmitted: Boolean(summary.allSubmitted), participantCount: toNumber_(summary.participantCount),
+        submittedCount: toNumber_(summary.submittedCount), people: summary.people || [],
+        shiftSessions: (summary.shiftSessions || []).map(function (session) {
+          return {
+            shift: session.shift, label: session.label, rosterStatus: session.rosterStatus,
+            rosterClosed: session.rosterClosed, examStopped: session.examStopped,
+            participantCount: session.participantCount, submittedCount: session.submittedCount,
+            registeredCount: session.registeredCount, pendingCount: session.pendingCount,
+            excusedCount: session.excusedCount, absentCount: session.absentCount,
+            allSubmitted: session.allSubmitted
+          };
+        })
+      };
+    });
+    return jsonResponse(true, 'สถานะข้อสอบพร้อมแล้ว', { summariesByDate: summariesByDate });
+  } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
+}
+
 function meetingQuizActiveShifts_() {
   var shifts = getRowsAsObjects(SHEET_NAMES.LISTS).filter(function (row) {
     return valuesEqual_(row.ListType, 'Shift') && isActive_(row.ActiveStatus);
