@@ -5,6 +5,8 @@ function ensureMeetingQuizSheets_() {
   ensureMeetingSheet_(SHEET_NAMES.MEETING_QUIZ_QUESTIONS);
   ensureMeetingSheet_(SHEET_NAMES.MEETING_QUIZ_PARTICIPANTS);
   ensureMeetingSheet_(SHEET_NAMES.MEETING_QUIZ_ANSWERS);
+  ensureMeetingSheet_(SHEET_NAMES.MEETING_QUIZ_EMPLOYEES);
+  ensureMeetingSheet_(SHEET_NAMES.MEETING_QUIZ_ATTENDANCE);
 }
 
 /** Count posts with substantive content shown in the TV deck: detail text, files, or images. */
@@ -34,7 +36,7 @@ function saveMeetingQuizAnswerRows_(quiz, participant, review, submittedAt) {
       DisplayName: participant.DisplayName, Language: participant.Language, QuestionNo: row.QuestionNo,
       Question: row.Question, SelectedOption: row.SelectedOption, SelectedText: row.SelectedText,
       CorrectOption: row.CorrectOption, CorrectText: row.CorrectText, IsCorrect: row.IsCorrect ? 'TRUE' : 'FALSE',
-      Result: row.IsCorrect ? 'ถูก' : 'ผิด', SubmittedAt: submittedAt
+      Result: row.IsCorrect ? 'ถูก' : 'ผิด', SubmittedAt: submittedAt, EmployeeID: cleanString_(participant.EmployeeID)
     };
   }));
 }
@@ -131,10 +133,10 @@ function meetingQuizSummaryForPost_(post, user, summaryCache) {
     if (summaryCache) summaryCache.byDate[meetingDate] = summary;
     return summary;
   }
-  var sessions = meetingQuizShiftSessions_(quiz);
+  var sessions = meetingQuizShiftSessions_(quiz, canManage);
   var participantCount = sessions.reduce(function (sum, row) { return sum + row.participantCount; }, 0);
   var submittedCount = sessions.reduce(function (sum, row) { return sum + row.submittedCount; }, 0);
-  var rosterLocked = sessions.length > 0 && sessions.every(function (row) { return valuesEqual_(row.rosterStatus, 'Locked'); });
+  var rosterLocked = sessions.length > 0 && sessions.every(function (row) { return row.rosterClosed; });
   summary = {
     available: true,
     quizId: cleanString_(quiz.QuizID),
@@ -197,14 +199,23 @@ function meetingQuizNormalizeShift_(quiz, shift) {
   return option.value;
 }
 
-function meetingQuizShiftSessions_(quiz) {
+function meetingQuizShiftSessions_(quiz, includeTopThree) {
   return meetingQuizShiftOptions_(quiz).map(function (shift) {
-    var counts = meetingQuizRosterCounts_(quiz.QuizID, shift.value);
-    return {
+    var counts = meetingQuizRosterCounts_(quiz.QuizID, shift.value, quiz.MeetingDate);
+    var rosterClosed = ['Locked', 'Stopped'].indexOf(cleanString_(shift.rosterStatus)) !== -1;
+    var session = {
       shift: shift.value, label: shift.label, rosterStatus: shift.rosterStatus,
+      rosterClosed: rosterClosed, examStopped: valuesEqual_(shift.rosterStatus, 'Stopped'),
       participantCount: counts.participants, submittedCount: counts.submitted,
-      allSubmitted: valuesEqual_(shift.rosterStatus, 'Locked') && counts.submitted === counts.participants
+      registeredCount: counts.registered, pendingCount: counts.pending,
+      excusedCount: counts.excused, absentCount: counts.absent,
+      rosterConfigured: counts.rosterConfigured,
+      allSubmitted: rosterClosed && counts.submitted === counts.participants
     };
+    if (includeTopThree && session.examStopped) {
+      session.topThree = meetingQuizTopThree_(quiz.QuizID, shift.value, quiz.MeetingDate);
+    }
+    return session;
   });
 }
 
@@ -215,8 +226,8 @@ function meetingQuizSetShiftRoster_(quiz, shift, status, user) {
   try { closedAt = JSON.parse(cleanString_(quiz.ShiftRosterClosedAtJSON) || '{}') || {}; } catch (_) { closedAt = {}; }
   try { closedBy = JSON.parse(cleanString_(quiz.ShiftRosterClosedByJSON) || '{}') || {}; } catch (_) { closedBy = {}; }
   roster[shift] = status;
-  closedAt[shift] = status === 'Locked' ? formatDateTimeBangkok(new Date()) : '';
-  closedBy[shift] = status === 'Locked' ? user.UserID : '';
+  closedAt[shift] = status === 'Open' ? '' : formatDateTimeBangkok(new Date());
+  closedBy[shift] = status === 'Open' ? '' : user.UserID;
   updateObjectById(SHEET_NAMES.MEETING_QUIZZES, 'QuizID', quiz.QuizID, {
     ShiftRosterJSON: JSON.stringify(roster), ShiftRosterClosedAtJSON: JSON.stringify(closedAt),
     ShiftRosterClosedByJSON: JSON.stringify(closedBy), UpdatedAt: formatDateTimeBangkok(new Date()), UpdatedBy: user.UserID
@@ -310,20 +321,235 @@ function meetingQuizReview_(quizId, answersJson, language) {
   return { score: score, total: questions.length, questions: review };
 }
 
-function meetingQuizRosterCounts_(quizId, shift) {
+function meetingQuizEmployeeName_(employee) {
+  return cleanString_(employee.DisplayName) || [cleanString_(employee.FirstName), cleanString_(employee.LastName)].filter(Boolean).join(' ');
+}
+
+function meetingQuizNormalizeEmployeeName_(name) {
+  return cleanString_(name).toLowerCase().replace(/\s+/g, ' ');
+}
+
+/** The first active roster row for an exact full name is the canonical entry. */
+function meetingQuizUniqueRosterRows_(rows) {
+  var seenNames = {};
+  var activeShifts = {};
+  meetingQuizActiveShifts_().forEach(function (shift) { activeShifts[cleanString_(shift.value).toLowerCase()] = true; });
+  return (rows || meetingQuizRosterRows_()).filter(function (row) {
+    if (!isActive_(row.ActiveStatus) || !cleanString_(row.EmployeeID)) return false;
+    var name = meetingQuizNormalizeEmployeeName_(meetingQuizEmployeeName_(row));
+    var shift = cleanString_(row.Shift).toLowerCase();
+    if (!name || !activeShifts[shift]) return false;
+    if (seenNames[name]) return false;
+    seenNames[name] = true;
+    return true;
+  });
+}
+
+function meetingQuizRosterRows_() {
+  return getRowsAsObjects(SHEET_NAMES.MEETING_QUIZ_EMPLOYEES).filter(function (row) {
+    return Boolean(cleanString_(row.EmployeeID));
+  });
+}
+
+function meetingQuizRosterConfigured_() {
+  return meetingQuizRosterRows_().length > 0;
+}
+
+function meetingQuizAttendanceMap_(meetingDate) {
+  var date = dateOnly_(meetingDate);
+  var map = {};
+  getRowsAsObjects(SHEET_NAMES.MEETING_QUIZ_ATTENDANCE).forEach(function (row) {
+    if (!valuesEqual_(dateOnly_(row.MeetingDate), date)) return;
+    var employeeId = cleanString_(row.EmployeeID).toLowerCase();
+    var status = cleanString_(row.Status).toLowerCase();
+    if (!employeeId || !status) return;
+    if (['leave', 'sick', 'absent', 'excused', 'ลา', 'ป่วย', 'ขาด', 'ลากิจ', 'ลาป่วย', 'ลาพักร้อน'].indexOf(status) !== -1) {
+      map[employeeId] = cleanString_(row.Status);
+    }
+  });
+  return map;
+}
+
+function meetingQuizRosterForShift_(meetingDate, shift) {
+  var rosterConfigured = meetingQuizRosterConfigured_();
+  if (!rosterConfigured) return { configured: false, members: [], absenceMap: {} };
+  var absenceMap = meetingQuizAttendanceMap_(meetingDate);
+  var members = meetingQuizUniqueRosterRows_(meetingQuizRosterRows_()).filter(function (row) {
+    return valuesEqual_(row.Shift, shift);
+  }).map(function (row) {
+    return {
+      employeeId: cleanString_(row.EmployeeID),
+      key: cleanString_(row.EmployeeID).toLowerCase(),
+      displayName: meetingQuizEmployeeName_(row),
+      shift: cleanString_(row.Shift)
+    };
+  });
+  return { configured: true, members: members, absenceMap: absenceMap };
+}
+
+function meetingQuizEmployeesForRegistration_(quiz) {
+  var roster = meetingQuizUniqueRosterRows_(meetingQuizRosterRows_());
+  if (!roster.length) return [];
+  var date = dateOnly_(quiz.MeetingDate);
+  var absences = meetingQuizAttendanceMap_(date);
+  var used = {};
+  var rosterRows = meetingQuizRosterRows_();
+  meetingQuizParticipants_(quiz.QuizID).forEach(function (row) {
+    var id = meetingQuizResolveParticipantEmployeeId_(row, rosterRows).toLowerCase();
+    if (id) used[id] = true;
+  });
+  var labels = {};
+  meetingQuizActiveShifts_().forEach(function (shift) { labels[shift.value.toLowerCase()] = shift.label; });
+  return roster.filter(function (row) {
+    var id = cleanString_(row.EmployeeID).toLowerCase();
+    return id && !used[id] && !absences[id] && meetingQuizEmployeeName_(row) &&
+      meetingQuizShiftOptions_(quiz).some(function (shift) { return valuesEqual_(shift.value, row.Shift); });
+  }).map(function (row) {
+    return {
+      employeeId: cleanString_(row.EmployeeID), displayName: meetingQuizEmployeeName_(row),
+      shift: cleanString_(row.Shift), shiftLabel: labels[cleanString_(row.Shift).toLowerCase()] || cleanString_(row.Shift)
+    };
+  });
+}
+
+function meetingQuizEmployeeForRegistration_(employeeId) {
+  var id = cleanString_(employeeId).toLowerCase();
+  if (!id) throw new Error('กรุณาเลือกชื่อจากทะเบียนพนักงาน');
+  var allMatches = meetingQuizRosterRows_().filter(function (row) { return valuesEqual_(row.EmployeeID, employeeId); });
+  var matches = meetingQuizUniqueRosterRows_(meetingQuizRosterRows_()).filter(function (row) { return valuesEqual_(row.EmployeeID, employeeId); });
+  if (!matches.length) {
+    if (allMatches.length) throw new Error('ชื่อนี้ซ้ำในชีต MeetingQuizEmployees ระบบนับแถว Active แรกเป็นคนเดียว กรุณาเลือกชื่อนั้น');
+    throw new Error('ไม่พบชื่อในทะเบียนพนักงาน กรุณาเลือกชื่อใหม่');
+  }
+  if (matches.length > 1) throw new Error('รหัสพนักงานซ้ำในชีต MeetingQuizEmployees กรุณาแก้ให้ไม่ซ้ำ');
+  var employee = matches[0];
+  if (!isActive_(employee.ActiveStatus)) throw new Error('รายชื่อนี้ไม่อยู่ในสถานะ Active กรุณาติดต่อผู้ดูแล');
+  if (!meetingQuizEmployeeName_(employee)) throw new Error('ทะเบียนพนักงานยังไม่มีชื่อ กรุณาแจ้งผู้ดูแลให้ตรวจชีต');
+  return employee;
+}
+
+/** Match legacy QR registrations to a new roster only when the full name is unique. */
+function meetingQuizResolveParticipantEmployeeId_(participant, rosterRows) {
+  var employeeId = cleanString_(participant && participant.EmployeeID);
+  var sourceRows = rosterRows || meetingQuizRosterRows_();
+  var canonicalRows = meetingQuizUniqueRosterRows_(sourceRows);
+  if (employeeId) {
+    var canonicalById = canonicalRows.filter(function (employee) { return valuesEqual_(employee.EmployeeID, employeeId); })[0];
+    if (canonicalById) return cleanString_(canonicalById.EmployeeID);
+    var sourceEmployee = sourceRows.filter(function (employee) { return valuesEqual_(employee.EmployeeID, employeeId); })[0];
+    var sourceName = meetingQuizNormalizeEmployeeName_(sourceEmployee ? meetingQuizEmployeeName_(sourceEmployee) : participant && participant.DisplayName);
+    var canonicalByName = canonicalRows.filter(function (employee) {
+      return meetingQuizNormalizeEmployeeName_(meetingQuizEmployeeName_(employee)) === sourceName;
+    })[0];
+    return canonicalByName ? cleanString_(canonicalByName.EmployeeID) : employeeId;
+  }
+  var name = meetingQuizNormalizeEmployeeName_(participant && participant.DisplayName);
+  if (!name) return '';
+  var matches = canonicalRows.filter(function (employee) {
+    return meetingQuizNormalizeEmployeeName_(meetingQuizEmployeeName_(employee)) === name;
+  });
+  return matches.length === 1 ? cleanString_(matches[0].EmployeeID) : '';
+}
+
+function meetingQuizUniqueParticipantRows_(rows, rosterRows) {
+  var selected = {};
+  var priority = { Submitted: 3, Registered: 2, Excused: 1 };
+  (rows || []).forEach(function (row) {
+    var employeeId = meetingQuizResolveParticipantEmployeeId_(row, rosterRows);
+    var name = meetingQuizNormalizeEmployeeName_(row.DisplayName);
+    var key = employeeId ? 'employee:' + employeeId.toLowerCase() : (name ? 'name:' + name : 'participant:' + cleanString_(row.ParticipantID));
+    var current = selected[key];
+    var nextPriority = priority[cleanString_(row.ParticipantStatus)] || 0;
+    var currentPriority = current ? (priority[cleanString_(current.ParticipantStatus)] || 0) : -1;
+    var nextScore = toNumber_(row.Score);
+    var currentScore = current ? toNumber_(current.Score) : 0;
+    var earlierSubmission = current && cleanString_(row.SubmittedAt) &&
+      (!cleanString_(current.SubmittedAt) || cleanString_(row.SubmittedAt).localeCompare(cleanString_(current.SubmittedAt)) < 0);
+    if (!current || nextPriority > currentPriority ||
+      (nextPriority === currentPriority && nextPriority === 3 && (nextScore > currentScore || (nextScore === currentScore && earlierSubmission)))) {
+      selected[key] = row;
+    }
+  });
+  return Object.keys(selected).map(function (key) { return selected[key]; });
+}
+
+function meetingQuizTopThree_(quizId, shift, meetingDate) {
+  var roster = meetingQuizRosterForShift_(meetingDate, shift);
+  var rosterRows = meetingQuizRosterRows_();
+  var eligibleKeys = {};
+  if (roster.configured) roster.members.forEach(function (employee) {
+    if (!roster.absenceMap[employee.key]) eligibleKeys[employee.key] = true;
+  });
+  return meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(quizId, shift), rosterRows).filter(function (row) {
+    return valuesEqual_(row.ParticipantStatus, 'Submitted');
+  }).filter(function (row) {
+    if (!roster.configured) return true;
+    var id = meetingQuizResolveParticipantEmployeeId_(row, rosterRows);
+    return id && eligibleKeys[id.toLowerCase()];
+  }).sort(function (a, b) {
+    return toNumber_(b.Score) - toNumber_(a.Score) ||
+      cleanString_(a.SubmittedAt).localeCompare(cleanString_(b.SubmittedAt)) ||
+      cleanString_(a.DisplayName).localeCompare(cleanString_(b.DisplayName));
+  }).slice(0, 3).map(function (row, index) {
+    return {
+      rank: index + 1, employeeId: meetingQuizResolveParticipantEmployeeId_(row, rosterRows),
+      displayName: cleanString_(row.DisplayName), score: toNumber_(row.Score),
+      total: toNumber_(row.TotalQuestions) || 5, submittedAt: cleanString_(row.SubmittedAt)
+    };
+  });
+}
+
+function meetingQuizRosterCounts_(quizId, shift, meetingDate) {
   var rows = meetingQuizParticipants_(quizId, shift);
-  var eligible = rows.filter(function (row) { return !valuesEqual_(row.ParticipantStatus, 'Excused'); });
-  var submitted = eligible.filter(function (row) { return valuesEqual_(row.ParticipantStatus, 'Submitted'); });
-  return { participants: eligible.length, submitted: submitted.length };
+  var roster = meetingQuizRosterForShift_(meetingDate, shift);
+  if (!roster.configured) {
+    var uniqueRows = meetingQuizUniqueParticipantRows_(rows, meetingQuizRosterRows_());
+    var legacyEligible = uniqueRows.filter(function (row) { return !valuesEqual_(row.ParticipantStatus, 'Excused'); });
+    var legacySubmitted = legacyEligible.filter(function (row) { return valuesEqual_(row.ParticipantStatus, 'Submitted'); });
+    var legacyExcused = uniqueRows.length - legacyEligible.length;
+    return {
+      participants: legacyEligible.length, submitted: legacySubmitted.length,
+      registered: legacyEligible.length, pending: legacyEligible.length - legacySubmitted.length,
+      excused: legacyExcused, absent: 0, rosterConfigured: false
+    };
+  }
+  var rosterMembers = roster.members;
+  var rosterRows = meetingQuizRosterRows_();
+  var participantByEmployee = {};
+  rows.forEach(function (row) {
+    var id = meetingQuizResolveParticipantEmployeeId_(row, rosterRows).toLowerCase();
+    if (!id) return;
+    var current = participantByEmployee[id];
+    var nextPriority = valuesEqual_(row.ParticipantStatus, 'Submitted') ? 3 : (valuesEqual_(row.ParticipantStatus, 'Registered') ? 2 : 1);
+    var currentPriority = current ? (valuesEqual_(current.ParticipantStatus, 'Submitted') ? 3 : (valuesEqual_(current.ParticipantStatus, 'Registered') ? 2 : 1)) : -1;
+    if (!current || nextPriority > currentPriority) participantByEmployee[id] = row;
+  });
+  var expected = [];
+  var absent = 0;
+  var excused = 0;
+  rosterMembers.forEach(function (employee) {
+    if (roster.absenceMap[employee.key]) { absent++; return; }
+    var participant = participantByEmployee[employee.key];
+    if (participant && valuesEqual_(participant.ParticipantStatus, 'Excused')) { excused++; return; }
+    expected.push(employee);
+  });
+  var registered = expected.filter(function (employee) { return Boolean(participantByEmployee[employee.key]); });
+  var submitted = registered.filter(function (employee) {
+    return valuesEqual_(participantByEmployee[employee.key].ParticipantStatus, 'Submitted');
+  });
+  return {
+    participants: expected.length, submitted: submitted.length, registered: registered.length,
+    pending: expected.length - submitted.length, excused: excused, absent: absent,
+    rosterConfigured: true
+  };
 }
 
 function meetingQuizAllSubmitted_(quiz, sessions) {
   if (!quiz) return false;
   sessions = sessions || meetingQuizShiftSessions_(quiz);
-  var participantCount = sessions.reduce(function (sum, row) { return sum + row.participantCount; }, 0);
-  return sessions.length > 0 && participantCount > 0 && sessions.every(function (row) {
-    return valuesEqual_(row.rosterStatus, 'Locked') && row.submittedCount === row.participantCount;
-  });
+  return sessions.length > 0 && sessions.every(function (row) {
+    return row.rosterClosed && row.submittedCount === row.participantCount;
+  }) && (meetingQuizRosterConfigured_() || sessions.some(function (row) { return row.participantCount > 0; }));
 }
 
 function meetingQuizSourceText_(posts) {
@@ -697,9 +923,33 @@ function getMeetingQuizAdmin(payload, user) {
     var participants = selected ? meetingQuizParticipants_(selected.QuizID).map(function (row) {
       return {
         ParticipantID: row.ParticipantID, Shift: cleanString_(row.Shift), FirstName: row.FirstName, LastName: row.LastName,
+        EmployeeID: cleanString_(row.EmployeeID),
         DisplayName: row.DisplayName, Language: row.Language, ParticipantStatus: row.ParticipantStatus,
         RegisteredAt: row.RegisteredAt, SubmittedAt: row.SubmittedAt, Score: row.Score, TotalQuestions: row.TotalQuestions
       };
+    }) : [];
+    var shiftSessions = selected ? meetingQuizShiftSessions_(selected, true).map(function (session) {
+      if (!session.rosterConfigured) return session;
+      var roster = meetingQuizRosterForShift_(selected.MeetingDate, session.shift);
+      var rosterRows = meetingQuizRosterRows_();
+      var byEmployee = {};
+      meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(selected.QuizID, session.shift), rosterRows).forEach(function (participant) {
+        var key = meetingQuizResolveParticipantEmployeeId_(participant, rosterRows).toLowerCase();
+        if (key) byEmployee[key] = participant;
+      });
+      session.rosterMembers = roster.members.filter(function (employee) {
+        return !roster.absenceMap[employee.key];
+      }).map(function (employee) {
+        var participant = byEmployee[employee.key];
+        return {
+          employeeId: employee.employeeId, displayName: employee.displayName,
+          participantId: participant ? cleanString_(participant.ParticipantID) : '',
+          status: participant ? cleanString_(participant.ParticipantStatus) : 'NotRegistered',
+          score: participant ? cleanString_(participant.Score) : '',
+          total: participant ? toNumber_(participant.TotalQuestions) || 5 : 5
+        };
+      });
+      return session;
     }) : [];
     return jsonResponse(true, 'ข้อมูลข้อสอบพร้อมแล้ว', {
       canGenerate: hasPermission_(user, 'meeting.quiz.generate'),
@@ -715,7 +965,11 @@ function getMeetingQuizAdmin(payload, user) {
       quiz: selected || null,
       questions: selected ? meetingQuizQuestions_(selected.QuizID).map(meetingQuizQuestionForReview_) : [],
       participants: participants,
-      shiftSessions: selected ? meetingQuizShiftSessions_(selected) : [],
+      shiftSessions: shiftSessions,
+      employeeRosterConfigured: meetingQuizRosterConfigured_(),
+      employeeRosterCount: meetingQuizUniqueRosterRows_(meetingQuizRosterRows_()).length,
+      rosterSheetName: SHEET_NAMES.MEETING_QUIZ_EMPLOYEES,
+      attendanceSheetName: SHEET_NAMES.MEETING_QUIZ_ATTENDANCE,
       summary: selected ? meetingQuizSummaryForPost_(post, user) : { available: false, canManage: true }
     });
   } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
@@ -779,9 +1033,31 @@ function lockMeetingQuizRoster(payload, user) {
     if (!quiz) throw new Error('ยังไม่มีข้อสอบที่เผยแพร่');
     var shift = meetingQuizNormalizeShift_(quiz, payload.shift);
     var session = meetingQuizShiftSessions_(quiz).filter(function (row) { return valuesEqual_(row.shift, shift); })[0];
+    if (session.examStopped) throw new Error('กะนี้หยุดสอบแล้ว');
     if (valuesEqual_(session.rosterStatus, 'Locked')) return jsonResponse(true, 'ปิดรับรายชื่อกะนี้แล้ว', { quizId: quiz.QuizID, shift: shift });
     meetingQuizSetShiftRoster_(quiz, shift, 'Locked', user);
     return jsonResponse(true, 'ปิดรับรายชื่อกะนี้แล้ว', { quizId: quiz.QuizID, shift: shift });
+  } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
+  finally { try { lock.releaseLock(); } catch (_) {} }
+}
+
+function stopMeetingQuizShift(payload, user) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(15000);
+    var post = meetingQuizPost_(payload.postId, user);
+    requireMeetingQuizManager_(user, post);
+    var quiz = meetingQuizForPost_(post);
+    if (!quiz) throw new Error('ยังไม่มีข้อสอบที่เผยแพร่');
+    if (!meetingQuizUniqueRosterRows_(meetingQuizRosterRows_()).length) {
+      throw new Error('กรุณาเพิ่มพนักงานสถานะ Active ในชีต MeetingQuizEmployees ก่อนหยุดสอบและจัดอันดับ');
+    }
+    var shift = meetingQuizNormalizeShift_(quiz, payload.shift);
+    var session = meetingQuizShiftSessions_(quiz).filter(function (row) { return valuesEqual_(row.shift, shift); })[0];
+    if (session.examStopped) return jsonResponse(true, 'กะนี้หยุดสอบแล้ว', { quizId: quiz.QuizID, shift: shift, topThree: meetingQuizTopThree_(quiz.QuizID, shift, quiz.MeetingDate) });
+    if (session.pendingCount > 0) throw new Error('ยังมีพนักงานค้าง ' + session.pendingCount + ' คนในกะนี้ กรุณารอให้ส่งข้อสอบหรือทำเครื่องหมายลา/ป่วย/ยกเว้นก่อนหยุดสอบ');
+    meetingQuizSetShiftRoster_(quiz, shift, 'Stopped', user);
+    return jsonResponse(true, 'หยุดสอบกะนี้แล้ว', { quizId: quiz.QuizID, shift: shift, topThree: meetingQuizTopThree_(quiz.QuizID, shift, quiz.MeetingDate) });
   } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
   finally { try { lock.releaseLock(); } catch (_) {} }
 }
@@ -818,18 +1094,22 @@ function getMeetingQuiz(payload, user) {
     var selectedShift = participant ? cleanString_(participant.Shift) : cleanString_(payload.shift);
     if (!selectedShift && shiftOptions.length) selectedShift = shiftOptions[0].value;
     selectedShift = meetingQuizNormalizeShift_(quiz, selectedShift);
-    var counts = meetingQuizRosterCounts_(quiz.QuizID, selectedShift);
+    var counts = meetingQuizRosterCounts_(quiz.QuizID, selectedShift, quiz.MeetingDate);
     var shiftSession = meetingQuizShiftSessions_(quiz).filter(function (row) { return valuesEqual_(row.shift, selectedShift); })[0];
     var result = {
       published: true, quizId: quiz.QuizID, topic: cleanString_(quiz.SourceTitle || meetingQuizDailyTitle_(meetingQuizPostsForDate_(post.MeetingDate))), meetingDate: dateOnly_(post.MeetingDate),
       shift: selectedShift,
       shiftOptions: shiftOptions.map(function (row) { return { value: row.value, label: row.label, rosterStatus: row.rosterStatus }; }),
-      rosterLocked: valuesEqual_(shiftSession.rosterStatus, 'Locked'), participantCount: counts.participants,
+      rosterLocked: shiftSession.rosterClosed, examStopped: shiftSession.examStopped,
+      participantCount: counts.participants, registeredCount: counts.registered,
       submittedCount: counts.submitted, allSubmitted: meetingQuizAllSubmitted_(quiz),
       shiftAllSubmitted: shiftSession.allSubmitted,
+      employeeRosterConfigured: meetingQuizRosterConfigured_(),
+      employees: participant ? [] : meetingQuizEmployeesForRegistration_(quiz),
       participant: participant ? {
         participantId: participant.ParticipantID, displayName: participant.DisplayName,
-        language: participant.Language, status: participant.ParticipantStatus, shift: selectedShift
+        employeeId: cleanString_(participant.EmployeeID), language: participant.Language,
+        status: participant.ParticipantStatus, shift: selectedShift
       } : null,
       questions: participant && !valuesEqual_(participant.ParticipantStatus, 'Excused')
         ? meetingQuizQuestions_(quiz.QuizID).map(meetingQuizQuestionForClient_) : []
@@ -838,6 +1118,8 @@ function getMeetingQuiz(payload, user) {
       var reviewLanguage = valuesEqual_(payload.language, 'MY') ? 'MY' :
         (valuesEqual_(payload.language, 'TH') ? 'TH' : participant.Language);
       result.review = meetingQuizReview_(quiz.QuizID, participant.AnswersJSON, reviewLanguage);
+      result.leaderboardUnlocked = shiftSession.examStopped;
+      result.leaderboard = shiftSession.examStopped ? meetingQuizTopThree_(quiz.QuizID, selectedShift, quiz.MeetingDate) : [];
     }
     return jsonResponse(true, 'ข้อสอบพร้อมแล้ว', result);
   } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
@@ -851,24 +1133,44 @@ function registerMeetingQuizParticipant(payload, user) {
     var post = context.post;
     var quiz = context.quiz;
     if (!quiz) throw new Error('หัวข้อนี้ยังไม่มีข้อสอบที่เผยแพร่');
-    var first = cleanString_(payload.firstName);
-    var last = cleanString_(payload.lastName);
     var language = valuesEqual_(payload.language, 'MY') ? 'MY' : 'TH';
-    if (!first || !last) throw new Error('กรุณากรอกชื่อและนามสกุลก่อนเริ่มสอบ');
     var token = cleanString_(payload.participantToken);
     var existingTokenParticipant = meetingQuizFindParticipant_(quiz.QuizID, token);
     if (existingTokenParticipant) {
       return jsonResponse(true, 'เปิดข้อสอบต่อจากเดิม', {
         participantId: existingTokenParticipant.ParticipantID, participantToken: token,
-        shift: existingTokenParticipant.Shift,
+        shift: existingTokenParticipant.Shift, employeeId: cleanString_(existingTokenParticipant.EmployeeID),
+        displayName: cleanString_(existingTokenParticipant.DisplayName),
         questions: meetingQuizQuestions_(quiz.QuizID).map(meetingQuizQuestionForClient_)
       });
     }
-    var shift = meetingQuizNormalizeShift_(quiz, payload.shift);
+    var first = cleanString_(payload.firstName);
+    var last = cleanString_(payload.lastName);
+    var rosterConfigured = meetingQuizRosterConfigured_();
+    var employee = null;
+    var employeeId = '';
+    var shift;
+    if (rosterConfigured) {
+      employee = meetingQuizEmployeeForRegistration_(payload.employeeId);
+      employeeId = cleanString_(employee.EmployeeID);
+      var absence = meetingQuizAttendanceMap_(quiz.MeetingDate)[employeeId.toLowerCase()];
+      if (absence) throw new Error('รายชื่อนี้ถูกทำเครื่องหมายว่า ' + absence + ' จึงไม่อยู่ในรายชื่อเข้าสอบวันนี้');
+      var shiftOption = meetingQuizShiftOptions_(quiz).filter(function (row) { return valuesEqual_(row.value, employee.Shift); })[0];
+      if (!shiftOption) throw new Error('กะของพนักงานไม่ตรงกับกะที่เปิดสอบ กรุณาแก้ทะเบียนพนักงาน');
+      shift = shiftOption.value;
+      var alreadyRegistered = meetingQuizParticipants_(quiz.QuizID).filter(function (row) {
+        return valuesEqual_(row.EmployeeID, employeeId);
+      })[0];
+      if (alreadyRegistered) throw new Error('ชื่อนี้ลงทะเบียนข้อสอบแล้ว กรุณาเปิดจากอุปกรณ์ที่ใช้ลงชื่อเดิม หรือติดต่อ Leader');
+      first = cleanString_(employee.FirstName) || meetingQuizEmployeeName_(employee);
+      last = cleanString_(employee.LastName);
+    } else {
+      if (!first || !last) throw new Error('ยังไม่มีรายชื่อในชีต MeetingQuizEmployees กรุณาให้ผู้ดูแลเพิ่มทะเบียนพนักงานก่อน');
+      shift = meetingQuizNormalizeShift_(quiz, payload.shift);
+    }
     var shiftSession = meetingQuizShiftSessions_(quiz).filter(function (row) { return valuesEqual_(row.shift, shift); })[0];
-    if (valuesEqual_(shiftSession.rosterStatus, 'Locked')) throw new Error('ปิดรับรายชื่อกะนี้แล้ว');
-    // Names are not unique identifiers; two employees can share the same full name.
-    var displayName = first + ' ' + last;
+    if (shiftSession.rosterStatus !== 'Open') throw new Error(shiftSession.examStopped ? 'กะนี้หยุดสอบแล้ว' : 'ปิดรับรายชื่อกะนี้แล้ว');
+    var displayName = rosterConfigured ? meetingQuizEmployeeName_(employee) : first + ' ' + last;
     var newToken = newMeetingQuizToken_();
     var now = formatDateTimeBangkok(new Date());
     var participantId = generateId('MQP', SHEET_NAMES.MEETING_QUIZ_PARTICIPANTS, 'ParticipantID', getPeriodMonth(new Date()));
@@ -877,10 +1179,11 @@ function registerMeetingQuizParticipant(payload, user) {
       FirstName: first, LastName: last, DisplayName: displayName, Language: language,
       ParticipantStatus: 'Registered', RegisteredAt: now, RegisteredByUserID: user && user.UserID ? user.UserID : 'QR Guest',
       SubmittedAt: '', AnswersJSON: '', Score: '', TotalQuestions: 5,
-      TokenHash: hashMeetingQuizToken_(newToken), ExcusedAt: '', ExcusedBy: '', ExcuseReason: '', UpdatedAt: now
+      TokenHash: hashMeetingQuizToken_(newToken), ExcusedAt: '', ExcusedBy: '', ExcuseReason: '', UpdatedAt: now,
+      EmployeeID: employeeId
     });
     return jsonResponse(true, 'ลงชื่อแล้ว เริ่มทำข้อสอบได้', {
-      participantId: participantId, participantToken: newToken, shift: shift,
+      participantId: participantId, participantToken: newToken, shift: shift, employeeId: employeeId, displayName: displayName,
       questions: meetingQuizQuestions_(quiz.QuizID).map(meetingQuizQuestionForClient_)
     });
   } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
@@ -906,6 +1209,8 @@ function submitMeetingQuiz(payload, user) {
       });
     }
     if (!valuesEqual_(participant.ParticipantStatus, 'Registered')) throw new Error('ผู้เข้าสอบรายนี้ไม่ได้อยู่ในรอบสอบ');
+    var shiftState = meetingQuizShiftOptions_(quiz).filter(function (row) { return valuesEqual_(row.value, participant.Shift); })[0];
+    if (shiftState && valuesEqual_(shiftState.rosterStatus, 'Stopped')) throw new Error('กะนี้หยุดสอบแล้ว ไม่สามารถส่งคำตอบเพิ่มเติมได้');
     var questions = meetingQuizQuestions_(quiz.QuizID);
     if (!Array.isArray(payload.answers) || payload.answers.length !== questions.length) throw new Error('กรุณาตอบข้อสอบให้ครบทุกข้อ');
     var answerMap = {};

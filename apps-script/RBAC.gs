@@ -168,6 +168,7 @@ function hasApiAccess_(user, action) {
     saveMeetingQuizDraft: ['meeting.quiz.manage'],
     publishMeetingQuiz: ['meeting.quiz.manage'],
     lockMeetingQuizRoster: ['meeting.quiz.manage'],
+    stopMeetingQuizShift: ['meeting.quiz.manage'],
     excuseMeetingQuizParticipant: ['meeting.quiz.manage'],
     acknowledgeMeetingPost: ['meeting.view'],
     getMyPendingMeetingAcks: ['meeting.view'],

@@ -3220,16 +3220,36 @@ function renderMeetingQuizAdmin() {
   }).join('') : '';
   const shiftSessions = model.shiftSessions || [];
   const roster = shiftSessions.map(session => {
-    const people = participants.filter(person => String(person.Shift || '') === String(session.shift || ''));
+    const people = session.rosterConfigured
+      ? (session.rosterMembers || []).map(person => ({
+        ParticipantID: person.participantId, DisplayName: person.displayName,
+        Score: person.score, TotalQuestions: person.total,
+        ParticipantStatus: person.status === 'NotRegistered' ? 'NotRegistered' : person.status
+      }))
+      : participants.filter(person => String(person.Shift || '') === String(session.shift || ''));
     const peopleHtml = people.length ? `<ul class="quiz-roster-list">${people.map(person => {
       const submitted = person.ParticipantStatus === 'Submitted';
       const excused = person.ParticipantStatus === 'Excused';
-      return `<li class="quiz-roster-item"><span>${escapeHtml(person.DisplayName)} · ${submitted ? `ส่งแล้ว · ${escapeHtml(String(person.Score ?? ''))}/${escapeHtml(String(person.TotalQuestions || 5))} คะแนน` : (excused ? 'ยกเว้น' : 'ยังไม่ส่ง')}</span>${!submitted && !excused ? `<button type="button" class="btn btn-ghost btn-compact" data-quiz-excuse="${escapeAttr(person.ParticipantID)}">ยกเว้นจากรอบ</button>` : ''}</li>`;
+      const notRegistered = person.ParticipantStatus === 'NotRegistered';
+      const status = submitted ? `ส่งแล้ว · ${escapeHtml(String(person.Score ?? ''))}/${escapeHtml(String(person.TotalQuestions || 5))} คะแนน`
+        : (excused ? 'ยกเว้น' : (notRegistered ? 'ยังไม่ลงชื่อ' : 'กำลังทำ / ยังไม่ส่ง'));
+      return `<li class="quiz-roster-item"><span>${escapeHtml(person.DisplayName)} · ${status}</span>${!submitted && !excused && !notRegistered ? `<button type="button" class="btn btn-ghost btn-compact" data-quiz-excuse="${escapeAttr(person.ParticipantID)}">ยกเว้นจากรอบ</button>` : ''}</li>`;
     }).join('')}</ul>` : '<div class="empty-state">ยังไม่มีผู้ลงชื่อสอบในกะนี้</div>';
-    const lockButton = session.rosterStatus === 'Locked'
-      ? '<span class="status-badge status-ok">ปิดรับรายชื่อแล้ว</span>'
-      : `<button type="button" class="btn btn-outline" data-quiz-lock="${escapeAttr(session.shift)}">ปิดรับรายชื่อ ${escapeHtml(session.label || session.shift)} / เริ่มสอบ</button>`;
-    return `<section class="quiz-shift-roster"><div class="quiz-roster-summary"><strong>${escapeHtml(session.label || session.shift)}</strong><span>ลงชื่อ ${session.participantCount || 0} คน · ส่งแล้ว ${session.submittedCount || 0} คน</span>${lockButton}</div>${peopleHtml}</section>`;
+    const rosterButton = session.rosterStatus === 'Stopped'
+      ? '<span class="status-badge status-ok">หยุดสอบแล้ว</span>'
+      : (session.rosterStatus === 'Locked'
+        ? '<span class="status-badge status-ok">ปิดรับรายชื่อแล้ว</span>'
+        : `<button type="button" class="btn btn-outline" data-quiz-lock="${escapeAttr(session.shift)}">ปิดรับรายชื่อ</button>`);
+    const stopButton = session.examStopped
+      ? ''
+      : `<button type="button" class="btn btn-primary" data-quiz-stop="${escapeAttr(session.shift)}" ${session.pendingCount > 0 ? 'disabled title="รอให้ทุกคนส่ง หรือบันทึกลาป่วย/ยกเว้นก่อน"' : ''}>หยุดสอบและประกาศอันดับ</button>`;
+    const stats = session.rosterConfigured
+      ? `ทะเบียน ${session.participantCount || 0} คน · ลงชื่อ ${session.registeredCount || 0} · ส่งแล้ว ${session.submittedCount || 0} · ค้าง ${session.pendingCount || 0} · ลา/ป่วย ${session.absentCount || 0}`
+      : `ลงชื่อ ${session.participantCount || 0} คน · ส่งแล้ว ${session.submittedCount || 0} · ค้าง ${session.pendingCount || 0}`;
+    const podium = session.examStopped && (session.topThree || []).length
+      ? `<div class="quiz-podium"><strong>🏆 3 อันดับของ${escapeHtml(session.label || session.shift)}</strong><ol>${session.topThree.map(person => `<li><span>${person.rank === 1 ? '🥇' : (person.rank === 2 ? '🥈' : '🥉')} ${escapeHtml(person.displayName)}</span><b>${person.score}/${person.total}</b></li>`).join('')}</ol></div>`
+      : (session.examStopped ? '<div class="quiz-status-note">หยุดสอบแล้ว · ยังไม่มีผู้ส่งข้อสอบเพื่อจัดอันดับ</div>' : '');
+    return `<section class="quiz-shift-roster"><div class="quiz-roster-summary"><strong>${escapeHtml(session.label || session.shift)}</strong><span>${stats}</span><div class="quiz-roster-controls">${rosterButton}${stopButton}</div></div>${peopleHtml}${podium}</section>`;
   }).join('');
   const sourceTopics = (model.post?.SourceTopics || []).map(topic => topic.Topic).filter(Boolean);
   const generationFeedback = model.autoGenerating
@@ -3245,8 +3265,8 @@ function renderMeetingQuizAdmin() {
     <div class="quiz-admin-toolbar"><div><strong>${escapeHtml(model.post?.Topic || '')}</strong><div class="field-help">${escapeHtml(model.post?.MeetingDate || '')} · ${escapeHtml(statusText)}${sourceTopics.length ? `<br>หัวข้อที่ใช้: ${sourceTopics.map(escapeHtml).join(' · ')}` : ''}</div></div><div class="quiz-admin-actions">${quiz && !isDraft ? `<span class="field-help">ส่งแล้ว ${summary.submittedCount || 0}/${summary.participantCount || 0} คน${model.lastRefreshedAt ? ` · อัปเดต ${new Date(model.lastRefreshedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : ''}</span><button type="button" class="btn btn-outline" data-quiz-refresh>รีเฟรชสถานะ</button>` : ''}${canGenerate && !model.autoGenerating ? '<button type="button" class="btn btn-secondary" data-quiz-generate>✨ Gen ข้อสอบ 5 ข้อจากทุกหัวข้อวันนี้</button>' : ''}</div></div>
     ${aiSettings}
     ${generationFeedback}
-    ${quiz && !isDraft ? `<div class="quiz-status-note">ใช้ข้อสอบและ QR Code ชุดเดียวกันได้ทั้งกะเช้าและกะดึก · รายชื่อและเวลาปิดรับแยกตามกะ · สถานะอัปเดตอัตโนมัติทุก 5 วินาที</div><h4>ผลสอบและรายชื่อผู้เข้าสอบ แยกตามกะ</h4>${roster}` : ''}
-    ${publicUrl ? `<section class="quiz-qr-panel"><div><h4>QR สำหรับพนักงานเข้าสอบ</h4><p class="field-help">พนักงานสแกน QR นี้แล้วกรอกชื่อ–นามสกุลและเลือกกะได้เลย ไม่ต้อง Login</p><div class="quiz-qr-link">${escapeHtml(publicUrl)}</div><button type="button" class="btn btn-outline" data-quiz-copy-link="${escapeAttr(publicUrl)}">คัดลอกลิงก์ข้อสอบ</button></div>${qrSvg ? `<div class="quiz-qr-image" aria-label="QR Code สำหรับเข้าสอบ">${qrSvg}</div>` : '<div class="quiz-qr-image quiz-qr-error">ยังสร้าง QR ไม่ได้ กรุณาคัดลอกลิงก์</div>'}</section>` : ''}
+    ${quiz && !isDraft ? `<div class="quiz-status-note">ใช้ QR และข้อสอบชุดเดียวกันทุกกะ · พนักงานเลือกชื่อจากทะเบียน ระบบกำหนดกะให้อัตโนมัติ · สถานะอัปเดตทุก 5 วินาที</div>${!model.employeeRosterConfigured || !Number(model.employeeRosterCount || 0) ? `<div class="quiz-status-note">เพิ่มรายชื่อในชีต ${escapeHtml(model.rosterSheetName || 'MeetingQuizEmployees')} ก่อนเปิด QR: EmployeeID, FirstName, LastName (หรือ DisplayName), Shift, ActiveStatus=Active · วันที่ลา/ป่วยให้เพิ่มในชีต ${escapeHtml(model.attendanceSheetName || 'MeetingQuizAttendance')} โดยใส่ MeetingDate, EmployeeID และ Status=Leave หรือ Sick</div>` : ''}<h4>ผลสอบและรายชื่อผู้เข้าสอบ แยกตามกะ</h4>${roster}` : ''}
+    ${publicUrl ? `<section class="quiz-qr-panel"><div><h4>QR สำหรับพนักงานเข้าสอบ</h4><p class="field-help">พนักงานสแกน QR นี้แล้วเลือกชื่อตัวเองจากทะเบียนและเลือกภาษา ไม่ต้อง Login; ระบบอ่านกะจากทะเบียนให้</p><div class="quiz-qr-link">${escapeHtml(publicUrl)}</div><button type="button" class="btn btn-outline" data-quiz-copy-link="${escapeAttr(publicUrl)}">คัดลอกลิงก์ข้อสอบ</button></div>${qrSvg ? `<div class="quiz-qr-image" aria-label="QR Code สำหรับเข้าสอบ">${qrSvg}</div>` : '<div class="quiz-qr-image quiz-qr-error">ยังสร้าง QR ไม่ได้ กรุณาคัดลอกลิงก์</div>'}</section>` : ''}
     ${isDraft ? `<div class="quiz-status-note">สร้างข้อสอบชุดเดียวของวันนี้แล้ว · แก้ไขและบันทึกได้ แต่ระบบจะไม่ Gen ชุดซ้ำ · เปิดรับรายชื่อหลังเผยแพร่</div><div id="meetingQuizEditor" data-quiz-editor-language="TH"><div class="quiz-editor-language-switch" role="group" aria-label="เลือกภาษาที่ต้องการแก้ไข"><span>ภาษา</span><button type="button" class="is-active" data-quiz-editor-language="TH" aria-pressed="true">ไทย <small>หลัก</small></button><button type="button" data-quiz-editor-language="MY" aria-pressed="false">မြန်မာ</button></div>${questionEditor}</div><div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-save>บันทึกฉบับร่าง</button><button type="button" class="btn btn-primary" data-quiz-publish>เผยแพร่และเปิดรับสอบ</button></div>` : ''}
     ${quiz && !isDraft && !participants.length ? '<div class="quiz-status-note">ยังไม่มีผู้ลงชื่อสอบในรอบนี้</div>' : ''}
     ${quiz && !isDraft && summary.allSubmitted ? '<div class="quiz-status-note">ทุกกะปิดรับรายชื่อและส่งครบแล้ว ปุ่มเฉลยรวมเปิดให้ทุกคนดูบนบอร์ด</div>' : ''}
@@ -3293,7 +3313,7 @@ async function handleMeetingQuizAdminClick(event) {
     });
     return;
   }
-  const button = event.target.closest('[data-quiz-copy-link],[data-quiz-generate],[data-quiz-save-api-key],[data-quiz-save],[data-quiz-publish],[data-quiz-lock],[data-quiz-excuse],[data-quiz-refresh]');
+  const button = event.target.closest('[data-quiz-copy-link],[data-quiz-generate],[data-quiz-save-api-key],[data-quiz-save],[data-quiz-publish],[data-quiz-lock],[data-quiz-stop],[data-quiz-excuse],[data-quiz-refresh]');
   if (!button) return;
   try {
     button.disabled = true;
@@ -3342,6 +3362,14 @@ async function handleMeetingQuizAdminClick(event) {
       await refreshMeetingQuizAdmin();
       await loadMeetingBoard();
       showToast('ปิดรับรายชื่อแล้ว', 'success');
+    } else if (button.hasAttribute('data-quiz-stop')) {
+      const shiftLabel = model.shiftSessions?.find(session => String(session.shift) === String(button.dataset.quizStop))?.label || button.dataset.quizStop;
+      const confirmed = await showConfirm({ title: `หยุดสอบ${shiftLabel}?`, message: 'ระบบจะปิดรับคำตอบของกะนี้และแสดง 3 อันดับจากคะแนนที่ส่งแล้ว การหยุดทำได้เมื่อทุกคนส่งหรือถูกยกเว้น/บันทึกลาแล้ว', confirmText: 'หยุดสอบ', tone: 'primary' });
+      if (!confirmed) return;
+      await apiCall('stopMeetingQuizShift', { postId: model.postId, shift: button.dataset.quizStop });
+      await refreshMeetingQuizAdmin();
+      await loadMeetingBoard();
+      showToast('หยุดสอบแล้ว · แสดง 3 อันดับแรกของกะนี้', 'success');
     } else if (button.hasAttribute('data-quiz-excuse')) {
       const reason = window.prompt('เหตุผลที่ยกเว้นผู้เข้าสอบรายนี้');
       if (!reason || !reason.trim()) return;
@@ -3439,12 +3467,25 @@ function renderMeetingQuizExam() {
   }
   if (!model.participant) {
     title.textContent = `${lang === 'MY' ? 'အစည်းအဝေး စာမေးပွဲ' : 'แบบทดสอบ'} · ${model.topic || ''}`;
-    const locked = Boolean(model.rosterLocked);
-    const shifts = model.shiftOptions || [];
-    const selectedShift = shifts.some(shift => shift.value === model.shift) ? model.shift : (shifts[0]?.value || '');
-    model.shift = selectedShift;
-    const shiftField = `<label>กะ<select name="shift" required>${shifts.map(shift => `<option value="${escapeAttr(shift.value)}" ${shift.value === selectedShift ? 'selected' : ''}>${escapeHtml(shift.label || shift.value)}</option>`).join('')}</select></label>`;
-    content.innerHTML = `<p class="page-helper">${escapeHtml(model.meetingDate || '')} · ${escapeHtml(model.topic || '')}</p>${locked ? `<div class="quiz-status-note">ปิดรับรายชื่อ ${escapeHtml(shifts.find(shift => shift.value === selectedShift)?.label || selectedShift)} แล้ว กรุณาเลือกกะที่เปิดรับหรือแจ้ง Leader</div>${shiftField}` : `<form id="meetingQuizRegistrationForm" class="form-stack"><p class="quiz-registration-intro">ข้อสอบชุดเดียวกันสำหรับทุกกะ · กรอกชื่อและนามสกุลก่อนเริ่มทำ 5 ข้อ</p>${shiftField}<div class="quiz-name-row"><label>ชื่อ *<input name="firstName" autocomplete="given-name" required maxlength="100"></label><label>นามสกุล *<input name="lastName" autocomplete="family-name" required maxlength="100"></label></div>${meetingQuizLanguagePickerHtml(lang, true)}<div class="modal-actions"><button type="submit" class="btn btn-primary">เริ่มทำข้อสอบ</button></div></form>`}`;
+    const employees = model.employees || [];
+    const available = employees.filter(employee => (model.shiftOptions || []).some(shift => String(shift.value).toLowerCase() === String(employee.shift).toLowerCase() && shift.rosterStatus === 'Open'));
+    const closedOnly = employees.length > 0 && available.length === 0;
+    const employeeNameCounts = available.reduce((counts, employee) => {
+      const key = String(employee.displayName || '').trim().toLowerCase();
+      counts[key] = (counts[key] || 0) + 1;
+      return counts;
+    }, {});
+    const employeeField = `<label>เลือกชื่อจากทะเบียนพนักงาน *<select name="employeeId" required><option value="">เลือกชื่อของคุณ</option>${available.map(employee => {
+      const duplicate = employeeNameCounts[String(employee.displayName || '').trim().toLowerCase()] > 1;
+      const idSuffix = duplicate ? ` · รหัส ${employee.employeeId}` : '';
+      return `<option value="${escapeAttr(employee.employeeId)}">${escapeHtml(employee.displayName)}${escapeHtml(idSuffix)} · ${escapeHtml(employee.shiftLabel || employee.shift)}</option>`;
+    }).join('')}</select></label>`;
+    const noRoster = !model.employeeRosterConfigured
+      ? '<div class="quiz-status-note">ยังไม่มีรายชื่อให้เลือก ผู้ดูแลต้องเพิ่มรายชื่อในชีต MeetingQuizEmployees ก่อน</div>'
+      : (closedOnly
+        ? '<div class="quiz-status-note">รายชื่อกะของคุณปิดรับแล้ว หรือทุกคนในกะลงชื่อครบแล้ว กรุณาติดต่อ Leader</div>'
+        : (available.length ? '' : '<div class="quiz-status-note">ยังไม่มีรายชื่อพนักงานที่เปิดรับสอบในวันนี้ กรุณาติดต่อ Leader</div>'));
+    content.innerHTML = `<p class="page-helper">${escapeHtml(model.meetingDate || '')} · ${escapeHtml(model.topic || '')}</p>${noRoster}${available.length ? `<form id="meetingQuizRegistrationForm" class="form-stack"><p class="quiz-registration-intro">ข้อสอบชุดเดียวกันทุกกะ · เลือกชื่อตัวเองและภาษาที่ต้องการก่อนเริ่ม ระบบจะเลือกกะตามทะเบียนให้</p>${employeeField}${meetingQuizLanguagePickerHtml(lang, true)}<div class="modal-actions"><button type="submit" class="btn btn-primary">เริ่มทำข้อสอบ 5 ข้อ</button></div></form>` : ''}`;
     return;
   }
   if (String(model.participant.status || '').toLowerCase() === 'excused') {
@@ -3458,19 +3499,31 @@ function renderMeetingQuizExam() {
       CorrectText: question.CorrectText, CorrectOption: question.CorrectOption,
       SelectedOption: question.SelectedOption, IsCorrect: question.IsCorrect, Explanation: question.Explanation
     }));
+    const personalPodium = model.publicMode && model.leaderboardUnlocked
+      ? meetingQuizPodiumHtml(model.leaderboard || [], model.shift, lang)
+      : (model.publicMode ? `<div class="quiz-status-note">อันดับ 1–3 ของ${escapeHtml((model.shiftOptions || []).find(shift => shift.value === model.shift)?.label || model.shift || 'กะนี้')} จะแสดงเมื่อ Leader หยุดสอบ · เฉลยรวมรอให้ทุกกะส่งครบและปิดรับ</div>` : '');
     const publicKeyActions = model.publicMode ? (model.allSubmitted
-      ? `<div class="quiz-status-note">${lang === 'MY' ? 'အလုပ်သမားအားလုံး တင်သွင်းပြီးပါပြီ' : 'ทุกคนส่งข้อสอบครบแล้ว'}</div><div class="modal-actions"><button type="button" class="btn btn-primary" data-quiz-global-key>${lang === 'MY' ? 'အဖြေများကို ကြည့်ရန်' : 'ดูเฉลยรวม'}</button><button type="button" class="btn btn-outline" data-quiz-finish>${lang === 'MY' ? 'ပိတ်ရန်' : 'ปิดผลสอบ'}</button></div>`
-      : `<div class="quiz-status-note">${lang === 'MY' ? 'အဖြေစုစုပေါင်းကို နှစ်ဆိုင်းလုံး ပိတ်ပြီး လူတိုင်း တင်သွင်းသည့်အခါ ပြသပါမည်' : 'เฉลยรวมจะแสดงเมื่อปิดรับทั้งสองกะและทุกคนส่งข้อสอบแล้ว'}<div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-check-key>${lang === 'MY' ? 'အဖြေအခြေအနေကို စစ်ဆေးရန်' : 'ตรวจสอบสถานะเฉลยรวม'}</button><button type="button" class="btn btn-primary" data-quiz-finish>${lang === 'MY' ? 'ပိတ်ရန်' : 'ปิดผลสอบ'}</button></div></div>`)
+      ? `<div class="quiz-status-note">${lang === 'MY' ? 'အလုပ်သမားအားလုံး တင်သွင်းပြီးပါပြီ' : 'ทุกกะส่งข้อสอบครบแล้ว'}</div><div class="modal-actions"><button type="button" class="btn btn-primary" data-quiz-global-key>${lang === 'MY' ? 'အဖြေများကို ကြည့်ရန်' : 'ดูเฉลยรวม'}</button><button type="button" class="btn btn-outline" data-quiz-finish>${lang === 'MY' ? 'ပိတ်ရန်' : 'ปิดผลสอบ'}</button></div>`
+      : `<div class="quiz-status-note">${lang === 'MY' ? 'အဖြေစုစုပေါင်းကို နှစ်ဆိုင်းလုံး ပိတ်ပြီး လူတိုင်း တင်သွင်းသည့်အခါ ပြသပါမည်' : 'เฉลยรวมจะแสดงเมื่อทุกกะปิดรับและพนักงานที่มีสิทธิ์ส่งครบแล้ว'}<div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-check-key>${lang === 'MY' ? 'အဖြေအခြေအနေကို စစ်ဆေးရန်' : 'อัปเดตสถานะเฉลย/อันดับ'}</button><button type="button" class="btn btn-primary" data-quiz-finish>${lang === 'MY' ? 'ပိတ်ရန်' : 'ปิดผลสอบ'}</button></div></div>`)
       : `<div class="modal-actions"><button type="button" class="btn btn-primary" data-quiz-finish>${lang === 'MY' ? 'ပြီးပါပြီ / နောက်လူအတွက် ပိတ်ရန်' : 'เสร็จแล้ว / ให้คนถัดไปทำ'}</button></div>`;
-    content.innerHTML = `<div class="quiz-score">${lang === 'MY' ? 'ရမှတ်' : 'คะแนน'} ${model.review.score}/${model.review.total}</div>${meetingQuizPersonalReviewHtml(rows, lang)}${publicKeyActions}`;
+    const ownShift = (model.shiftOptions || []).find(shift => shift.value === model.shift)?.label || model.shift || '';
+    content.innerHTML = `<div class="quiz-status-note">${escapeHtml(model.participant?.displayName || '')}${ownShift ? ` · ${lang === 'MY' ? 'အဆိုင်း' : 'กะ'} ${escapeHtml(ownShift)}` : ''}</div><div class="quiz-score">${lang === 'MY' ? 'ရမှတ်' : 'คะแนน'} ${model.review.score}/${model.review.total}</div>${meetingQuizPersonalReviewHtml(rows, lang)}${personalPodium}${publicKeyActions}`;
     return;
   }
   const choices = ['A', 'B', 'C', 'D'];
   const questions = model.questions || [];
-  content.innerHTML = `<div class="quiz-status-note">${escapeHtml(model.participant.displayName || '')} · ${lang === 'TH' ? 'ภาษาไทย · ตอบให้ครบทุกข้อ แล้วส่งคำตอบ' : 'မြန်မာဘာသာ · အဖြေအားလုံးကို ရွေးပြီး တင်သွင်းပါ'}</div><form id="meetingQuizAnswerForm">${questions.map(q => `<fieldset class="quiz-exam-question"><legend>${meetingQuizQuestionNumber(q.QuestionNo)}. ${escapeHtml(q['Question' + lang] || '')}</legend>${choices.map(choice => `<label class="quiz-exam-choice"><input type="radio" name="q${meetingQuizQuestionNumber(q.QuestionNo)}" value="${choice}" ${model.answers[meetingQuizQuestionNumber(q.QuestionNo)] === choice ? 'checked' : ''} required><span>${choice}. ${escapeHtml(q['Choice' + choice + lang] || '')}</span></label>`).join('')}</fieldset>`).join('')}<div class="modal-actions"><button type="submit" class="btn btn-primary">${lang === 'MY' ? 'စာမေးပွဲတင်သွင်းရန်' : 'ส่งข้อสอบ'}</button></div></form>`;
+  const ownShift = (model.shiftOptions || []).find(shift => shift.value === model.shift)?.label || model.shift || '';
+  content.innerHTML = `<div class="quiz-status-note">${escapeHtml(model.participant.displayName || '')}${ownShift ? ` · ${lang === 'MY' ? 'အဆိုင်း' : 'กะ'} ${escapeHtml(ownShift)}` : ''} · ${lang === 'TH' ? 'ภาษาไทย · ตอบให้ครบทุกข้อ แล้วส่งคำตอบ' : 'မြန်မာဘာသာ · အဖြေအားလုံးကို ရွေးပြီး တင်သွင်းပါ'}</div><form id="meetingQuizAnswerForm">${questions.map(q => `<fieldset class="quiz-exam-question"><legend>${meetingQuizQuestionNumber(q.QuestionNo)}. ${escapeHtml(q['Question' + lang] || '')}</legend>${choices.map(choice => `<label class="quiz-exam-choice"><input type="radio" name="q${meetingQuizQuestionNumber(q.QuestionNo)}" value="${choice}" ${model.answers[meetingQuizQuestionNumber(q.QuestionNo)] === choice ? 'checked' : ''} required><span>${choice}. ${escapeHtml(q['Choice' + choice + lang] || '')}</span></label>`).join('')}</fieldset>`).join('')}<div class="modal-actions"><button type="submit" class="btn btn-primary">${lang === 'MY' ? 'စာမေးပွဲတင်သွင်းရန်' : 'ส่งข้อสอบ'}</button></div></form>`;
 }
 
 function meetingQuizQuestionNumber(value) { const number = Number(value); return Number.isFinite(number) ? number : 0; }
+
+function meetingQuizPodiumHtml(rows, shift, lang = 'TH') {
+  const list = Array.isArray(rows) ? rows : [];
+  const heading = lang === 'MY' ? `🏆 ${shift || 'ဤအဆိုင်း'} ၏ ထိပ်ဆုံး ၃ ဦး` : `🏆 ${shift || 'กะนี้'} · 3 อันดับแรก`;
+  if (!list.length) return `<section class="quiz-podium"><strong>${escapeHtml(heading)}</strong><p class="field-help">${lang === 'MY' ? 'အဆင့်သတ်မှတ်ရန် စာမေးပွဲတင်သွင်းသူ မရှိပါ' : 'ยังไม่มีผู้ส่งข้อสอบเพื่อจัดอันดับ'}</p></section>`;
+  return `<section class="quiz-podium"><strong>${escapeHtml(heading)}</strong><ol>${list.map(person => `<li><span>${person.rank === 1 ? '🥇' : (person.rank === 2 ? '🥈' : '🥉')} ${escapeHtml(person.displayName || '')}</span><b>${Number(person.score || 0)}/${Number(person.total || 5)}</b></li>`).join('')}</ol></section>`;
+}
 
 function meetingQuizPersonalReviewHtml(rows, lang) {
   const labels = lang === 'MY'
@@ -3498,20 +3551,18 @@ async function handleMeetingQuizExamSubmit(event) {
   if (event.target.id === 'meetingQuizRegistrationForm') {
     event.preventDefault();
     const form = event.target;
-    const firstName = form.elements.firstName.value.trim();
-    const lastName = form.elements.lastName.value.trim();
     const language = form.elements.language.value;
     try {
       const data = await apiCall('registerMeetingQuizParticipant', {
-        ...meetingQuizScope(model), firstName, lastName, language, shift: form.elements.shift.value, participantToken: model.participantToken
+        ...meetingQuizScope(model), employeeId: form.elements.employeeId.value, language, participantToken: model.participantToken
       });
       model.participantId = data.participantId;
       model.participantToken = data.participantToken;
       model.tokenKey = model.publicMode ? meetingQuizPublicTokenStorageKey(model.publicToken) : meetingQuizTokenStorageKey(model.quizId);
       sessionStorage.setItem(model.tokenKey, data.participantToken);
-      model.participant = { participantId: data.participantId, displayName: `${firstName} ${lastName}`, language, status: 'Registered' };
+      model.participant = { participantId: data.participantId, employeeId: data.employeeId, displayName: data.displayName, language, status: 'Registered', shift: data.shift };
       model.language = language;
-      model.shift = data.shift || form.elements.shift.value;
+      model.shift = data.shift;
       model.questions = data.questions || [];
       renderMeetingQuizExam();
       if (!model.publicMode) await loadMeetingBoard();
@@ -3544,22 +3595,12 @@ async function handleMeetingQuizExamChange(event) {
       try {
         const data = await apiCall('getMeetingQuiz', { ...meetingQuizScope(model), participantToken: model.participantToken, language: model.language });
         model.review = data.review || model.review;
+        model.allSubmitted = Boolean(data.allSubmitted);
+        model.leaderboardUnlocked = Boolean(data.leaderboardUnlocked);
+        model.leaderboard = data.leaderboard || [];
       } catch (error) { showToast(error.message, 'error'); }
     }
     renderMeetingQuizExam();
-  } else if (event.target.matches('select[name="shift"]')) {
-    const form = event.target.closest('form');
-    const firstName = form?.elements.firstName?.value || '';
-    const lastName = form?.elements.lastName?.value || '';
-    model.shift = event.target.value;
-    const selected = (model.shiftOptions || []).find(shift => shift.value === model.shift);
-    model.rosterLocked = selected?.rosterStatus === 'Locked';
-    renderMeetingQuizExam();
-    const nextForm = $('#meetingQuizRegistrationForm');
-    if (nextForm) {
-      nextForm.elements.firstName.value = firstName;
-      nextForm.elements.lastName.value = lastName;
-    }
   } else if (event.target.matches('input[type="radio"][name^="q"]')) {
     const questionNo = Number(event.target.name.slice(1));
     model.answers[questionNo] = event.target.value;
@@ -3597,8 +3638,11 @@ async function handleMeetingQuizExamClick(event) {
       model.allSubmitted = Boolean(data.allSubmitted);
       model.participant = data.participant || model.participant;
       model.review = data.review || model.review;
+      model.examStopped = Boolean(data.examStopped);
+      model.leaderboardUnlocked = Boolean(data.leaderboardUnlocked);
+      model.leaderboard = data.leaderboard || [];
       renderMeetingQuizExam();
-      showToast(model.allSubmitted ? 'เฉลยรวมเปิดแล้ว' : 'เฉลยรวมยังรอปิดรับและส่งข้อสอบให้ครบทุกกะ', model.allSubmitted ? 'success' : 'info');
+      showToast(model.leaderboardUnlocked ? 'อัปเดตอันดับกะของคุณแล้ว' : (model.allSubmitted ? 'เฉลยรวมเปิดแล้ว' : 'อัปเดตสถานะแล้ว · อันดับจะขึ้นหลังหยุดสอบกะนี้'), model.leaderboardUnlocked || model.allSubmitted ? 'success' : 'info');
     } catch (error) { showToast(error.message, 'error'); }
     return;
   }
@@ -4190,7 +4234,7 @@ function meetingTvQuizSlideHtml(dailyQuiz) {
     <h1 class="mtg-tv-title">QR Code ข้อสอบ</h1>
     <p class="mtg-tv-quiz-help">สแกน QR Code เพื่อทำข้อสอบของ Meeting วันนี้ · ไม่ต้อง Login</p>
     ${qrSvg ? `<div class="mtg-tv-quiz-qr" aria-label="QR Code สำหรับเข้าสอบ">${qrSvg}</div>` : '<div class="mtg-tv-quiz-error">ข้อสอบเผยแพร่แล้ว แต่ QR ยังไม่พร้อม กรุณารีเฟรชหน้า Meeting</div>'}
-    <div class="mtg-tv-quiz-caption">ข้อสอบชุดเดียว 5 ข้อ สำหรับทุกกะ · ก่อนเริ่มทำข้อสอบ กรุณากรอกชื่อและนามสกุล</div>
+    <div class="mtg-tv-quiz-caption">ข้อสอบชุดเดียว 5 ข้อ · สแกน QR เลือกชื่อตัวเองและภาษาที่ต้องการ · ระบบเลือกกะจากทะเบียน</div>
   </div>`;
 }
 
@@ -4202,13 +4246,28 @@ function meetingTvQuizStatusContentHtml(dailyQuiz) {
   const pending = Math.max(0, total - submitted);
   const percent = total ? Math.min(100, Math.round(submitted / total * 100)) : 0;
   const sessions = quiz.shiftSessions || [];
+  const stoppedShifts = sessions.filter(session => session.examStopped).length;
   const shifts = sessions.length
-    ? sessions.map(session => `<div class="mtg-tv-quiz-shift"><span>${escapeHtml(session.label || session.shift || 'กะ')}</span><strong>${Number(session.submittedCount || 0)} <small>/ ${Number(session.participantCount || 0)} คน</small></strong></div>`).join('')
+    ? sessions.map(session => {
+      const stopControl = quiz.canManage && !session.examStopped
+        ? `<button type="button" class="mtg-tv-quiz-stop" data-tv-quiz-stop="${escapeAttr(session.shift)}" ${session.pendingCount > 0 ? `disabled title="ยังค้าง ${Number(session.pendingCount)} คน"` : ''}>หยุดสอบ</button>`
+        : (session.examStopped ? '<span class="mtg-tv-quiz-stopped">หยุดแล้ว</span>' : '');
+      return `<div class="mtg-tv-quiz-shift"><span>${escapeHtml(session.label || session.shift || 'กะ')}${Number(session.absentCount || 0) ? `<small> · ลา/ป่วย ${Number(session.absentCount)}</small>` : ''}</span><strong>${Number(session.submittedCount || 0)} <small>/ ${Number(session.participantCount || 0)} คน</small></strong>${stopControl}</div>`;
+    }).join('')
     : `<div class="mtg-tv-quiz-shift"><span>รวมทุกกะ</span><strong>${submitted} <small>/ ${total} คน</small></strong></div>`;
+  const podium = sessions.filter(session => session.examStopped).map(session =>
+    `<div class="mtg-tv-quiz-podium"><strong>🏆 ${escapeHtml(session.label || session.shift)} · 3 อันดับแรก</strong>${(session.topThree || []).length
+      ? `<ol>${session.topThree.map(person => `<li><span>${person.rank === 1 ? '🥇' : (person.rank === 2 ? '🥈' : '🥉')} ${escapeHtml(person.displayName || '')}</span><b>${Number(person.score || 0)}/${Number(person.total || 5)}</b></li>`).join('')}</ol>`
+      : '<p>ยังไม่มีผู้ส่งข้อสอบเพื่อจัดอันดับ</p>'}</div>`
+  ).join('');
   const status = pending
-    ? `รอพนักงานส่งอีก ${pending} คน`
-    : total && quiz.allSubmitted
-      ? 'ส่งข้อสอบครบแล้ว'
+    ? stoppedShifts
+      ? `รอพนักงานส่งอีก ${pending} คน · หยุดสอบแล้ว ${stoppedShifts} กะ`
+      : `รอพนักงานส่งอีก ${pending} คน`
+    : quiz.allSubmitted
+      ? 'ทุกกะหยุดสอบ/ปิดรับและส่งครบแล้ว'
+      : stoppedShifts
+        ? `ส่งครบในกะที่ปิดแล้ว ${stoppedShifts} กะ`
       : total
         ? 'ผู้ลงชื่อสอบปัจจุบันส่งครบแล้ว · ยังเปิดรับรายชื่อ'
         : 'ยังไม่มีพนักงานลงชื่อเข้าสอบ';
@@ -4218,6 +4277,7 @@ function meetingTvQuizStatusContentHtml(dailyQuiz) {
     <div class="mtg-tv-quiz-progress-track" role="progressbar" aria-label="ความคืบหน้าการส่งข้อสอบ" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><span style="width:${percent}%"></span></div>
     <p class="mtg-tv-quiz-status-message">${escapeHtml(status)}</p>
     <div class="mtg-tv-quiz-shifts">${shifts}</div>
+    ${podium ? `<div class="mtg-tv-quiz-podium-list">${podium}</div>` : ''}
     <small class="mtg-tv-quiz-updated">อัปเดตอัตโนมัติ · ${refreshedAt}</small>
   </div>`;
 }
@@ -4368,8 +4428,34 @@ function renderMeetingTv() {
     btn.addEventListener('click', () => generateMeetingQuizFromTv(btn)));
   $$('[data-tv-quiz-draft]', container).forEach(btn =>
     btn.addEventListener('click', () => openMeetingQuizDraftFromTv(btn)));
+  $$('[data-tv-quiz-stop]', container).forEach(btn =>
+    btn.addEventListener('click', () => stopMeetingQuizFromTv(btn)));
   $$('[data-mtg-status]', container).forEach(btn =>
     btn.addEventListener('click', () => setMeetingPostStatus(btn, btn.dataset.mtgId, btn.dataset.mtgStatus, true)));
+}
+
+async function stopMeetingQuizFromTv(button) {
+  if (!button || button.disabled) return;
+  const dailyQuiz = meetingTvDailyQuiz();
+  const postId = dailyQuiz?.post?.PostID;
+  const shift = button.dataset.tvQuizStop;
+  if (!postId || !shift) return;
+  const label = dailyQuiz.quiz?.shiftSessions?.find(session => String(session.shift) === String(shift))?.label || shift;
+  const confirmed = await showConfirm({
+    title: `หยุดสอบ${label}?`,
+    message: 'หลังหยุดสอบ ระบบจะแสดง 3 อันดับแรกของกะนี้ และไม่รับคำตอบเพิ่ม',
+    confirmText: 'หยุดสอบ', tone: 'primary'
+  });
+  if (!confirmed) return;
+  button.disabled = true;
+  try {
+    await apiCall('stopMeetingQuizShift', { postId, shift });
+    await loadMeetingBoard();
+    showToast(`หยุดสอบ${label}แล้ว · แสดงอันดับ 1–3`, 'success');
+  } catch (error) {
+    button.disabled = false;
+    showToast(error.message, 'error');
+  }
 }
 
 async function openMeetingQuizDraftFromTv(button) {

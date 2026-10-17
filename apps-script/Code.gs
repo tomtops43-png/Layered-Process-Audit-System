@@ -114,6 +114,7 @@ function buildApiHandlers_(payload) {
     saveMeetingQuizDraft: function (user) { return saveMeetingQuizDraft(payload, user); },
     publishMeetingQuiz: function (user) { return publishMeetingQuiz(payload, user); },
     lockMeetingQuizRoster: function (user) { return lockMeetingQuizRoster(payload, user); },
+    stopMeetingQuizShift: function (user) { return stopMeetingQuizShift(payload, user); },
     excuseMeetingQuizParticipant: function (user) { return excuseMeetingQuizParticipant(payload, user); },
     registerMeetingQuizParticipant: function (user) { return registerMeetingQuizParticipant(payload, user); },
     submitMeetingQuiz: function (user) { return submitMeetingQuiz(payload, user); },
