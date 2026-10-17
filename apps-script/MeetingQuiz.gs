@@ -371,6 +371,14 @@ function meetingQuizEmployeeName_(employee) {
   return cleanString_(employee.DisplayName) || [cleanString_(employee.FirstName), cleanString_(employee.LastName)].filter(Boolean).join(' ');
 }
 
+function meetingQuizEmployeeFullName_(employee) {
+  return [cleanString_(employee.FirstName), cleanString_(employee.LastName)].filter(Boolean).join(' ') || cleanString_(employee.DisplayName);
+}
+
+function meetingQuizParticipantFullName_(participant) {
+  return [cleanString_(participant && participant.FirstName), cleanString_(participant && participant.LastName)].filter(Boolean).join(' ') || cleanString_(participant && participant.DisplayName);
+}
+
 function meetingQuizNormalizeEmployeeName_(name) {
   return cleanString_(name).normalize('NFC').toLowerCase().replace(/\s+/g, ' ');
 }
@@ -382,7 +390,7 @@ function meetingQuizUniqueRosterRows_(rows) {
   meetingQuizActiveShifts_().forEach(function (shift) { activeShifts[cleanString_(shift.value).toLowerCase()] = true; });
   return (rows || meetingQuizRosterRows_()).filter(function (row) {
     if (!isActive_(row.ActiveStatus) || !cleanString_(row.EmployeeID)) return false;
-    var name = meetingQuizNormalizeEmployeeName_(meetingQuizEmployeeName_(row));
+    var name = meetingQuizNormalizeEmployeeName_(meetingQuizEmployeeFullName_(row));
     var shift = cleanString_(row.Shift).toLowerCase();
     if (!name || !activeShifts[shift]) return false;
     if (seenNames[name]) return false;
@@ -458,17 +466,30 @@ function meetingQuizEmployeesForRegistration_(quiz) {
   });
 }
 
-function meetingQuizEmployeeForRegistration_(firstName, lastName) {
+function meetingQuizFindEmployeeForRegistration_(firstName, lastName, rows) {
   var first = cleanString_(firstName);
   var last = cleanString_(lastName);
   if (!first || !last) throw new Error('กรุณากรอกชื่อและนามสกุลให้ครบ');
   var fullName = meetingQuizNormalizeEmployeeName_(first + ' ' + last);
-  var matches = meetingQuizUniqueRosterRows_(meetingQuizRosterRows_()).filter(function (row) {
-    return meetingQuizNormalizeEmployeeName_(meetingQuizEmployeeName_(row)) === fullName;
+  var rosterRows = rows || meetingQuizRosterRows_();
+  var matches = meetingQuizUniqueRosterRows_(rosterRows).filter(function (row) {
+    return meetingQuizNormalizeEmployeeName_(meetingQuizEmployeeFullName_(row)) === fullName;
   });
-  if (!matches.length) throw new Error('ไม่พบชื่อและนามสกุลนี้ในทะเบียนพนักงาน กรุณาตรวจสอบการสะกดหรือติดต่อ Leader');
+  if (!matches.length) {
+    var inactiveMatch = rosterRows.some(function (row) {
+      return !isActive_(row.ActiveStatus) && meetingQuizNormalizeEmployeeName_(meetingQuizEmployeeFullName_(row)) === fullName;
+    });
+    if (inactiveMatch) throw new Error('ชื่อนี้อยู่ในทะเบียนแต่ไม่ได้เปิดใช้งาน กรุณาติดต่อ Leader');
+    return null;
+  }
   // Duplicate full names are already collapsed to the first active roster row.
   return matches[0];
+}
+
+function meetingQuizEmployeeForRegistration_(firstName, lastName) {
+  var employee = meetingQuizFindEmployeeForRegistration_(firstName, lastName);
+  if (!employee) throw new Error('ไม่พบชื่อและนามสกุลนี้ในทะเบียนพนักงาน');
+  return employee;
 }
 
 /** Match legacy QR registrations to a new roster only when the full name is unique. */
@@ -480,16 +501,16 @@ function meetingQuizResolveParticipantEmployeeId_(participant, rosterRows) {
     var canonicalById = canonicalRows.filter(function (employee) { return valuesEqual_(employee.EmployeeID, employeeId); })[0];
     if (canonicalById) return cleanString_(canonicalById.EmployeeID);
     var sourceEmployee = sourceRows.filter(function (employee) { return valuesEqual_(employee.EmployeeID, employeeId); })[0];
-    var sourceName = meetingQuizNormalizeEmployeeName_(sourceEmployee ? meetingQuizEmployeeName_(sourceEmployee) : participant && participant.DisplayName);
+    var sourceName = meetingQuizNormalizeEmployeeName_(sourceEmployee ? meetingQuizEmployeeFullName_(sourceEmployee) : meetingQuizParticipantFullName_(participant));
     var canonicalByName = canonicalRows.filter(function (employee) {
-      return meetingQuizNormalizeEmployeeName_(meetingQuizEmployeeName_(employee)) === sourceName;
+      return meetingQuizNormalizeEmployeeName_(meetingQuizEmployeeFullName_(employee)) === sourceName;
     })[0];
     return canonicalByName ? cleanString_(canonicalByName.EmployeeID) : employeeId;
   }
-  var name = meetingQuizNormalizeEmployeeName_(participant && participant.DisplayName);
+  var name = meetingQuizNormalizeEmployeeName_(meetingQuizParticipantFullName_(participant));
   if (!name) return '';
   var matches = canonicalRows.filter(function (employee) {
-    return meetingQuizNormalizeEmployeeName_(meetingQuizEmployeeName_(employee)) === name;
+    return meetingQuizNormalizeEmployeeName_(meetingQuizEmployeeFullName_(employee)) === name;
   });
   return matches.length === 1 ? cleanString_(matches[0].EmployeeID) : '';
 }
@@ -499,7 +520,7 @@ function meetingQuizUniqueParticipantRows_(rows, rosterRows) {
   var priority = { Submitted: 3, Registered: 2, Excused: 1 };
   (rows || []).forEach(function (row) {
     var employeeId = meetingQuizResolveParticipantEmployeeId_(row, rosterRows);
-    var name = meetingQuizNormalizeEmployeeName_(row.DisplayName);
+    var name = meetingQuizNormalizeEmployeeName_(meetingQuizParticipantFullName_(row));
     var key = employeeId ? 'employee:' + employeeId.toLowerCase() : (name ? 'name:' + name : 'participant:' + cleanString_(row.ParticipantID));
     var current = selected[key];
     var nextPriority = priority[cleanString_(row.ParticipantStatus)] || 0;
@@ -1189,19 +1210,16 @@ function registerMeetingQuizParticipant(payload, user) {
     }
     var first = cleanString_(payload.firstName);
     var last = cleanString_(payload.lastName);
-    var rosterConfigured = meetingQuizRosterConfigured_();
-    var employee = null;
+    var rosterRows = meetingQuizRosterRows_();
+    var employee = meetingQuizFindEmployeeForRegistration_(first, last, rosterRows);
     var employeeId = '';
     var shift;
-    if (rosterConfigured) {
-      employee = meetingQuizEmployeeForRegistration_(first, last);
+    var createdEmployee = false;
+    if (employee) {
       employeeId = cleanString_(employee.EmployeeID);
-      var absence = meetingQuizAttendanceMap_(quiz.MeetingDate)[employeeId.toLowerCase()];
-      if (absence) throw new Error('รายชื่อนี้ถูกทำเครื่องหมายว่า ' + absence + ' จึงไม่อยู่ในรายชื่อเข้าสอบวันนี้');
       var shiftOption = meetingQuizShiftOptions_(quiz).filter(function (row) { return valuesEqual_(row.value, employee.Shift); })[0];
       if (!shiftOption) throw new Error('กะของพนักงานไม่ตรงกับกะที่เปิดสอบ กรุณาแก้ทะเบียนพนักงาน');
       shift = shiftOption.value;
-      var rosterRows = meetingQuizRosterRows_();
       var alreadyRegistered = meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(quiz.QuizID), rosterRows).some(function (row) {
         return valuesEqual_(meetingQuizResolveParticipantEmployeeId_(row, rosterRows), employeeId);
       });
@@ -1209,8 +1227,34 @@ function registerMeetingQuizParticipant(payload, user) {
       first = cleanString_(employee.FirstName) || first;
       last = cleanString_(employee.LastName) || last;
     } else {
-      throw new Error('ยังไม่มีทะเบียนพนักงานที่ใช้งาน กรุณาให้ผู้ดูแลเพิ่มรายชื่อในชีต MeetingQuizEmployees ก่อนเข้าสอบ');
+      if (first.length > 100 || last.length > 100) throw new Error('ชื่อและนามสกุลต้องไม่เกิน 100 ตัวอักษร');
+      var newNameKey = meetingQuizNormalizeEmployeeName_(first + ' ' + last);
+      var priorNameRegistration = meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(quiz.QuizID), rosterRows).some(function (row) {
+        var participantNames = [row.DisplayName, [row.FirstName, row.LastName].filter(Boolean).join(' ')];
+        return participantNames.some(function (name) {
+          return meetingQuizNormalizeEmployeeName_(name) === newNameKey;
+        });
+      });
+      if (priorNameRegistration) throw new Error('ชื่อนี้ลงทะเบียนข้อสอบแล้ว กรุณาเปิดจากอุปกรณ์ที่ใช้ลงชื่อเดิม หรือติดต่อ Leader');
+      if (!cleanString_(payload.shift)) {
+        throw new Error('ไม่พบชื่อนี้ในทะเบียน กรุณาเลือกกะของคุณเพื่อเพิ่มชื่อเข้าทะเบียน แล้วกดเริ่มทำข้อสอบอีกครั้ง');
+      }
+      shift = meetingQuizNormalizeShift_(quiz, payload.shift);
+      var newEmployeeShift = meetingQuizShiftOptions_(quiz).filter(function (row) { return valuesEqual_(row.value, shift); })[0];
+      if (!newEmployeeShift || newEmployeeShift.rosterStatus !== 'Open') {
+        throw new Error('กะนี้ปิดรับลงชื่อสอบแล้ว กรุณาติดต่อ Leader');
+      }
+      var now = formatDateTimeBangkok(new Date());
+      employeeId = generateIdWithoutLock_('MQE', SHEET_NAMES.MEETING_QUIZ_EMPLOYEES, 'EmployeeID', getPeriodMonth(new Date()));
+      employee = {
+        EmployeeID: employeeId, FirstName: first, LastName: last, DisplayName: '', Shift: shift,
+        ActiveStatus: 'Active', CreatedAt: now, UpdatedAt: now
+      };
+      appendObject(SHEET_NAMES.MEETING_QUIZ_EMPLOYEES, employee);
+      createdEmployee = true;
     }
+    var absence = meetingQuizAttendanceMap_(quiz.MeetingDate)[employeeId.toLowerCase()];
+    if (absence) throw new Error('รายชื่อนี้ถูกทำเครื่องหมายว่า ' + absence + ' จึงไม่อยู่ในรายชื่อเข้าสอบวันนี้');
     var shiftSession = meetingQuizShiftSessions_(quiz).filter(function (row) { return valuesEqual_(row.shift, shift); })[0];
     if (shiftSession.rosterStatus !== 'Open') throw new Error(shiftSession.examStopped ? 'กะนี้หยุดสอบแล้ว' : 'ปิดรับรายชื่อกะนี้แล้ว');
     var displayName = meetingQuizEmployeeName_(employee);
@@ -1227,6 +1271,7 @@ function registerMeetingQuizParticipant(payload, user) {
     });
     return jsonResponse(true, 'ลงชื่อแล้ว เริ่มทำข้อสอบได้', {
       participantId: participantId, participantToken: newToken, shift: shift, employeeId: employeeId, displayName: displayName,
+      employeeCreated: createdEmployee,
       questions: meetingQuizQuestions_(quiz.QuizID).map(meetingQuizQuestionForClient_)
     });
   } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
