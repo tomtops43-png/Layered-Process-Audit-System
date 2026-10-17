@@ -2936,6 +2936,7 @@ async function loadMeetingBoard(prefetched = null) {
     state.meetingCanManageQuiz = Boolean(data.canManageQuiz);
     $('#addMeetingPostButton').classList.toggle('hidden', !state.meetingCanCreate);
     renderMeetingBoard();
+    refreshMeetingTvQuizStatus();
   } catch (error) {
     container.innerHTML = emptyHtml(error.message);
     showToast(error.message, 'error');
@@ -4064,6 +4065,7 @@ function meetingTvAuxiliarySlides() {
   // Keep a QR slot in the TV agenda every day; show a setup hint until the
   // day's quiz is published, then replace it with the scannable QR.
   slides.push({ type: 'quiz', dailyQuiz });
+  if (dailyQuiz?.quiz?.available) slides.push({ type: 'quizStatus', dailyQuiz });
   if (tvHasFindingSlide()) slides.push({ type: 'finding' });
   return slides;
 }
@@ -4192,6 +4194,48 @@ function meetingTvQuizSlideHtml(dailyQuiz) {
   </div>`;
 }
 
+function meetingTvQuizStatusContentHtml(dailyQuiz) {
+  const quiz = dailyQuiz?.quiz || {};
+  if (!quiz.available) return '<div class="mtg-tv-quiz-status-empty">ยังไม่มีข้อสอบที่เปิดรับทำในวันนี้</div>';
+  const submitted = Math.max(0, Number(quiz.submittedCount || 0));
+  const total = Math.max(0, Number(quiz.participantCount || 0));
+  const pending = Math.max(0, total - submitted);
+  const percent = total ? Math.min(100, Math.round(submitted / total * 100)) : 0;
+  const sessions = quiz.shiftSessions || [];
+  const shifts = sessions.length
+    ? sessions.map(session => `<div class="mtg-tv-quiz-shift"><span>${escapeHtml(session.label || session.shift || 'กะ')}</span><strong>${Number(session.submittedCount || 0)} <small>/ ${Number(session.participantCount || 0)} คน</small></strong></div>`).join('')
+    : `<div class="mtg-tv-quiz-shift"><span>รวมทุกกะ</span><strong>${submitted} <small>/ ${total} คน</small></strong></div>`;
+  const status = pending
+    ? `รอพนักงานส่งอีก ${pending} คน`
+    : total && quiz.allSubmitted
+      ? 'ส่งข้อสอบครบแล้ว'
+      : total
+        ? 'ผู้ลงชื่อสอบปัจจุบันส่งครบแล้ว · ยังเปิดรับรายชื่อ'
+        : 'ยังไม่มีพนักงานลงชื่อเข้าสอบ';
+  const refreshedAt = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return `<div class="mtg-tv-quiz-status-card">
+    <div class="mtg-tv-quiz-status-total"><span>ส่งข้อสอบแล้ว</span><strong>${submitted}<small> / ${total} คน</small></strong></div>
+    <div class="mtg-tv-quiz-progress-track" role="progressbar" aria-label="ความคืบหน้าการส่งข้อสอบ" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100"><span style="width:${percent}%"></span></div>
+    <p class="mtg-tv-quiz-status-message">${escapeHtml(status)}</p>
+    <div class="mtg-tv-quiz-shifts">${shifts}</div>
+    <small class="mtg-tv-quiz-updated">อัปเดตอัตโนมัติ · ${refreshedAt}</small>
+  </div>`;
+}
+
+function meetingTvQuizStatusSlideHtml(dailyQuiz) {
+  return `<div class="mtg-tv-slide mtg-tv-quiz-slide mtg-tv-quiz-status-slide tv-anim-${meetingTvDir}">
+    <div class="mtg-tv-chips"><span class="mtg-tv-chip mtg-tv-quiz-chip">📝 แบบทดสอบหลัง Meeting</span></div>
+    <h1 class="mtg-tv-title">สถานะการส่งข้อสอบ</h1>
+    <p class="mtg-tv-quiz-help">ติดตามจำนวนผู้ส่งแยกตามกะ · หน้านี้อัปเดตอัตโนมัติ</p>
+    <div id="meetingTvQuizStatusContent" class="mtg-tv-quiz-status-content">${meetingTvQuizStatusContentHtml(dailyQuiz)}</div>
+  </div>`;
+}
+
+function refreshMeetingTvQuizStatus() {
+  const content = $('#meetingTvQuizStatusContent');
+  if (content) content.innerHTML = meetingTvQuizStatusContentHtml(meetingTvDailyQuiz());
+}
+
 // One post section rendered as a TV slide. The topic + chips repeat on every
 // section; photos, meta, and the discuss button appear only on the last section.
 function meetingTvPostSlideHtml(slide) {
@@ -4272,21 +4316,30 @@ function renderMeetingTv() {
           ${priority === 'ด่วน' ? '<span class="mtg-tv-chip mtg-tv-urgent">ด่วน</span>' : priority === 'สำคัญ' ? '<span class="mtg-tv-chip mtg-tv-important">สำคัญ</span>' : ''}
           ${item.carry ? '<span class="mtg-tv-item-carry">⏳ ค้าง</span>' : ''}
         </button></li>`;
-      }).join('')}${auxiliarySlides.map((slide, i) => slide.type === 'quiz'
-        ? `<li style="animation-delay:${Math.min((deck.length + i) * 70, 700)}ms" class="mtg-tv-li"><button class="mtg-tv-item mtg-tv-item-quiz" data-tv-goto="${postSlides.length + i + 1}">
+      }).join('')}${auxiliarySlides.map((slide, i) => {
+        const delay = Math.min((deck.length + i) * 70, 700);
+        const target = postSlides.length + i + 1;
+        if (slide.type === 'quiz') return `<li style="animation-delay:${delay}ms" class="mtg-tv-li"><button class="mtg-tv-item mtg-tv-item-quiz" data-tv-goto="${target}">
           <span class="mtg-tv-item-icon">📱</span>
           <span class="mtg-tv-item-text">QR Code ข้อสอบ<span class="mtg-tv-item-line">${slide.dailyQuiz?.quiz?.available ? 'สแกนเพื่อทำข้อสอบ Meeting วันนี้ · 5 ข้อ' : slide.dailyQuiz?.quiz?.hasDraft ? 'มีฉบับร่าง · Admin/Engineer ตรวจและเผยแพร่' : slide.dailyQuiz?.canGenerate && slide.dailyQuiz?.hasSlides ? 'Admin/Engineer แตะเพื่อ Gen ข้อสอบอัตโนมัติ 5 ข้อ' : slide.dailyQuiz?.canGenerate ? 'เพิ่มรายละเอียดหรือสไลด์ก่อน Gen ข้อสอบ' : slide.dailyQuiz ? 'รอ Admin/Engineer สร้างและเผยแพร่ข้อสอบ' : 'ยังไม่มีข้อสอบเผยแพร่สำหรับวันที่นี้'}</span></span>
-        </button></li>`
-        : `<li style="animation-delay:${Math.min((deck.length + i) * 70, 700)}ms" class="mtg-tv-li"><button class="mtg-tv-item mtg-tv-item-finding" data-tv-goto="${postSlides.length + i + 1}">
+        </button></li>`;
+        if (slide.type === 'quizStatus') return `<li style="animation-delay:${delay}ms" class="mtg-tv-li"><button class="mtg-tv-item mtg-tv-item-quiz-status" data-tv-goto="${target}">
+          <span class="mtg-tv-item-icon">📊</span>
+          <span class="mtg-tv-item-text">สถานะการส่งข้อสอบ<span class="mtg-tv-item-line">ส่งแล้ว ${Number(slide.dailyQuiz?.quiz?.submittedCount || 0)}/${Number(slide.dailyQuiz?.quiz?.participantCount || 0)} คน · ดูแยกตามกะ</span></span>
+        </button></li>`;
+        return `<li style="animation-delay:${delay}ms" class="mtg-tv-li"><button class="mtg-tv-item mtg-tv-item-finding" data-tv-goto="${target}">
           <span class="mtg-tv-item-icon">📢</span>
           <span class="mtg-tv-item-text">Finding จากการตรวจ LPA<span class="mtg-tv-item-line">วันนี้ ${(state.meetingFindingDigest?.today?.totalCount) || 0} รายการ · เมื่อวาน ${(state.meetingFindingDigest?.yesterday?.totalCount) || 0} รายการ</span></span>
-        </button></li>`).join('')}</ol>
+        </button></li>`;
+      }).join('')}</ol>
     </div>`;
   } else if (index > postSlides.length) {
     const auxiliarySlide = auxiliarySlides[index - postSlides.length - 1];
     body = auxiliarySlide?.type === 'quiz'
       ? meetingTvQuizSlideHtml(auxiliarySlide.dailyQuiz)
-      : meetingTvFindingSlideHtml();
+      : auxiliarySlide?.type === 'quizStatus'
+        ? meetingTvQuizStatusSlideHtml(auxiliarySlide.dailyQuiz)
+        : meetingTvFindingSlideHtml();
   } else {
     body = meetingTvPostSlideHtml(postSlides[index - 1]);
   }
