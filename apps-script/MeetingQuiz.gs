@@ -147,7 +147,7 @@ function meetingQuizSummaryForPost_(post, user, summaryCache) {
     participantCount: participantCount,
     submittedCount: submittedCount,
     shiftSessions: sessions,
-    people: meetingQuizParticipants_(quiz.QuizID).filter(function (row) {
+    people: meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(quiz.QuizID), meetingQuizRosterRows_()).filter(function (row) {
       return !valuesEqual_(row.ParticipantStatus, 'Excused');
     }).map(function (row) {
       return { name: cleanString_(row.DisplayName), shift: cleanString_(row.Shift), submitted: valuesEqual_(row.ParticipantStatus, 'Submitted') };
