@@ -957,7 +957,7 @@ function syncLeaderMeetingQuizPolling() {
   window._leaderMeetingQuizPoll = setInterval(() => {
     if (document.visibilityState !== 'visible' || !dashboard.classList.contains('active-page')) return;
     loadLeaderMeetingQuizStatus();
-  }, 5000);
+  }, 3000);
 }
 
 async function loadLeaderMeetingQuizStatus() {
@@ -3194,7 +3194,7 @@ function syncMeetingQuizAdminPolling() {
     if (!current || current.refreshPromise) return;
     current.silentStatusRefresh = true;
     refreshMeetingQuizAdmin(current.quiz?.QuizID || '');
-  }, 5000);
+  }, 3000);
 }
 
 function meetingQuizUiQuestion(row = {}) {
@@ -3499,14 +3499,15 @@ function renderMeetingQuizExam() {
   }
   if (!model.participant) {
     title.textContent = `${lang === 'MY' ? 'အစည်းအဝေး စာမေးပွဲ' : 'แบบทดสอบ'} · ${model.topic || ''}`;
-    const openShiftExists = (model.shiftOptions || []).some(shift => shift.rosterStatus === 'Open');
+    const availableShifts = (model.shiftOptions || []).filter(shift => shift.rosterStatus !== 'Stopped');
+    const canCheckIn = availableShifts.length > 0;
     const noRoster = !model.employeeRosterConfigured
-      ? '<div class="quiz-status-note">พิมพ์ชื่อและนามสกุล แล้วเลือกกะปัจจุบัน ระบบจะเพิ่มชื่อใหม่เข้าทะเบียนและป้องกันชื่อซ้ำให้อัตโนมัติ</div>'
-      : (openShiftExists ? '' : '<div class="quiz-status-note">ปิดรับลงชื่อสอบครบทุกกะแล้ว กรุณาติดต่อ Leader</div>');
-    const registrationShiftOptions = (model.shiftOptions || []).filter(shift => shift.rosterStatus === 'Open')
-      .map(shift => `<option value="${escapeHtml(shift.value)}">${escapeHtml(shift.label || shift.value)}</option>`).join('');
-    const registrationForm = openShiftExists
-      ? `<form id="meetingQuizRegistrationForm" class="form-stack"><p class="quiz-registration-intro">พิมพ์ชื่อและนามสกุล แล้วเลือกกะปัจจุบัน ระบบจะตรวจและอัปเดตทะเบียนพนักงานให้อัตโนมัติ</p><label>ชื่อ *<input type="text" name="firstName" autocomplete="given-name" maxlength="100" required placeholder="พิมพ์ชื่อ"></label><label>นามสกุล *<input type="text" name="lastName" autocomplete="family-name" maxlength="100" required placeholder="พิมพ์นามสกุล"></label><label>กะปัจจุบัน *<select name="employeeShift" required><option value="">เลือกกะ</option>${registrationShiftOptions}</select></label>${meetingQuizLanguagePickerHtml(lang, true)}<div class="modal-actions"><button type="submit" class="btn btn-primary">เริ่มทำข้อสอบ 5 ข้อ</button></div></form>`
+      ? '<div class="quiz-status-note">กรอกชื่อและนามสกุลเพื่อเช็กชื่อเข้าสอบวันนี้ หากเป็นชื่อใหม่ ระบบจะบันทึกในทะเบียนพนักงานให้ครั้งเดียว</div>'
+      : (canCheckIn ? '' : '<div class="quiz-status-note">หยุดสอบครบทุกกะแล้ว กรุณาติดต่อ Leader</div>');
+    const registrationShiftOptions = availableShifts
+      .map(shift => `<option value="${escapeHtml(shift.value)}">${escapeHtml(shift.label || shift.value)}${shift.rosterStatus === 'Locked' ? ' · ปิดรับชื่อใหม่' : ''}</option>`).join('');
+    const registrationForm = canCheckIn
+      ? `<form id="meetingQuizRegistrationForm" class="form-stack"><p class="quiz-registration-intro">เช็กชื่อเข้าสอบประจำวันนี้โดยพิมพ์ชื่อและนามสกุล แล้วเลือกกะปัจจุบัน หากเคยเช็กชื่อแล้ว ระบบจะเปิดข้อสอบเดิมและไม่นับซ้ำ</p><label>ชื่อ *<input type="text" name="firstName" autocomplete="given-name" maxlength="100" required placeholder="พิมพ์ชื่อ"></label><label>นามสกุล *<input type="text" name="lastName" autocomplete="family-name" maxlength="100" required placeholder="พิมพ์นามสกุล"></label><label>กะปัจจุบัน *<select name="employeeShift" required><option value="">เลือกกะ</option>${registrationShiftOptions}</select></label>${meetingQuizLanguagePickerHtml(lang, true)}<div class="modal-actions"><button type="submit" class="btn btn-primary">เช็กชื่อและเริ่มสอบ</button></div></form>`
       : '';
     content.innerHTML = `<p class="page-helper">${escapeHtml(model.meetingDate || '')} · ${escapeHtml(model.topic || '')}</p>${noRoster}${registrationForm}`;
     return;
@@ -3585,6 +3586,12 @@ async function handleMeetingQuizExamSubmit(event) {
   if (event.target.id === 'meetingQuizRegistrationForm') {
     event.preventDefault();
     const form = event.target;
+    const submitButton = form.querySelector('[type="submit"]');
+    if (submitButton?.disabled) return;
+    if (submitButton) {
+      submitButton.disabled = true;
+      submitButton.textContent = 'กำลังเช็กชื่อ...';
+    }
     const language = form.elements.language.value;
     try {
       const data = await apiCall('registerMeetingQuizParticipant', {
@@ -3596,14 +3603,24 @@ async function handleMeetingQuizExamSubmit(event) {
       model.participantToken = data.participantToken;
       model.tokenKey = model.publicMode ? meetingQuizPublicTokenStorageKey(model.publicToken) : meetingQuizTokenStorageKey(model.quizId);
       sessionStorage.setItem(model.tokenKey, data.participantToken);
-      model.participant = { participantId: data.participantId, employeeId: data.employeeId, displayName: data.displayName, language, status: 'Registered', shift: data.shift };
+      model.participant = { participantId: data.participantId, employeeId: data.employeeId, displayName: data.displayName, language, status: data.status || 'Registered', shift: data.shift };
       model.language = language;
       model.shift = data.shift;
       model.questions = data.questions || [];
+      model.review = data.review || null;
+      model.allSubmitted = Boolean(data.allSubmitted);
+      model.leaderboardUnlocked = Boolean(data.leaderboardUnlocked);
+      model.leaderboard = data.leaderboard || [];
       renderMeetingQuizExam();
-      if (data.employeeCreated) showToast('เพิ่มชื่อใหม่เข้าทะเบียนพนักงานแล้ว', 'success');
-      if (!model.publicMode) await loadMeetingBoard();
-    } catch (error) { showToast(error.message, 'error'); }
+      if (data.employeeCreated) showToast('เช็กชื่อแล้ว และบันทึกชื่อไว้ในทะเบียนพนักงานสำหรับครั้งถัดไป', 'success');
+      if (!model.publicMode) loadMeetingBoard().catch(() => {});
+    } catch (error) {
+      showToast(error.message, 'error');
+      if (submitButton?.isConnected) {
+        submitButton.disabled = false;
+        submitButton.textContent = 'เช็กชื่อและเริ่มสอบ';
+      }
+    }
   } else if (event.target.id === 'meetingQuizAnswerForm') {
     event.preventDefault();
     const answers = model.answers || {};
@@ -6021,7 +6038,7 @@ async function navigateTo(page) {
         const posts = [...(state.meetingPosts || []), ...(state.meetingCarryOver || [])];
         if ($('#meetingQuizAdminDialog')?.open || !posts.some(post => post.MeetingQuiz?.available && !post.MeetingQuiz.allSubmitted)) return;
         refreshMeetingQuizBoardStatus();
-      }, 5000);
+      }, 3000);
     }
   }
   if (['audit', 'audit-plan', 'findings', 'checklist', 'admin'].includes(page)) {

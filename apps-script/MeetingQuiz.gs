@@ -213,6 +213,15 @@ function meetingQuizActiveShifts_() {
   var shifts = getRowsAsObjects(SHEET_NAMES.LISTS).filter(function (row) {
     return valuesEqual_(row.ListType, 'Shift') && isActive_(row.ActiveStatus);
   });
+  var knownShiftValues = {};
+  shifts.forEach(function (row) { knownShiftValues[cleanString_(row.ListValue).toLowerCase()] = true; });
+  meetingQuizRosterRows_().filter(function (row) { return isActive_(row.ActiveStatus); }).forEach(function (row) {
+    var value = cleanString_(row.Shift);
+    if (value && !knownShiftValues[value.toLowerCase()]) {
+      knownShiftValues[value.toLowerCase()] = true;
+      shifts.push({ ListValue: value, DisplayText: value, SortOrder: 999 });
+    }
+  });
   shifts.sort(function (a, b) {
     return toNumber_(a.SortOrder) - toNumber_(b.SortOrder) || cleanString_(a.ListValue).localeCompare(cleanString_(b.ListValue));
   });
@@ -223,9 +232,18 @@ function meetingQuizActiveShifts_() {
 function meetingQuizShiftRosterMap_(quiz) {
   var map = {};
   try { map = JSON.parse(cleanString_(quiz && quiz.ShiftRosterJSON) || '{}') || {}; } catch (_) { map = {}; }
-  if (Object.keys(map).length) return map;
-  var legacyStatus = valuesEqual_(quiz && quiz.RosterStatus, 'Locked') ? 'Locked' : 'Open';
-  meetingQuizActiveShifts_().forEach(function (shift) { map[shift.value] = legacyStatus; });
+  var hasSavedShiftState = Object.keys(map).length > 0;
+  var defaultStatus = hasSavedShiftState ? 'Open' : (valuesEqual_(quiz && quiz.RosterStatus, 'Locked') ? 'Locked' : 'Open');
+  function includeShift(value) {
+    var shift = cleanString_(value);
+    if (shift && !Object.prototype.hasOwnProperty.call(map, shift)) map[shift] = defaultStatus;
+  }
+  meetingQuizActiveShifts_().forEach(function (shift) { includeShift(shift.value); });
+  // Keep the meeting's shift selector usable when an older saved shift snapshot
+  // omitted a current or historical shift (for example, A was added after B).
+  if (quiz && cleanString_(quiz.QuizID)) {
+    meetingQuizParticipants_(quiz.QuizID).forEach(function (row) { includeShift(row.Shift); });
+  }
   return map;
 }
 
@@ -327,6 +345,37 @@ function meetingQuizFindParticipant_(quizId, token) {
   return meetingQuizParticipants_(quizId).filter(function (row) {
     return cleanString_(row.TokenHash) === tokenHash;
   })[0] || null;
+}
+
+function meetingQuizParticipantForRegistration_(quizId, employeeId, fullName, rosterRows) {
+  var targetId = cleanString_(employeeId).toLowerCase();
+  var targetName = meetingQuizNormalizeEmployeeName_(fullName);
+  return meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(quizId), rosterRows).filter(function (row) {
+    var rowId = meetingQuizResolveParticipantEmployeeId_(row, rosterRows).toLowerCase();
+    var rowName = meetingQuizNormalizeEmployeeName_(meetingQuizParticipantFullName_(row));
+    return (targetId && rowId === targetId) || (targetName && rowName === targetName);
+  })[0] || null;
+}
+
+function meetingQuizRegistrationResult_(quiz, participant, token, language, employeeCreated) {
+  var status = cleanString_(participant.ParticipantStatus) || 'Registered';
+  var result = {
+    participantId: cleanString_(participant.ParticipantID), participantToken: token,
+    shift: cleanString_(participant.Shift), employeeId: cleanString_(participant.EmployeeID),
+    displayName: cleanString_(participant.DisplayName), status: status,
+    employeeCreated: Boolean(employeeCreated),
+    questions: status === 'Submitted' || status === 'Registered'
+      ? meetingQuizQuestions_(quiz.QuizID).map(meetingQuizQuestionForClient_) : []
+  };
+  if (status === 'Submitted') {
+    result.review = meetingQuizReview_(quiz.QuizID, participant.AnswersJSON, language || participant.Language);
+    result.allSubmitted = meetingQuizAllSubmitted_(quiz);
+    var shiftSession = meetingQuizShiftSessions_(quiz).filter(function (row) { return valuesEqual_(row.shift, participant.Shift); })[0];
+    result.leaderboardUnlocked = Boolean(shiftSession && shiftSession.examStopped);
+    result.leaderboard = result.leaderboardUnlocked
+      ? meetingQuizTopThree_(quiz.QuizID, participant.Shift, quiz.MeetingDate) : [];
+  }
+  return result;
 }
 
 function hashMeetingQuizToken_(token) {
@@ -1202,12 +1251,9 @@ function registerMeetingQuizParticipant(payload, user) {
     var token = cleanString_(payload.participantToken);
     var existingTokenParticipant = meetingQuizFindParticipant_(quiz.QuizID, token);
     if (existingTokenParticipant) {
-      return jsonResponse(true, 'เปิดข้อสอบต่อจากเดิม', {
-        participantId: existingTokenParticipant.ParticipantID, participantToken: token,
-        shift: existingTokenParticipant.Shift, employeeId: cleanString_(existingTokenParticipant.EmployeeID),
-        displayName: cleanString_(existingTokenParticipant.DisplayName),
-        questions: meetingQuizQuestions_(quiz.QuizID).map(meetingQuizQuestionForClient_)
-      });
+      return jsonResponse(true, 'เปิดข้อสอบต่อจากเดิม', meetingQuizRegistrationResult_(
+        quiz, existingTokenParticipant, token, language, false
+      ));
     }
     var first = cleanString_(payload.firstName);
     var last = cleanString_(payload.lastName);
@@ -1216,34 +1262,39 @@ function registerMeetingQuizParticipant(payload, user) {
     var employeeId = '';
     var shift;
     var createdEmployee = false;
+    var existingDailyAttempt = null;
     if (employee) {
       employeeId = cleanString_(employee.EmployeeID);
       if (!cleanString_(payload.shift)) throw new Error('กรุณาเลือกกะปัจจุบันของคุณ');
       shift = meetingQuizNormalizeShift_(quiz, payload.shift);
       var shiftOption = meetingQuizShiftOptions_(quiz).filter(function (row) { return valuesEqual_(row.value, shift); })[0];
-      if (!shiftOption || shiftOption.rosterStatus !== 'Open') throw new Error('กะนี้ปิดรับลงชื่อสอบแล้ว กรุณาเลือกกะที่ยังเปิดรับหรือติดต่อ Leader');
-      var alreadyRegistered = meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(quiz.QuizID), rosterRows).some(function (row) {
-        return valuesEqual_(meetingQuizResolveParticipantEmployeeId_(row, rosterRows), employeeId);
-      });
-      if (alreadyRegistered) throw new Error('ชื่อนี้ลงทะเบียนข้อสอบแล้ว กรุณาเปิดจากอุปกรณ์ที่ใช้ลงชื่อเดิม หรือติดต่อ Leader');
       first = cleanString_(employee.FirstName) || first;
       last = cleanString_(employee.LastName) || last;
+      existingDailyAttempt = meetingQuizParticipantForRegistration_(quiz.QuizID, employeeId, first + ' ' + last, rosterRows);
+      if (existingDailyAttempt && valuesEqual_(existingDailyAttempt.ParticipantStatus, 'Excused')) {
+        throw new Error('รายชื่อนี้ได้รับการยกเว้นจากรอบสอบแล้ว กรุณาติดต่อ Leader');
+      }
+      if (!shiftOption || (shiftOption.rosterStatus === 'Stopped' && !valuesEqual_(existingDailyAttempt && existingDailyAttempt.ParticipantStatus, 'Submitted'))) {
+        throw new Error('กะนี้หยุดสอบแล้ว กรุณาติดต่อ Leader');
+      }
     } else {
       if (first.length > 100 || last.length > 100) throw new Error('ชื่อและนามสกุลต้องไม่เกิน 100 ตัวอักษร');
-      var newNameKey = meetingQuizNormalizeEmployeeName_(first + ' ' + last);
-      var priorNameRegistration = meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(quiz.QuizID), rosterRows).some(function (row) {
-        var participantNames = [row.DisplayName, [row.FirstName, row.LastName].filter(Boolean).join(' ')];
-        return participantNames.some(function (name) {
-          return meetingQuizNormalizeEmployeeName_(name) === newNameKey;
-        });
-      });
-      if (priorNameRegistration) throw new Error('ชื่อนี้ลงทะเบียนข้อสอบแล้ว กรุณาเปิดจากอุปกรณ์ที่ใช้ลงชื่อเดิม หรือติดต่อ Leader');
       if (!cleanString_(payload.shift)) throw new Error('กรุณาเลือกกะปัจจุบันของคุณ');
       shift = meetingQuizNormalizeShift_(quiz, payload.shift);
       var selectedEmployeeShift = meetingQuizShiftOptions_(quiz).filter(function (row) { return valuesEqual_(row.value, shift); })[0];
-      if (!selectedEmployeeShift || selectedEmployeeShift.rosterStatus !== 'Open') {
-        throw new Error('กะนี้ปิดรับลงชื่อสอบแล้ว กรุณาติดต่อ Leader');
+      existingDailyAttempt = meetingQuizParticipantForRegistration_(quiz.QuizID, '', first + ' ' + last, rosterRows);
+      if (existingDailyAttempt && valuesEqual_(existingDailyAttempt.ParticipantStatus, 'Excused')) {
+        throw new Error('รายชื่อนี้ได้รับการยกเว้นจากรอบสอบแล้ว กรุณาติดต่อ Leader');
       }
+      var isPreviouslySubmitted = valuesEqual_(existingDailyAttempt && existingDailyAttempt.ParticipantStatus, 'Submitted');
+      if (!selectedEmployeeShift || (selectedEmployeeShift.rosterStatus === 'Stopped' && !isPreviouslySubmitted)) {
+        throw new Error('กะนี้หยุดสอบแล้ว กรุณาติดต่อ Leader');
+      }
+      if (!existingDailyAttempt && selectedEmployeeShift.rosterStatus !== 'Open') {
+        throw new Error('กะนี้ปิดรับชื่อใหม่แล้ว กรุณาติดต่อ Leader');
+      }
+      // A new name is saved once to the employee master, then this form is used
+      // as daily attendance for each meeting rather than creating a new person.
       var now = formatDateTimeBangkok(new Date());
       employeeId = generateIdWithoutLock_('MQE', SHEET_NAMES.MEETING_QUIZ_EMPLOYEES, 'EmployeeID', getPeriodMonth(new Date()));
       employee = {
@@ -1253,9 +1304,13 @@ function registerMeetingQuizParticipant(payload, user) {
       createdEmployee = true;
     }
     var absence = meetingQuizAttendanceMap_(quiz.MeetingDate)[employeeId.toLowerCase()];
-    if (absence) throw new Error('รายชื่อนี้ถูกทำเครื่องหมายว่า ' + absence + ' จึงไม่อยู่ในรายชื่อเข้าสอบวันนี้');
+    if (absence && !valuesEqual_(existingDailyAttempt && existingDailyAttempt.ParticipantStatus, 'Submitted')) {
+      throw new Error('รายชื่อนี้ถูกทำเครื่องหมายว่า ' + absence + ' จึงไม่อยู่ในรายชื่อเข้าสอบวันนี้');
+    }
     var shiftSession = meetingQuizShiftSessions_(quiz).filter(function (row) { return valuesEqual_(row.shift, shift); })[0];
-    if (shiftSession.rosterStatus !== 'Open') throw new Error(shiftSession.examStopped ? 'กะนี้หยุดสอบแล้ว' : 'ปิดรับรายชื่อกะนี้แล้ว');
+    if (!shiftSession || (shiftSession.examStopped && !valuesEqual_(existingDailyAttempt && existingDailyAttempt.ParticipantStatus, 'Submitted'))) {
+      throw new Error('กะนี้หยุดสอบแล้ว กรุณาติดต่อ Leader');
+    }
     var now = formatDateTimeBangkok(new Date());
     if (createdEmployee) {
       employee.CreatedAt = now;
@@ -1268,6 +1323,29 @@ function registerMeetingQuizParticipant(payload, user) {
     }
     var displayName = meetingQuizEmployeeName_(employee);
     var newToken = newMeetingQuizToken_();
+    if (existingDailyAttempt) {
+      if (!valuesEqual_(existingDailyAttempt.ParticipantStatus, 'Submitted')) {
+        updateObjectById(SHEET_NAMES.MEETING_QUIZ_PARTICIPANTS, 'ParticipantID', existingDailyAttempt.ParticipantID, {
+          Shift: shift, FirstName: first, LastName: last, DisplayName: displayName,
+          Language: language, EmployeeID: employeeId, TokenHash: hashMeetingQuizToken_(newToken), UpdatedAt: now
+        });
+        existingDailyAttempt.Shift = shift;
+        existingDailyAttempt.FirstName = first;
+        existingDailyAttempt.LastName = last;
+        existingDailyAttempt.DisplayName = displayName;
+        existingDailyAttempt.Language = language;
+        existingDailyAttempt.EmployeeID = employeeId;
+      } else {
+        updateObjectById(SHEET_NAMES.MEETING_QUIZ_PARTICIPANTS, 'ParticipantID', existingDailyAttempt.ParticipantID, {
+          EmployeeID: employeeId, TokenHash: hashMeetingQuizToken_(newToken), UpdatedAt: now
+        });
+        existingDailyAttempt.EmployeeID = employeeId;
+      }
+      existingDailyAttempt.TokenHash = hashMeetingQuizToken_(newToken);
+      return jsonResponse(true,
+        valuesEqual_(existingDailyAttempt.ParticipantStatus, 'Submitted') ? 'พบผลสอบเดิม เปิดเฉลยของคุณได้เลย' : 'เช็กชื่อแล้ว ทำข้อสอบต่อจากเดิมได้',
+        meetingQuizRegistrationResult_(quiz, existingDailyAttempt, newToken, language, createdEmployee));
+    }
     var participantId = generateId('MQP', SHEET_NAMES.MEETING_QUIZ_PARTICIPANTS, 'ParticipantID', getPeriodMonth(new Date()));
     appendObject(SHEET_NAMES.MEETING_QUIZ_PARTICIPANTS, {
       ParticipantID: participantId, QuizID: quiz.QuizID, PostID: post.PostID, Shift: shift,
