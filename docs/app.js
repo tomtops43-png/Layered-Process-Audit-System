@@ -3128,17 +3128,17 @@ function renderMeetingQuizAdmin() {
     const choiceFields = (lang, values) => `<div class="quiz-choice-grid">${choices.map((key, i) => `<label class="quiz-choice-row"><strong>${key}</strong><textarea data-quiz-field="choice${key}${lang}" aria-label="ตัวเลือก ${key} ${lang}" required>${escapeHtml(values[i] || '')}</textarea></label>`).join('')}</div>`;
     return `<section class="quiz-editor-question" data-quiz-q="${index}">
       <h4>ข้อ ${index + 1}</h4>
-      <div class="quiz-editor-grid">
-        <label>คำถามภาษาไทย<textarea data-quiz-field="questionTH" required>${escapeHtml(q.questionTH)}</textarea></label>
-        <label>မေးခွန်း (မြန်မာ)<textarea data-quiz-field="questionMY" required>${escapeHtml(q.questionMY)}</textarea></label>
+      <div class="quiz-editor-language-panel" data-quiz-language-panel="TH">
+        <label class="quiz-editor-full-field">คำถามภาษาไทย<textarea data-quiz-field="questionTH" required>${escapeHtml(q.questionTH)}</textarea></label>
+        <strong class="quiz-editor-section-label">ตัวเลือกภาษาไทย</strong>${choiceFields('TH', q.choicesTH)}
+        <label class="quiz-editor-full-field">คำอธิบายภาษาไทย<textarea data-quiz-field="explanationTH" required>${escapeHtml(q.explanationTH)}</textarea></label>
       </div>
-      <div class="quiz-editor-grid"><div><strong>ตัวเลือกภาษาไทย</strong>${choiceFields('TH', q.choicesTH)}</div><div><strong>ရွေးချယ်စရာများ (မြန်မာ)</strong>${choiceFields('MY', q.choicesMY)}</div></div>
-      <div class="quiz-editor-grid">
-        <label>คำตอบที่ถูก<select data-quiz-field="correctOption">${choices.map(key => `<option value="${key}" ${q.correctOption === key ? 'selected' : ''}>${key}</option>`).join('')}</select></label>
-        <span></span>
-        <label>คำอธิบายภาษาไทย<textarea data-quiz-field="explanationTH" required>${escapeHtml(q.explanationTH)}</textarea></label>
-        <label>ရှင်းလင်းချက် (မြန်မာ)<textarea data-quiz-field="explanationMY" required>${escapeHtml(q.explanationMY)}</textarea></label>
+      <div class="quiz-editor-language-panel" data-quiz-language-panel="MY" hidden>
+        <label class="quiz-editor-full-field">မေးခွန်း (မြန်မာ)<textarea data-quiz-field="questionMY" required>${escapeHtml(q.questionMY)}</textarea></label>
+        <strong class="quiz-editor-section-label">ရွေးချယ်စရာများ (မြန်မာ)</strong>${choiceFields('MY', q.choicesMY)}
+        <label class="quiz-editor-full-field">ရှင်းလင်းချက် (မြန်မာ)<textarea data-quiz-field="explanationMY" required>${escapeHtml(q.explanationMY)}</textarea></label>
       </div>
+      <label class="quiz-editor-correct-answer">คำตอบที่ถูก<select data-quiz-field="correctOption">${choices.map(key => `<option value="${key}" ${q.correctOption === key ? 'selected' : ''}>${key}</option>`).join('')}</select></label>
     </section>`;
   }).join('') : '';
   const shiftSessions = model.shiftSessions || [];
@@ -3170,7 +3170,7 @@ function renderMeetingQuizAdmin() {
     ${generationFeedback}
     ${quiz && !isDraft ? `<div class="quiz-status-note">ใช้ข้อสอบและ QR Code ชุดเดียวกันได้ทั้งกะเช้าและกะดึก · รายชื่อและเวลาปิดรับแยกตามกะ · สถานะอัปเดตอัตโนมัติทุก 15 วินาที</div><h4>รายชื่อผู้เข้าสอบแยกตามกะ</h4>${roster}` : ''}
     ${publicUrl ? `<section class="quiz-qr-panel"><div><h4>QR สำหรับพนักงานเข้าสอบ</h4><p class="field-help">พนักงานสแกน QR นี้แล้วกรอกชื่อ–นามสกุลและเลือกกะได้เลย ไม่ต้อง Login</p><div class="quiz-qr-link">${escapeHtml(publicUrl)}</div><button type="button" class="btn btn-outline" data-quiz-copy-link="${escapeAttr(publicUrl)}">คัดลอกลิงก์ข้อสอบ</button></div>${qrSvg ? `<div class="quiz-qr-image" aria-label="QR Code สำหรับเข้าสอบ">${qrSvg}</div>` : '<div class="quiz-qr-image quiz-qr-error">ยังสร้าง QR ไม่ได้ กรุณาคัดลอกลิงก์</div>'}</section>` : ''}
-    ${isDraft ? `<div class="quiz-status-note">สร้างข้อสอบชุดเดียวของวันนี้แล้ว · แก้ไขและบันทึกได้ แต่ระบบจะไม่ Gen ชุดซ้ำ · เปิดรับรายชื่อหลังเผยแพร่</div><div id="meetingQuizEditor">${questionEditor}</div><div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-save>บันทึกฉบับร่าง</button><button type="button" class="btn btn-primary" data-quiz-publish>เผยแพร่และเปิดรับสอบ</button></div>` : ''}
+    ${isDraft ? `<div class="quiz-status-note">สร้างข้อสอบชุดเดียวของวันนี้แล้ว · แก้ไขและบันทึกได้ แต่ระบบจะไม่ Gen ชุดซ้ำ · เปิดรับรายชื่อหลังเผยแพร่</div><div id="meetingQuizEditor" data-quiz-editor-language="TH"><div class="quiz-editor-language-switch" role="group" aria-label="เลือกภาษาที่ต้องการแก้ไข"><span>ภาษา</span><button type="button" class="is-active" data-quiz-editor-language="TH" aria-pressed="true">ไทย <small>หลัก</small></button><button type="button" data-quiz-editor-language="MY" aria-pressed="false">မြန်မာ</button></div>${questionEditor}</div><div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-save>บันทึกฉบับร่าง</button><button type="button" class="btn btn-primary" data-quiz-publish>เผยแพร่และเปิดรับสอบ</button></div>` : ''}
     ${quiz && !isDraft && !participants.length ? '<div class="quiz-status-note">ยังไม่มีผู้ลงชื่อสอบในรอบนี้</div>' : ''}
     ${quiz && !isDraft && summary.allSubmitted ? '<div class="quiz-status-note">ทุกกะปิดรับรายชื่อและส่งครบแล้ว ปุ่มเฉลยรวมเปิดให้ทุกคนดูบนบอร์ด</div>' : ''}
     ${model.canManage && !model.canGenerate && (!quiz || isDraft) ? '<div class="quiz-status-note">การสร้างหรือ Gen ข้อสอบใหม่ทำได้โดย Admin หรือ Engineer</div>' : ''}
@@ -3200,6 +3200,22 @@ function readMeetingQuizAdminQuestions() {
 async function handleMeetingQuizAdminClick(event) {
   const model = state.meetingQuizAdmin;
   if (!model) return;
+  const languageTab = event.target.closest('[data-quiz-editor-language]');
+  if (languageTab) {
+    const language = languageTab.dataset.quizEditorLanguage === 'MY' ? 'MY' : 'TH';
+    const editor = $('#meetingQuizEditor');
+    if (!editor) return;
+    editor.dataset.quizEditorLanguage = language;
+    $$('#meetingQuizEditor [data-quiz-language-panel]').forEach(panel => {
+      panel.hidden = panel.dataset.quizLanguagePanel !== language;
+    });
+    $$('#meetingQuizEditor [data-quiz-editor-language]').forEach(button => {
+      const active = button.dataset.quizEditorLanguage === language;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
+    return;
+  }
   const button = event.target.closest('[data-quiz-copy-link],[data-quiz-generate],[data-quiz-save-api-key],[data-quiz-save],[data-quiz-publish],[data-quiz-lock],[data-quiz-excuse],[data-quiz-refresh]');
   if (!button) return;
   try {
@@ -3323,6 +3339,16 @@ async function openPublicMeetingQuiz(publicToken) {
   }
 }
 
+function meetingQuizLanguagePickerHtml(lang = 'TH', registration = false) {
+  const currentLanguage = lang === 'MY' ? 'MY' : 'TH';
+  const fieldName = registration ? 'language' : 'quiz-display-language';
+  const changeHandler = registration ? '' : ' data-quiz-language';
+  const thaiHint = currentLanguage === 'MY' ? 'အဓိကဘာသာစကား' : 'ภาษาหลัก';
+  const myanmarHint = currentLanguage === 'MY' ? 'ကိုယ်တိုင်ရွေးချယ်ပါ' : 'เลือกได้ตามต้องการ';
+  const legend = currentLanguage === 'MY' ? 'ဘာသာစကား ရွေးချယ်ရန်' : 'เลือกภาษาข้อสอบ';
+  return `<fieldset class="quiz-language-picker ${registration ? '' : 'quiz-language-picker-compact'}"><legend>${legend}</legend><div class="quiz-language-options"><label class="quiz-language-option"><input type="radio" name="${fieldName}" value="TH"${changeHandler} ${currentLanguage === 'TH' ? 'checked' : ''} ${registration ? 'required' : ''}><span>ไทย</span><small>${thaiHint}</small></label><label class="quiz-language-option"><input type="radio" name="${fieldName}" value="MY"${changeHandler} ${currentLanguage === 'MY' ? 'checked' : ''} ${registration ? 'required' : ''}><span>မြန်မာ</span><small>${myanmarHint}</small></label></div>${registration ? `<p class="quiz-language-help">เลือกภาษาที่อ่านถนัด ระบบจะแสดงข้อสอบและเฉลยเป็นภาษานั้น</p>` : ''}</fieldset>`;
+}
+
 function renderMeetingQuizExam() {
   const model = state.meetingQuizExam;
   if (!model) return;
@@ -3331,7 +3357,7 @@ function renderMeetingQuizExam() {
   const lang = model.language === 'MY' ? 'MY' : 'TH';
   if (model.mode === 'globalReview') {
     title.textContent = lang === 'MY' ? 'အဖြေများနှင့် ရှင်းလင်းချက်' : 'เฉลยรวม';
-    content.innerHTML = `<label>ဘာသာ / ภาษา<select data-quiz-language><option value="TH" ${lang === 'TH' ? 'selected' : ''}>ไทย</option><option value="MY" ${lang === 'MY' ? 'selected' : ''}>မြန်မာ</option></select></label>${meetingQuizAnswerKeyHtml(model.questions || [], lang)}${model.publicMode ? `<div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-back-result>${lang === 'MY' ? 'ရလဒ်သို့ ပြန်သွားရန်' : 'กลับไปผลสอบของฉัน'}</button></div>` : ''}`;
+    content.innerHTML = `${meetingQuizLanguagePickerHtml(lang)}${meetingQuizAnswerKeyHtml(model.questions || [], lang)}${model.publicMode ? `<div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-back-result>${lang === 'MY' ? 'ရလဒ်သို့ ပြန်သွားရန်' : 'กลับไปผลสอบของฉัน'}</button></div>` : ''}`;
     return;
   }
   if (!model.participant) {
@@ -3341,7 +3367,7 @@ function renderMeetingQuizExam() {
     const selectedShift = shifts.some(shift => shift.value === model.shift) ? model.shift : (shifts[0]?.value || '');
     model.shift = selectedShift;
     const shiftField = `<label>กะ<select name="shift" required>${shifts.map(shift => `<option value="${escapeAttr(shift.value)}" ${shift.value === selectedShift ? 'selected' : ''}>${escapeHtml(shift.label || shift.value)}</option>`).join('')}</select></label>`;
-    content.innerHTML = `<p class="page-helper">${escapeHtml(model.meetingDate || '')} · ${escapeHtml(model.topic || '')}</p>${locked ? `<div class="quiz-status-note">ปิดรับรายชื่อ ${escapeHtml(shifts.find(shift => shift.value === selectedShift)?.label || selectedShift)} แล้ว กรุณาเลือกกะที่เปิดรับหรือแจ้ง Leader</div>${shiftField}` : `<form id="meetingQuizRegistrationForm" class="form-stack"><p>ข้อสอบชุดเดียวกันสำหรับทุกกะ · กรอกชื่อและนามสกุลก่อนเริ่มทำ 5 ข้อ</p>${shiftField}<label>ชื่อ *<input name="firstName" autocomplete="given-name" required maxlength="100"></label><label>นามสกุล *<input name="lastName" autocomplete="family-name" required maxlength="100"></label><label>ภาษา<select name="language"><option value="TH">ไทย</option><option value="MY">မြန်မာ</option></select></label><div class="modal-actions"><button type="submit" class="btn btn-primary">เริ่มทำข้อสอบ</button></div></form>`}`;
+    content.innerHTML = `<p class="page-helper">${escapeHtml(model.meetingDate || '')} · ${escapeHtml(model.topic || '')}</p>${locked ? `<div class="quiz-status-note">ปิดรับรายชื่อ ${escapeHtml(shifts.find(shift => shift.value === selectedShift)?.label || selectedShift)} แล้ว กรุณาเลือกกะที่เปิดรับหรือแจ้ง Leader</div>${shiftField}` : `<form id="meetingQuizRegistrationForm" class="form-stack"><p class="quiz-registration-intro">ข้อสอบชุดเดียวกันสำหรับทุกกะ · กรอกชื่อและนามสกุลก่อนเริ่มทำ 5 ข้อ</p>${shiftField}<div class="quiz-name-row"><label>ชื่อ *<input name="firstName" autocomplete="given-name" required maxlength="100"></label><label>นามสกุล *<input name="lastName" autocomplete="family-name" required maxlength="100"></label></div>${meetingQuizLanguagePickerHtml(lang, true)}<div class="modal-actions"><button type="submit" class="btn btn-primary">เริ่มทำข้อสอบ</button></div></form>`}`;
     return;
   }
   if (String(model.participant.status || '').toLowerCase() === 'excused') {
@@ -3359,12 +3385,12 @@ function renderMeetingQuizExam() {
       ? `<div class="quiz-status-note">${lang === 'MY' ? 'အလုပ်သမားအားလုံး တင်သွင်းပြီးပါပြီ' : 'ทุกคนส่งข้อสอบครบแล้ว'}</div><div class="modal-actions"><button type="button" class="btn btn-primary" data-quiz-global-key>${lang === 'MY' ? 'အဖြေများကို ကြည့်ရန်' : 'ดูเฉลยรวม'}</button><button type="button" class="btn btn-outline" data-quiz-finish>${lang === 'MY' ? 'ပိတ်ရန်' : 'ปิดผลสอบ'}</button></div>`
       : `<div class="quiz-status-note">${lang === 'MY' ? 'အဖြေစုစုပေါင်းကို နှစ်ဆိုင်းလုံး ပိတ်ပြီး လူတိုင်း တင်သွင်းသည့်အခါ ပြသပါမည်' : 'เฉลยรวมจะแสดงเมื่อปิดรับทั้งสองกะและทุกคนส่งข้อสอบแล้ว'}<div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-check-key>${lang === 'MY' ? 'အဖြေအခြေအနေကို စစ်ဆေးရန်' : 'ตรวจสอบสถานะเฉลยรวม'}</button><button type="button" class="btn btn-primary" data-quiz-finish>${lang === 'MY' ? 'ပိတ်ရန်' : 'ปิดผลสอบ'}</button></div></div>`)
       : `<div class="modal-actions"><button type="button" class="btn btn-primary" data-quiz-finish>${lang === 'MY' ? 'ပြီးပါပြီ / နောက်လူအတွက် ပိတ်ရန်' : 'เสร็จแล้ว / ให้คนถัดไปทำ'}</button></div>`;
-    content.innerHTML = `<label>${lang === 'MY' ? 'ဘာသာစကား' : 'ภาษา'}<select data-quiz-language><option value="TH" ${lang === 'TH' ? 'selected' : ''}>ไทย</option><option value="MY" ${lang === 'MY' ? 'selected' : ''}>မြန်မာ</option></select></label><div class="quiz-score">${lang === 'MY' ? 'ရမှတ်' : 'คะแนน'} ${model.review.score}/${model.review.total}</div>${meetingQuizPersonalReviewHtml(rows, lang)}${publicKeyActions}`;
+    content.innerHTML = `${meetingQuizLanguagePickerHtml(lang)}<div class="quiz-score">${lang === 'MY' ? 'ရမှတ်' : 'คะแนน'} ${model.review.score}/${model.review.total}</div>${meetingQuizPersonalReviewHtml(rows, lang)}${publicKeyActions}`;
     return;
   }
   const choices = ['A', 'B', 'C', 'D'];
   const questions = model.questions || [];
-  content.innerHTML = `<div class="quiz-status-note">${escapeHtml(model.participant.displayName || '')} · ${lang === 'TH' ? 'ตอบให้ครบทุกข้อ แล้วส่งคำตอบ' : 'အဖြေအားလုံးကို ရွေးပြီး တင်သွင်းပါ'}</div><label>${lang === 'MY' ? 'ဘာသာစကား' : 'ภาษา'}<select data-quiz-language><option value="TH" ${lang === 'TH' ? 'selected' : ''}>ไทย</option><option value="MY" ${lang === 'MY' ? 'selected' : ''}>မြန်မာ</option></select></label><form id="meetingQuizAnswerForm">${questions.map(q => `<fieldset class="quiz-exam-question"><legend>${meetingQuizQuestionNumber(q.QuestionNo)}. ${escapeHtml(q['Question' + lang] || '')}</legend>${choices.map(choice => `<label class="quiz-exam-choice"><input type="radio" name="q${meetingQuizQuestionNumber(q.QuestionNo)}" value="${choice}" ${model.answers[meetingQuizQuestionNumber(q.QuestionNo)] === choice ? 'checked' : ''} required><span>${choice}. ${escapeHtml(q['Choice' + choice + lang] || '')}</span></label>`).join('')}</fieldset>`).join('')}<div class="modal-actions"><button type="submit" class="btn btn-primary">${lang === 'MY' ? 'စာမေးပွဲတင်သွင်းရန်' : 'ส่งข้อสอบ'}</button></div></form>`;
+  content.innerHTML = `<div class="quiz-status-note">${escapeHtml(model.participant.displayName || '')} · ${lang === 'TH' ? 'ตอบให้ครบทุกข้อ แล้วส่งคำตอบ' : 'အဖြေအားလုံးကို ရွေးပြီး တင်သွင်းပါ'}</div>${meetingQuizLanguagePickerHtml(lang)}<form id="meetingQuizAnswerForm">${questions.map(q => `<fieldset class="quiz-exam-question"><legend>${meetingQuizQuestionNumber(q.QuestionNo)}. ${escapeHtml(q['Question' + lang] || '')}</legend>${choices.map(choice => `<label class="quiz-exam-choice"><input type="radio" name="q${meetingQuizQuestionNumber(q.QuestionNo)}" value="${choice}" ${model.answers[meetingQuizQuestionNumber(q.QuestionNo)] === choice ? 'checked' : ''} required><span>${choice}. ${escapeHtml(q['Choice' + choice + lang] || '')}</span></label>`).join('')}</fieldset>`).join('')}<div class="modal-actions"><button type="submit" class="btn btn-primary">${lang === 'MY' ? 'စာမေးပွဲတင်သွင်းရန်' : 'ส่งข้อสอบ'}</button></div></form>`;
 }
 
 function meetingQuizQuestionNumber(value) { const number = Number(value); return Number.isFinite(number) ? number : 0; }
