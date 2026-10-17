@@ -55,7 +55,7 @@
       <nav id="mainNav" class="main-nav">
         <button data-page="dashboard" class="nav-item active"><span>▦</span>Dashboard</button>
         <button data-page="meeting" data-permission-any="meeting.view" class="nav-item"><span>📣</span>Meeting ก่อนเข้างาน <b id="meetingNavBadge" class="nav-badge hidden">0</b></button>
-        <button data-page="five-s" data-permission-any="fiveS.audit,fiveS.view.all,fiveS.manage" class="nav-item"><span>🧹</span>ตรวจสอบ 5.ส ประจำวัน</button>
+        <button data-page="five-s" data-permission-any="fiveS.audit,fiveS.view.all,fiveS.manage,fiveS.checkpoint.manage" class="nav-item"><span>🧹</span>ตรวจสอบ 5.ส ประจำวัน</button>
         <button data-page="audit" class="nav-item"><span>✓</span>ตรวจ LPA <b id="auditNavBadge" class="nav-badge hidden">0</b></button>
         <button data-page="audit-plan" data-permission-any="audit.plan.view" class="nav-item"><span>▣</span>LPA Schedule Rules</button>
         <button data-page="findings" class="nav-item"><span>!</span>Finding Tracking <b id="findingNavBadge" class="nav-badge hidden">0</b></button>
@@ -203,7 +203,7 @@
           <button id="fiveSLoadButton" class="btn btn-secondary">แสดงรายการตรวจ</button>
         </article>
         <div id="fiveSSummary" class="five-s-summary"></div>
-        <div id="fiveSManagerPanel" class="hidden" data-permission-any="fiveS.manage">
+        <div id="fiveSManagerPanel" class="hidden" data-permission-any="fiveS.manage,fiveS.checkpoint.manage">
           <article class="panel">
             <div class="panel-title"><div><p class="eyebrow">ADMIN · CHECKPOINTS</p><h3>กำหนดจุดตรวจและผู้รับผิดชอบ</h3></div><button id="fiveSAddCheckpointButton" class="btn btn-primary" type="button">+ เพิ่มจุดตรวจ</button></div>
             <p class="section-help">กำหนดหัวข้อ 5.ส, พื้นที่, มาตรฐาน, กะ และ Leader ผู้ตรวจ รูปถ่ายต้องแนบทุกครั้งที่บันทึกผล</p>
@@ -514,6 +514,6 @@
 
   <script src="config.js" defer></script>
   <script src="vendor/qrcode.js" defer></script>
-  <script src="app.js?v=20261017-daily-5s-check" defer></script>
+  <script src="app.js?v=20261017-5s-checkpoint-permission" defer></script>
 </body>
 </html>

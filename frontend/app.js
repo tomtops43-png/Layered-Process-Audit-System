@@ -97,7 +97,7 @@ const PERMISSION_CATALOG = [
   'reports.view', 'reports.export', 'checklist.view', 'checklist.manage',
   'audit.plan.view', 'audit.plan.manage', 'audit.plan.generate', 'audit.plan.refresh',
   'meeting.view', 'meeting.create', 'meeting.update.own', 'meeting.manage', 'meeting.quiz.manage', 'meeting.quiz.generate',
-  'fiveS.audit', 'fiveS.view.all', 'fiveS.manage'
+  'fiveS.audit', 'fiveS.view.all', 'fiveS.manage', 'fiveS.checkpoint.manage'
 ];
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -6079,7 +6079,7 @@ async function loadFiveSPage() {
   if (!dateInput.value) dateInput.value = localDateInput(new Date());
   $('#fiveSInspectionList').innerHTML = '<div class="empty-state">กำลังโหลดรายการตรวจ 5.ส...</div>';
   try {
-    const canManage = hasPermission('fiveS.manage');
+    const canManage = hasAnyPermission(['fiveS.manage', 'fiveS.checkpoint.manage']);
     const payload = { inspectionDate: dateInput.value, shift: $('#fiveSShiftFilter').value || '' };
     const [board, setup] = await Promise.all([
       apiCall('getFiveSBoard', payload),
@@ -6100,7 +6100,7 @@ async function loadFiveSPage() {
   } catch (error) {
     $('#fiveSSummary').innerHTML = '';
     $('#fiveSInspectionList').innerHTML = `<div class="empty-state">${escapeHtml(error.message || 'โหลดรายการตรวจไม่สำเร็จ')}</div>`;
-    if (hasPermission('fiveS.manage')) $('#fiveSCheckpointTable').innerHTML = '<div class="empty-state">โหลดข้อมูลจุดตรวจไม่สำเร็จ</div>';
+    if (hasAnyPermission(['fiveS.manage', 'fiveS.checkpoint.manage'])) $('#fiveSCheckpointTable').innerHTML = '<div class="empty-state">โหลดข้อมูลจุดตรวจไม่สำเร็จ</div>';
   }
 }
 

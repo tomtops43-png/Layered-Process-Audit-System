@@ -58,9 +58,13 @@ function fiveSCanViewAll_(user) {
   return isAdmin_(user) || hasPermission_(user, 'fiveS.view.all') || hasPermission_(user, 'fiveS.manage');
 }
 
+function fiveSCanManageCheckpoints_(user) {
+  return hasPermission_(user, 'fiveS.manage') || hasPermission_(user, 'fiveS.checkpoint.manage');
+}
+
 function getFiveSSetupData(payload, currentUser) {
   try {
-    requirePermission_(currentUser, 'fiveS.manage');
+    if (!fiveSCanManageCheckpoints_(currentUser)) throw new Error('คุณไม่มีสิทธิจัดการจุดตรวจ 5.ส');
     ensureFiveSSheets_();
     return jsonResponse(true, 'โหลดข้อมูลตั้งค่าจุดตรวจ 5.ส แล้ว', {
       shifts: fiveSActiveShifts_(), leaders: fiveSLeaderUsers_(),
@@ -73,7 +77,7 @@ function getFiveSSetupData(payload, currentUser) {
 
 function getFiveSBoard(payload, currentUser) {
   try {
-    if (!hasPermission_(currentUser, 'fiveS.audit') && !hasPermission_(currentUser, 'fiveS.view.all') && !hasPermission_(currentUser, 'fiveS.manage')) {
+    if (!hasPermission_(currentUser, 'fiveS.audit') && !hasPermission_(currentUser, 'fiveS.view.all') && !fiveSCanManageCheckpoints_(currentUser)) {
       throw new Error('คุณไม่มีสิทธิ์ดูรายการตรวจ 5.ส');
     }
     ensureFiveSSheets_();
@@ -117,7 +121,7 @@ function getFiveSBoard(payload, currentUser) {
     }).filter(function (item) { return !shift || valuesEqual_(item.shift, shift); });
     return jsonResponse(true, 'โหลดรายการตรวจ 5.ส แล้ว', {
       inspectionDate: date, today: fiveSToday_(), shift: shift,
-      canManage: hasPermission_(currentUser, 'fiveS.manage'), canViewAll: canViewAll,
+      canManage: fiveSCanManageCheckpoints_(currentUser), canViewAll: canViewAll,
       canInspect: hasPermission_(currentUser, 'fiveS.audit'), shifts: shifts,
       checkpoints: checkpoints, summary: summary
     });
@@ -126,7 +130,7 @@ function getFiveSBoard(payload, currentUser) {
 
 function saveFiveSCheckpoint(payload, currentUser) {
   try {
-    requirePermission_(currentUser, 'fiveS.manage');
+    if (!fiveSCanManageCheckpoints_(currentUser)) throw new Error('คุณไม่มีสิทธิจัดการจุดตรวจ 5.ส');
     ensureFiveSSheets_();
     requireFields_(payload, ['category', 'checkpointName', 'area', 'standardText', 'shift', 'leaderUserId']);
     var category = cleanString_(payload.category);
