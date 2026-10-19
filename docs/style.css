@@ -719,7 +719,14 @@ textarea{line-height:1.45}
 .quiz-podium ol{display:grid;gap:6px;margin:0;padding:0;list-style:none}
 .quiz-podium li{display:flex;justify-content:space-between;gap:12px;min-width:0;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,.8)}
 .quiz-podium li span{min-width:0;overflow-wrap:anywhere}
+.quiz-podium li span small,.confirm-podium-list li span small{display:block;margin-top:2px;color:var(--muted);font-size:.82em;font-weight:600}
 .quiz-podium li b{white-space:nowrap}
+.quiz-start-gate{max-width:640px;margin:8px auto 18px}
+.quiz-start-card{display:grid;justify-items:center;gap:10px;padding:24px;border:1px solid #d9e5ee;border-radius:16px;background:linear-gradient(145deg,#f8fbfe,#eef5fa);text-align:center}
+.quiz-start-icon{display:grid;place-items:center;width:48px;height:48px;border-radius:50%;background:#e1f1fb;color:var(--blue,#176bb1);font-size:1.1rem}
+.quiz-start-card h3{margin:0;color:var(--navy-2);font-size:1.15rem}
+.quiz-start-card p{max-width:48ch;margin:0 0 6px;color:var(--muted);line-height:1.65}
+.quiz-start-card .btn{min-width:min(100%,240px)}
 .quiz-review-question{box-sizing:border-box;min-width:0;max-width:100%;padding:14px;margin:12px 0;border:1px solid var(--border);border-radius:12px;background:#fbfcfd;overflow-wrap:anywhere}
 .quiz-review-question h4{margin:0 0 10px}
 #meetingQuizAdminDialog .quiz-editor-question{position:relative;padding:18px;margin:14px 0;border:1px solid #e1e8ee;border-radius:15px;background:#fff;box-shadow:0 4px 16px rgba(18,60,105,.055)}
@@ -736,6 +743,13 @@ textarea{line-height:1.45}
 #meetingQuizAdminDialog .quiz-choice-row>strong{display:grid;place-items:center;width:28px;height:28px;margin-top:8px;border-radius:9px;background:var(--cyan);color:var(--navy);font-size:.78rem;font-weight:800}
 #meetingQuizAdminDialog .quiz-choice-row textarea{min-height:78px}
 #meetingQuizAdminDialog .quiz-editor-question select{min-height:46px;border-radius:10px;background:#fcfdfe;font-weight:700}
+#meetingQuizAdminDialog .quiz-question-image-field{display:grid;gap:8px;margin:0 0 16px;padding:13px;border:1px dashed #d4e0e9;border-radius:12px;background:#f8fbfd}
+#meetingQuizAdminDialog .quiz-question-image-field>label{display:grid;gap:7px;color:#405164;font-size:.85rem;font-weight:700}
+#meetingQuizAdminDialog .quiz-question-image-field input[type=file]{width:100%;min-width:0;padding:9px;border:1px solid #d9e2e9;border-radius:9px;background:#fff;color:var(--text);font:inherit;font-size:.84rem}
+#meetingQuizAdminDialog .quiz-question-image-preview{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-height:28px}
+#meetingQuizAdminDialog .quiz-question-image-preview img{display:block;width:auto;max-width:min(100%,300px);max-height:180px;object-fit:contain;border:1px solid #dce5ec;border-radius:9px;background:#fff}
+.quiz-question-exam-image,.quiz-question-review-image{display:block;width:auto;max-width:100%;max-height:360px;margin:10px auto 14px;object-fit:contain;border:1px solid #e0e8ee;border-radius:12px;background:#fff}
+.quiz-question-review-image{max-height:300px;margin-left:0}
 #meetingQuizAdminDialog .modal-actions{position:sticky;bottom:-20px;z-index:2;margin:18px -20px -20px;padding:13px 20px calc(13px + var(--safe-bottom));border-top:1px solid var(--border);background:rgba(255,255,255,.96);backdrop-filter:blur(8px)}
 #meetingQuizAdminDialog .modal-actions .btn{min-height:48px}
 .quiz-answer-line{min-width:0;padding:8px 10px;border-radius:8px;background:#eef6ff;margin:8px 0;overflow-wrap:anywhere}
@@ -988,6 +1002,7 @@ body.mtg-tv-open{overflow:hidden}
 .mtg-tv-quiz-podium ol{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0;padding:0;list-style:none}
 .mtg-tv-quiz-podium li{display:flex;justify-content:space-between;gap:8px;min-width:0;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,.1);font-size:clamp(.8rem,1.25vw,1rem)}
 .mtg-tv-quiz-podium li span{min-width:0;overflow-wrap:anywhere}
+.mtg-tv-quiz-podium li span small{display:block;margin-top:2px;color:#dbe7f3;font-size:.8em}
 .mtg-tv-quiz-podium li b{white-space:nowrap}
 .mtg-tv-quiz-podium p{margin:0;color:#dbe7f3}
 @media (max-width:640px){.mtg-tv-quiz-qr{width:min(58vw,38vh,340px);height:min(58vw,38vh,340px)}.mtg-tv-quiz-shift{flex-wrap:wrap}.mtg-tv-quiz-shift>span{flex:1 1 55%}.mtg-tv-quiz-podium ol{grid-template-columns:1fr}}

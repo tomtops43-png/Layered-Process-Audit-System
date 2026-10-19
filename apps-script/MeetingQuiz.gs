@@ -327,7 +327,8 @@ function meetingQuizQuestionForClient_(row) {
     ChoiceCTH: cleanString_(row.ChoiceCTH), ChoiceDTH: cleanString_(row.ChoiceDTH),
     QuestionMY: cleanString_(row.QuestionMY),
     ChoiceAMY: cleanString_(row.ChoiceAMY), ChoiceBMY: cleanString_(row.ChoiceBMY),
-    ChoiceCMY: cleanString_(row.ChoiceCMY), ChoiceDMY: cleanString_(row.ChoiceDMY)
+    ChoiceCMY: cleanString_(row.ChoiceCMY), ChoiceDMY: cleanString_(row.ChoiceDMY),
+    QuestionImageURL: cleanString_(row.QuestionImageURL)
   };
 }
 
@@ -363,6 +364,8 @@ function meetingQuizRegistrationResult_(quiz, participant, token, language, empl
     participantId: cleanString_(participant.ParticipantID), participantToken: token,
     shift: cleanString_(participant.Shift), employeeId: cleanString_(participant.EmployeeID),
     displayName: cleanString_(participant.DisplayName), status: status,
+    hasStarted: Boolean(toNumber_(participant.StartedAtMs)), startedAtMs: toNumber_(participant.StartedAtMs),
+    durationMs: toNumber_(participant.DurationMs),
     employeeCreated: Boolean(employeeCreated),
     questions: status === 'Submitted' || status === 'Registered'
       ? meetingQuizQuestions_(quiz.QuizID).map(meetingQuizQuestionForClient_) : []
@@ -404,6 +407,7 @@ function meetingQuizReview_(quizId, answersJson, language) {
     return {
       QuestionNo: toNumber_(row.QuestionNo),
       Question: cleanString_(row['Question' + lang]),
+      QuestionImageURL: cleanString_(row.QuestionImageURL),
       Choices: [row['ChoiceA' + lang], row['ChoiceB' + lang], row['ChoiceC' + lang], row['ChoiceD' + lang]].map(cleanString_),
       SelectedOption: selected,
       SelectedText: selected ? cleanString_(row['Choice' + selected + lang]) : '',
@@ -601,16 +605,29 @@ function meetingQuizTopThree_(quizId, shift, meetingDate) {
     var id = meetingQuizResolveParticipantEmployeeId_(row, rosterRows);
     return id && eligibleKeys[id.toLowerCase()];
   }).sort(function (a, b) {
-    return toNumber_(b.Score) - toNumber_(a.Score) ||
+    var aDuration = cleanString_(a.DurationMs) === '' ? null : toNumber_(a.DurationMs);
+    var bDuration = cleanString_(b.DurationMs) === '' ? null : toNumber_(b.DurationMs);
+    var durationOrder = aDuration === null ? (bDuration === null ? 0 : 1) :
+      (bDuration === null ? -1 : aDuration - bDuration);
+    return toNumber_(b.Score) - toNumber_(a.Score) || durationOrder ||
       cleanString_(a.SubmittedAt).localeCompare(cleanString_(b.SubmittedAt)) ||
       cleanString_(a.DisplayName).localeCompare(cleanString_(b.DisplayName));
   }).slice(0, 3).map(function (row, index) {
     return {
       rank: index + 1, employeeId: meetingQuizResolveParticipantEmployeeId_(row, rosterRows),
       displayName: meetingQuizParticipantFullName_(row), score: toNumber_(row.Score),
-      total: toNumber_(row.TotalQuestions) || 5, submittedAt: cleanString_(row.SubmittedAt)
+      total: toNumber_(row.TotalQuestions) || 5, submittedAt: cleanString_(row.SubmittedAt),
+      durationMs: cleanString_(row.DurationMs) === '' ? null : toNumber_(row.DurationMs),
+      durationLabel: cleanString_(row.DurationMs) === '' ? '' : meetingQuizDurationLabel_(row.DurationMs)
     };
   });
+}
+
+function meetingQuizDurationLabel_(durationMs) {
+  var seconds = Math.max(0, Math.ceil(toNumber_(durationMs) / 1000));
+  var minutes = Math.floor(seconds / 60);
+  var remainingSeconds = seconds % 60;
+  return minutes ? minutes + ' นาที ' + remainingSeconds + ' วินาที' : seconds + ' วินาที';
 }
 
 function meetingQuizRosterCounts_(quizId, shift, meetingDate) {
@@ -881,8 +898,12 @@ function normalizeMeetingQuizQuestions_(questions) {
       CorrectOption: correct,
       ExplanationTH: cleanString_(question.explanationTH || question.ExplanationTH),
       ExplanationMY: cleanString_(question.explanationMY || question.ExplanationMY),
-      ChoicesTH: th.map(cleanString_), ChoicesMY: my.map(cleanString_)
+      ChoicesTH: th.map(cleanString_), ChoicesMY: my.map(cleanString_),
+      QuestionImageURL: cleanString_(question.questionImageURL || question.QuestionImageURL)
     };
+    if (normalized.QuestionImageURL && (!/^https:\/\//i.test(normalized.QuestionImageURL) || normalized.QuestionImageURL.length > 2048)) {
+      throw new Error('ข้อ ' + (index + 1) + ' มี URL รูปภาพไม่ถูกต้อง');
+    }
     if (!normalized.QuestionTH || !normalized.QuestionMY || !normalized.ExplanationTH || !normalized.ExplanationMY ||
         normalized.ChoicesTH.some(function (choice) { return !choice; }) || normalized.ChoicesMY.some(function (choice) { return !choice; })) {
       throw new Error('ข้อ ' + (index + 1) + ' ต้องกรอกคำถาม ตัวเลือก และคำอธิบายทั้งสองภาษาให้ครบ');
@@ -899,6 +920,7 @@ function meetingQuizQuestionRow_(quiz, question, questionId, user, timestamp) {
     QuestionMY: question.QuestionMY, ChoiceAMY: question.ChoicesMY[0], ChoiceBMY: question.ChoicesMY[1],
     ChoiceCMY: question.ChoicesMY[2], ChoiceDMY: question.ChoicesMY[3],
     CorrectOption: question.CorrectOption, ExplanationTH: question.ExplanationTH, ExplanationMY: question.ExplanationMY,
+    QuestionImageURL: question.QuestionImageURL,
     CreatedAt: timestamp, CreatedBy: user.UserID, UpdatedAt: timestamp, UpdatedBy: user.UserID
   };
   return row;
@@ -977,6 +999,7 @@ function generateMeetingQuiz(payload, user) {
       };
       quiz.SourcePostIDs = JSON.stringify(dailyPosts.map(function (row) { return cleanString_(row.PostID); }));
       quiz.SourceHash = sourceHash;
+      quiz.SourceType = 'AI';
       quiz.SourceTitle = meetingQuizDailyTitle_(dailyPosts);
       quiz.VersionNo = version;
       quiz.GeneratedAt = now;
@@ -990,7 +1013,7 @@ function generateMeetingQuiz(payload, user) {
       quiz.UpdatedBy = user.UserID;
       if (existingDraft) {
         updateObjectById(SHEET_NAMES.MEETING_QUIZZES, 'QuizID', quiz.QuizID, {
-          SourcePostIDs: quiz.SourcePostIDs, SourceHash: quiz.SourceHash, SourceTitle: quiz.SourceTitle,
+          SourcePostIDs: quiz.SourcePostIDs, SourceHash: quiz.SourceHash, SourceTitle: quiz.SourceTitle, SourceType: quiz.SourceType,
           VersionNo: quiz.VersionNo, GeneratedAt: now, GeneratedBy: user.UserID, UpdatedAt: now, UpdatedBy: user.UserID
         });
       } else {
@@ -1068,6 +1091,7 @@ function getMeetingQuizAdmin(payload, user) {
     }) : [];
     return jsonResponse(true, 'ข้อมูลข้อสอบพร้อมแล้ว', {
       canGenerate: hasPermission_(user, 'meeting.quiz.generate'),
+      canManage: hasPermission_(user, 'meeting.quiz.manage'),
       aiConfigured: Boolean(cleanString_(PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY'))),
       post: {
         PostID: post.PostID, MeetingDate: dateOnly_(post.MeetingDate),
@@ -1108,6 +1132,86 @@ function saveMeetingQuizDraft(payload, user) {
   } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
 }
 
+/** Create an editable five-question draft for a manually authored quiz/game. */
+function startManualMeetingQuiz(payload, user) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(15000);
+    var post = meetingQuizPost_(payload.postId, user);
+    requireMeetingQuizManager_(user, post);
+    var meetingDate = dateOnly_(post.MeetingDate);
+    var dailyPosts = meetingQuizPostsForDate_(meetingDate);
+    var quizzes = meetingQuizRowsForDate_(meetingDate);
+    if (quizzes.some(function (row) { return valuesEqual_(row.Status, 'Published'); })) {
+      throw new Error('วันนี้เผยแพร่ข้อสอบแล้ว จึงแก้ชุดที่พนักงานเริ่มทำอยู่ไม่ได้');
+    }
+    var draft = quizzes.filter(function (row) { return valuesEqual_(row.Status, 'Draft'); })[0] || null;
+    if (draft && valuesEqual_(draft.SourceType, 'Manual') && meetingQuizQuestions_(draft.QuizID).length === 5) {
+      return jsonResponse(true, 'เปิดฉบับร่างข้อสอบที่สร้างเองแล้ว', {
+        quiz: draft, questions: meetingQuizQuestions_(draft.QuizID).map(meetingQuizQuestionForReview_)
+      });
+    }
+    var now = formatDateTimeBangkok(new Date());
+    var quiz = draft || {
+      QuizID: generateId('MQZ', SHEET_NAMES.MEETING_QUIZZES, 'QuizID', getPeriodMonth(new Date())),
+      PostID: post.PostID, MeetingDate: meetingDate, Status: 'Draft', RosterStatus: 'Open',
+      CreatedAt: now, CreatedBy: user.UserID
+    };
+    quiz.SourcePostIDs = JSON.stringify(dailyPosts.map(function (row) { return cleanString_(row.PostID); }));
+    quiz.SourceHash = 'MANUAL';
+    quiz.SourceTitle = meetingQuizDailyTitle_(dailyPosts) || ('Meeting ' + meetingDate);
+    quiz.SourceType = 'Manual';
+    quiz.VersionNo = Math.max(1, toNumber_(quiz.VersionNo) || 0);
+    quiz.GeneratedAt = '';
+    quiz.GeneratedBy = '';
+    quiz.UpdatedAt = now;
+    quiz.UpdatedBy = user.UserID;
+    if (draft) {
+      updateObjectById(SHEET_NAMES.MEETING_QUIZZES, 'QuizID', quiz.QuizID, {
+        SourcePostIDs: quiz.SourcePostIDs, SourceHash: quiz.SourceHash, SourceTitle: quiz.SourceTitle,
+        SourceType: quiz.SourceType, GeneratedAt: '', GeneratedBy: '', UpdatedAt: now, UpdatedBy: user.UserID
+      });
+    } else {
+      appendObject(SHEET_NAMES.MEETING_QUIZZES, quiz);
+    }
+    var blankQuestions = [1, 2, 3, 4, 5].map(function (number) {
+      return {
+        QuestionNo: number, QuestionTH: '', QuestionMY: '', ChoicesTH: ['', '', '', ''],
+        ChoicesMY: ['', '', '', ''], CorrectOption: 'A', ExplanationTH: '', ExplanationMY: '', QuestionImageURL: ''
+      };
+    });
+    saveMeetingQuizQuestionRows_(quiz, blankQuestions, user);
+    return jsonResponse(true, 'สร้างฉบับร่างข้อสอบเอง 5 ข้อแล้ว', {
+      quiz: quiz, questions: meetingQuizQuestions_(quiz.QuizID).map(meetingQuizQuestionForReview_)
+    });
+  } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
+  finally { try { lock.releaseLock(); } catch (_) {} }
+}
+
+/** Upload a draft question image after checking that the caller manages its Meeting quiz. */
+function uploadMeetingQuizQuestionImage(payload, user) {
+  try {
+    requireFields_(payload, ['postId', 'quizId', 'questionNo', 'fileName', 'mimeType', 'base64Data']);
+    var post = meetingQuizPost_(payload.postId, user);
+    requireMeetingQuizManager_(user, post);
+    var quiz = findById_(SHEET_NAMES.MEETING_QUIZZES, 'QuizID', cleanString_(payload.quizId));
+    var questionNo = toNumber_(payload.questionNo);
+    if (!quiz || !valuesEqual_(dateOnly_(quiz.MeetingDate), dateOnly_(post.MeetingDate)) || !valuesEqual_(quiz.Status, 'Draft')) {
+      throw new Error('แนบรูปได้เฉพาะข้อสอบฉบับร่าง');
+    }
+    if (questionNo < 1 || questionNo > 5 || Math.floor(questionNo) !== questionNo) throw new Error('หมายเลขข้อสอบไม่ถูกต้อง');
+    if (String(payload.mimeType || '').toLowerCase().indexOf('image/') !== 0) throw new Error('กรุณาเลือกไฟล์รูปภาพ');
+    var result = uploadFile({
+      relatedType: 'MeetingQuizQuestion', relatedId: quiz.QuizID + '_Q' + questionNo,
+      fileType: 'Evidence', fileName: payload.fileName, mimeType: payload.mimeType,
+      base64Data: payload.base64Data, remark: 'Meeting quiz question ' + questionNo
+    }, user);
+    var uploadResult = JSON.parse(result.getContent());
+    if (!uploadResult.success) return jsonResponse(false, uploadResult.message, {});
+    return jsonResponse(true, 'อัปโหลดรูปประกอบข้อสอบแล้ว', uploadResult.data || {});
+  } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
+}
+
 function publishMeetingQuiz(payload, user) {
   try {
     var post = meetingQuizPost_(payload.postId, user);
@@ -1115,14 +1219,24 @@ function publishMeetingQuiz(payload, user) {
     requireFields_(payload, ['quizId']);
     var quiz = findById_(SHEET_NAMES.MEETING_QUIZZES, 'QuizID', payload.quizId);
     if (!quiz || !valuesEqual_(dateOnly_(quiz.MeetingDate), dateOnly_(post.MeetingDate)) || !valuesEqual_(quiz.Status, 'Draft')) throw new Error('ไม่พบข้อสอบฉบับร่าง');
-    if (meetingQuizQuestions_(quiz.QuizID).length !== 5) throw new Error('ข้อสอบต้องครบ 5 ข้อก่อนเผยแพร่');
+    var questions = meetingQuizQuestions_(quiz.QuizID);
+    if (questions.length !== 5) throw new Error('ข้อสอบต้องครบ 5 ข้อก่อนเผยแพร่');
+    normalizeMeetingQuizQuestions_(questions.map(function (row) {
+      return {
+        questionTH: row.QuestionTH, questionMY: row.QuestionMY,
+        choicesTH: [row.ChoiceATH, row.ChoiceBTH, row.ChoiceCTH, row.ChoiceDTH],
+        choicesMY: [row.ChoiceAMY, row.ChoiceBMY, row.ChoiceCMY, row.ChoiceDMY],
+        correctOption: row.CorrectOption, explanationTH: row.ExplanationTH,
+        explanationMY: row.ExplanationMY, questionImageURL: row.QuestionImageURL
+      };
+    }));
     var dailyPosts = meetingQuizPostsForDate_(post.MeetingDate);
     var previousPublished = meetingQuizRowsForDate_(post.MeetingDate).filter(function (row) {
       return valuesEqual_(row.Status, 'Published') && !valuesEqual_(row.QuizID, quiz.QuizID);
     })[0];
     if (previousPublished) throw new Error('วันนี้มีข้อสอบเผยแพร่แล้ว ทำข้อสอบได้วันละ 1 ชุดต่อ Meeting');
     var source = meetingQuizSourceText_(dailyPosts);
-    if (cleanString_(quiz.SourceHash) !== meetingQuizSourceHash_(dailyPosts, source)) {
+    if (!valuesEqual_(quiz.SourceType, 'Manual') && cleanString_(quiz.SourceHash) !== meetingQuizSourceHash_(dailyPosts, source)) {
       throw new Error('เนื้อหาหัวข้อหรือสไลด์เปลี่ยนหลังสร้างข้อสอบ กรุณาสร้างข้อสอบใหม่จากเนื้อหาล่าสุด');
     }
     var now = formatDateTimeBangkok(new Date());
@@ -1223,8 +1337,13 @@ function getMeetingQuiz(payload, user) {
       participant: participant ? {
         participantId: participant.ParticipantID, displayName: participant.DisplayName,
         employeeId: cleanString_(participant.EmployeeID), language: participant.Language,
-        status: participant.ParticipantStatus, shift: selectedShift
+        status: participant.ParticipantStatus, shift: selectedShift,
+        hasStarted: Boolean(toNumber_(participant.StartedAtMs)), startedAtMs: toNumber_(participant.StartedAtMs),
+        durationMs: toNumber_(participant.DurationMs)
       } : null,
+      examStarted: Boolean(participant && toNumber_(participant.StartedAtMs)),
+      startedAtMs: participant ? toNumber_(participant.StartedAtMs) : 0,
+      durationMs: participant ? toNumber_(participant.DurationMs) : 0,
       questions: participant && !valuesEqual_(participant.ParticipantStatus, 'Excused')
         ? meetingQuizQuestions_(quiz.QuizID).map(meetingQuizQuestionForClient_) : []
     };
@@ -1353,11 +1472,42 @@ function registerMeetingQuizParticipant(payload, user) {
       ParticipantStatus: 'Registered', RegisteredAt: now, RegisteredByUserID: user && user.UserID ? user.UserID : 'QR Guest',
       SubmittedAt: '', AnswersJSON: '', Score: '', TotalQuestions: 5,
       TokenHash: hashMeetingQuizToken_(newToken), ExcusedAt: '', ExcusedBy: '', ExcuseReason: '', UpdatedAt: now,
-      EmployeeID: employeeId
+      EmployeeID: employeeId, StartedAt: '', StartedAtMs: '', DurationMs: ''
     });
     return jsonResponse(true, 'ลงชื่อแล้ว เริ่มทำข้อสอบได้', {
       participantId: participantId, participantToken: newToken, shift: shift, employeeId: employeeId, displayName: displayName,
-      employeeCreated: createdEmployee,
+      employeeCreated: createdEmployee, hasStarted: false, startedAtMs: 0, durationMs: 0,
+      questions: meetingQuizQuestions_(quiz.QuizID).map(meetingQuizQuestionForClient_)
+    });
+  } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
+  finally { try { lock.releaseLock(); } catch (_) {} }
+}
+
+function startMeetingQuizAttempt(payload, user) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(15000);
+    var context = meetingQuizRequestContext_(payload, user);
+    var quiz = context.quiz;
+    if (!quiz || !valuesEqual_(quiz.Status, 'Published')) throw new Error('ข้อสอบนี้ยังไม่เปิดให้เข้าสอบ');
+    var participant = meetingQuizFindParticipant_(quiz.QuizID, payload.participantToken);
+    if (!participant) throw new Error('กรุณาเช็กชื่อก่อนเริ่มทำข้อสอบ');
+    if (valuesEqual_(participant.ParticipantStatus, 'Submitted')) {
+      return jsonResponse(true, 'ส่งข้อสอบแล้ว', { alreadySubmitted: true, hasStarted: true, durationMs: toNumber_(participant.DurationMs) });
+    }
+    if (!valuesEqual_(participant.ParticipantStatus, 'Registered')) throw new Error('ผู้เข้าสอบรายนี้ไม่ได้อยู่ในรอบสอบ');
+    var shiftState = meetingQuizShiftOptions_(quiz).filter(function (row) { return valuesEqual_(row.value, participant.Shift); })[0];
+    if (!shiftState || valuesEqual_(shiftState.rosterStatus, 'Stopped')) throw new Error('กะนี้หยุดสอบแล้ว กรุณาติดต่อ Leader');
+    var startedAtMs = toNumber_(participant.StartedAtMs);
+    if (!startedAtMs) {
+      startedAtMs = new Date().getTime();
+      var startedAt = formatDateTimeBangkok(new Date(startedAtMs));
+      updateObjectById(SHEET_NAMES.MEETING_QUIZ_PARTICIPANTS, 'ParticipantID', participant.ParticipantID, {
+        StartedAt: startedAt, StartedAtMs: startedAtMs, UpdatedAt: startedAt
+      });
+    }
+    return jsonResponse(true, 'เริ่มจับเวลาทำข้อสอบแล้ว', {
+      hasStarted: true, startedAtMs: startedAtMs,
       questions: meetingQuizQuestions_(quiz.QuizID).map(meetingQuizQuestionForClient_)
     });
   } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
@@ -1379,10 +1529,12 @@ function submitMeetingQuiz(payload, user) {
         (valuesEqual_(payload.language, 'TH') ? 'TH' : participant.Language);
       return jsonResponse(true, 'ส่งข้อสอบแล้ว', {
         review: meetingQuizReview_(quiz.QuizID, participant.AnswersJSON, submittedLanguage),
-        allSubmitted: meetingQuizAllSubmitted_(quiz)
+        allSubmitted: meetingQuizAllSubmitted_(quiz), durationMs: toNumber_(participant.DurationMs)
       });
     }
     if (!valuesEqual_(participant.ParticipantStatus, 'Registered')) throw new Error('ผู้เข้าสอบรายนี้ไม่ได้อยู่ในรอบสอบ');
+    var startedAtMs = toNumber_(participant.StartedAtMs);
+    if (!startedAtMs) throw new Error('กรุณากด “เริ่มทำข้อสอบ” ก่อนส่งคำตอบ');
     var shiftState = meetingQuizShiftOptions_(quiz).filter(function (row) { return valuesEqual_(row.value, participant.Shift); })[0];
     if (shiftState && valuesEqual_(shiftState.rosterStatus, 'Stopped')) throw new Error('กะนี้หยุดสอบแล้ว ไม่สามารถส่งคำตอบเพิ่มเติมได้');
     var questions = meetingQuizQuestions_(quiz.QuizID);
@@ -1398,14 +1550,16 @@ function submitMeetingQuiz(payload, user) {
     var language = valuesEqual_(payload.language, 'MY') ? 'MY' :
       (valuesEqual_(payload.language, 'TH') ? 'TH' : participant.Language);
     var review = meetingQuizReview_(quiz.QuizID, JSON.stringify(answerMap), language);
-    var now = formatDateTimeBangkok(new Date());
+    var submittedAtMs = new Date().getTime();
+    var now = formatDateTimeBangkok(new Date(submittedAtMs));
+    var durationMs = Math.max(0, submittedAtMs - startedAtMs);
     updateObjectById(SHEET_NAMES.MEETING_QUIZ_PARTICIPANTS, 'ParticipantID', participant.ParticipantID, {
       ParticipantStatus: 'Submitted', Language: language, SubmittedAt: now, AnswersJSON: JSON.stringify(answerMap),
-      Score: review.score, TotalQuestions: review.total, UpdatedAt: now
+      Score: review.score, TotalQuestions: review.total, DurationMs: durationMs, UpdatedAt: now
     });
     participant.Language = language;
     saveMeetingQuizAnswerRows_(quiz, participant, meetingQuizReview_(quiz.QuizID, JSON.stringify(answerMap), 'TH'), now);
-    return jsonResponse(true, 'ส่งข้อสอบแล้ว', { review: review, allSubmitted: meetingQuizAllSubmitted_(quiz) });
+    return jsonResponse(true, 'ส่งข้อสอบแล้ว', { review: review, allSubmitted: meetingQuizAllSubmitted_(quiz), durationMs: durationMs });
   } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
   finally { try { lock.releaseLock(); } catch (_) {} }
 }
