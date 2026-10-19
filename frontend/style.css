@@ -704,6 +704,7 @@ textarea{line-height:1.45}
 #meetingQuizAdminDialog .quiz-editor-language-switch button small{margin-left:4px;color:#1972ae;font-size:.72rem;font-weight:800}
 #meetingQuizAdminDialog .quiz-editor-language-panel[hidden]{display:none!important}
 #meetingQuizAdminDialog .quiz-editor-language-panel{display:grid;gap:12px}
+#meetingQuizAdminDialog .quiz-translate-myanmar{justify-self:start;margin:0 0 2px}
 #meetingQuizAdminDialog .quiz-editor-full-field{display:grid;gap:7px;min-width:0;color:#405164;font-size:.86rem;font-weight:700;line-height:1.5}
 #meetingQuizAdminDialog .quiz-editor-section-label{display:block;margin:1px 0 -4px;color:#405164;font-size:.86rem;line-height:1.5}
 #meetingQuizAdminDialog .quiz-editor-correct-answer{display:grid;grid-template-columns:minmax(0,240px);gap:7px;margin-top:14px;color:#405164;font-size:.86rem;font-weight:700}

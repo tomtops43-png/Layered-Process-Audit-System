@@ -173,6 +173,7 @@ function hasApiAccess_(user, action) {
     saveMeetingQuizApiKey: ['meeting.quiz.generate'],
     generateMeetingQuiz: ['meeting.quiz.generate'],
     startManualMeetingQuiz: ['meeting.quiz.manage'],
+    translateMeetingQuizQuestionToMyanmar: ['meeting.quiz.manage'],
     uploadMeetingQuizQuestionImage: ['meeting.quiz.manage'],
     saveMeetingQuizDraft: ['meeting.quiz.manage'],
     publishMeetingQuiz: ['meeting.quiz.manage'],

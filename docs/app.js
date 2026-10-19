@@ -384,7 +384,7 @@ const API_MAX_TIMEOUT_ATTEMPTS = 2;
 // Actions that change server state: a dropped connection may mean the write DID
 // land, so replay them only when the server explicitly refused the request.
 const WRITE_ACTIONS = [
-  'saveAudit', 'uploadFile', 'uploadFiveSCheckpointReferencePhoto', 'uploadMeetingQuizQuestionImage', 'updateFinding', 'submitFinding', 'verifyFinding', 'closeFinding',
+  'saveAudit', 'uploadFile', 'uploadFiveSCheckpointReferencePhoto', 'uploadMeetingQuizQuestionImage', 'translateMeetingQuizQuestionToMyanmar', 'updateFinding', 'submitFinding', 'verifyFinding', 'closeFinding',
   'saveMeetingPost', 'deleteMeetingPost', 'updateMeetingPostStatus', 'acknowledgeMeetingPost',
   'convertMeetingSlideFile', 'generateMeetingQuiz', 'startManualMeetingQuiz', 'saveMeetingQuizApiKey', 'saveMeetingQuizDraft', 'publishMeetingQuiz',
   'lockMeetingQuizRoster', 'excuseMeetingQuizParticipant', 'registerMeetingQuizParticipant', 'startMeetingQuizAttempt', 'submitMeetingQuiz',
@@ -420,7 +420,7 @@ function releaseApiSlot() {
 }
 
 async function apiCall(action, payload = {}, options = {}) {
-  const TIMEOUT_MS = (action === 'uploadFile' || action === 'uploadFiveSCheckpointReferencePhoto' || action === 'uploadMeetingQuizQuestionImage' || action === 'saveAudit' || action === 'convertMeetingSlideFile' || action === 'generateMeetingQuiz') ? 90000 : 45000;
+  const TIMEOUT_MS = (action === 'uploadFile' || action === 'uploadFiveSCheckpointReferencePhoto' || action === 'uploadMeetingQuizQuestionImage' || action === 'saveAudit' || action === 'convertMeetingSlideFile' || action === 'generateMeetingQuiz' || action === 'translateMeetingQuizQuestionToMyanmar') ? 90000 : 45000;
   // Writes are always something a user is standing in front of; reads are only
   // urgent when the caller says so (background refreshes pass priority 'normal').
   const priority = options.priority || (WRITE_ACTIONS.includes(action) ? 'high' : 'normal');
@@ -3270,6 +3270,7 @@ function renderMeetingQuizAdmin() {
         <label class="quiz-editor-full-field">คำอธิบายภาษาไทย<textarea data-quiz-field="explanationTH" required>${escapeHtml(q.explanationTH)}</textarea></label>
       </div>
       <div class="quiz-editor-language-panel" data-quiz-language-panel="MY" hidden>
+        <button type="button" class="btn btn-outline btn-compact quiz-translate-myanmar" data-quiz-translate-myanmar>แปลภาษาพม่าข้อนี้ใหม่จากภาษาไทย</button>
         <label class="quiz-editor-full-field">မေးခွန်း (မြန်မာ)<textarea data-quiz-field="questionMY" required>${escapeHtml(q.questionMY)}</textarea></label>
         <strong class="quiz-editor-section-label">ရွေးချယ်စရာများ (မြန်မာ)</strong>${choiceFields('MY', q.choicesMY)}
         <label class="quiz-editor-full-field">ရှင်းလင်းချက် (မြန်မာ)<textarea data-quiz-field="explanationMY" required>${escapeHtml(q.explanationMY)}</textarea></label>
@@ -3392,7 +3393,7 @@ async function handleMeetingQuizAdminChange(event) {
 async function handleMeetingQuizAdminClick(event) {
   const model = state.meetingQuizAdmin;
   if (!model) return;
-  const languageTab = event.target.closest('[data-quiz-editor-language]');
+  const languageTab = event.target.closest('button[data-quiz-editor-language]');
   if (languageTab) {
     const language = languageTab.dataset.quizEditorLanguage === 'MY' ? 'MY' : 'TH';
     const editor = $('#meetingQuizEditor');
@@ -3408,8 +3409,9 @@ async function handleMeetingQuizAdminClick(event) {
     });
     return;
   }
-  const button = event.target.closest('[data-quiz-copy-link],[data-quiz-generate],[data-quiz-manual],[data-quiz-remove-image],[data-quiz-save-api-key],[data-quiz-save],[data-quiz-publish],[data-quiz-lock],[data-quiz-stop],[data-quiz-excuse],[data-quiz-refresh]');
+  const button = event.target.closest('[data-quiz-copy-link],[data-quiz-generate],[data-quiz-manual],[data-quiz-remove-image],[data-quiz-translate-myanmar],[data-quiz-save-api-key],[data-quiz-save],[data-quiz-publish],[data-quiz-lock],[data-quiz-stop],[data-quiz-excuse],[data-quiz-refresh]');
   if (!button) return;
+  const originalButtonText = button.textContent;
   try {
     button.disabled = true;
     if (button.hasAttribute('data-quiz-copy-link')) {
@@ -3431,6 +3433,22 @@ async function handleMeetingQuizAdminClick(event) {
       const card = button.closest('[data-quiz-q]');
       card.querySelector('[data-quiz-field="questionImageURL"]').value = '';
       card.querySelector('[data-quiz-image-preview]').innerHTML = '<span class="field-help">เพิ่มรูปเพื่อใช้ประกอบคำถามหรือเกมได้</span>';
+    } else if (button.hasAttribute('data-quiz-translate-myanmar')) {
+      const card = button.closest('[data-quiz-q]');
+      const get = field => card.querySelector(`[data-quiz-field="${field}"]`)?.value.trim() || '';
+      const questionNo = Number(card.dataset.quizQ) + 1;
+      button.textContent = 'กำลังแปล...';
+      const translated = await apiCall('translateMeetingQuizQuestionToMyanmar', {
+        postId: model.postId, quizId: model.quiz.QuizID, questionNo,
+        questionTH: get('questionTH'), choicesTH: ['A', 'B', 'C', 'D'].map(key => get(`choice${key}TH`)),
+        explanationTH: get('explanationTH')
+      });
+      card.querySelector('[data-quiz-field="questionMY"]').value = translated.questionMY;
+      ['A', 'B', 'C', 'D'].forEach((key, index) => {
+        card.querySelector(`[data-quiz-field="choice${key}MY"]`).value = translated.choicesMY[index] || '';
+      });
+      card.querySelector('[data-quiz-field="explanationMY"]').value = translated.explanationMY;
+      showToast('แปลพม่าจากข้อความไทยข้อนี้แล้ว · ตรวจทานและกดบันทึกฉบับร่าง', 'success');
     } else if (button.hasAttribute('data-quiz-generate')) {
       await generateMeetingQuizDraft(model);
       showToast('สร้างข้อสอบฉบับร่างแล้ว ตรวจแก้ก่อนเผยแพร่', 'success');
@@ -3493,7 +3511,10 @@ async function handleMeetingQuizAdminClick(event) {
   } catch (error) {
     showToast(error.message, 'error');
   } finally {
-    if (button.isConnected) button.disabled = false;
+    if (button.isConnected) {
+      button.disabled = false;
+      button.textContent = originalButtonText;
+    }
     hideLoading();
   }
 }

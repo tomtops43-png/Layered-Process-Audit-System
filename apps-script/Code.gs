@@ -113,6 +113,7 @@ function buildApiHandlers_(payload) {
     saveMeetingQuizApiKey: function (user) { return saveMeetingQuizApiKey(payload, user); },
     generateMeetingQuiz: function (user) { return generateMeetingQuiz(payload, user); },
     startManualMeetingQuiz: function (user) { return startManualMeetingQuiz(payload, user); },
+    translateMeetingQuizQuestionToMyanmar: function (user) { return translateMeetingQuizQuestionToMyanmar(payload, user); },
     uploadMeetingQuizQuestionImage: function (user) { return uploadMeetingQuizQuestionImage(payload, user); },
     saveMeetingQuizDraft: function (user) { return saveMeetingQuizDraft(payload, user); },
     publishMeetingQuiz: function (user) { return publishMeetingQuiz(payload, user); },
