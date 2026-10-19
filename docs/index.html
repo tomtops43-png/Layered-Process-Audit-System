@@ -194,7 +194,7 @@
       </section>
 
       <section id="page-five-s" class="page">
-        <div class="page-heading"><div><p class="eyebrow">DAILY 5S CHECK</p><h2>ตรวจสอบ 5.ส ประจำวัน</h2><p class="page-helper">Admin กำหนดจุดตรวจและมอบหมาย Leader ตามกะ · Leader บันทึกผลพร้อมรูปถ่ายทุกจุด</p></div><button id="fiveSRefreshButton" class="btn btn-outline">↻ รีเฟรช</button></div>
+        <div class="page-heading"><div><p class="eyebrow">DAILY 5S CHECK</p><h2>ตรวจสอบ 5.ส ประจำวัน</h2><p class="page-helper">Admin มอบหมาย Leader ให้ครบทุกกะ · Leader ทุกกะต้องบันทึกผลตรวจพร้อมรูปทุกวัน</p></div><button id="fiveSRefreshButton" class="btn btn-outline">↻ รีเฟรช</button></div>
         <article class="panel filters-panel">
           <div class="form-grid filter-grid">
             <label>วันที่ตรวจ<input id="fiveSInspectionDate" type="date"></label>
@@ -206,16 +206,15 @@
         <div id="fiveSManagerPanel" class="hidden" data-permission-any="fiveS.manage,fiveS.checkpoint.manage">
           <article class="panel">
             <div class="panel-title"><div><p class="eyebrow">ADMIN · CHECKPOINTS</p><h3>กำหนดจุดตรวจและผู้รับผิดชอบ</h3></div><button id="fiveSAddCheckpointButton" class="btn btn-primary" type="button">+ เพิ่มจุดตรวจ</button></div>
-            <p class="section-help">กำหนดหัวข้อ 5.ส, พื้นที่, มาตรฐาน, กะ และ Leader ผู้ตรวจ รูปถ่ายต้องแนบทุกครั้งที่บันทึกผล</p>
+            <p class="section-help">แต่ละจุดตรวจต้องเลือก Leader ให้ครบทุกกะที่เปิดใช้งาน และทุกกะต้องส่งผลตรวจพร้อมรูปถ่ายประจำวัน</p>
             <form id="fiveSCheckpointForm" class="form-grid hidden">
-              <input id="fiveSCheckpointId" type="hidden">
+              <input id="fiveSCheckpointGroupId" type="hidden">
               <label>หัวข้อ 5.ส<select id="fiveSCategory" required><option value="">เลือกหัวข้อ</option><option>สะสาง (Seiri)</option><option>สะดวก (Seiton)</option><option>สะอาด (Seiso)</option><option>มาตรฐาน (Seiketsu)</option><option>สร้างนิสัย (Shitsuke)</option></select></label>
               <label>ชื่อจุดตรวจ<input id="fiveSCheckpointName" maxlength="120" required placeholder="เช่น พื้นที่วางชิ้นงานหน้าไลน์"></label>
               <label>พื้นที่<input id="fiveSArea" maxlength="120" required placeholder="เช่น Assembly Line 1"></label>
-              <label>กะ<select id="fiveSCheckpointShift" required><option value="">เลือกกะ</option></select></label>
-              <label>Leader ผู้รับผิดชอบ<select id="fiveSLeader" required><option value="">เลือก Leader</option></select></label>
               <label>สถานะ<select id="fiveSCheckpointStatus"><option>Active</option><option>Inactive</option></select></label>
               <label class="full-width">มาตรฐาน/สิ่งที่ต้องตรวจ<textarea id="fiveSStandardText" rows="3" maxlength="1000" required placeholder="อธิบายสภาพที่ต้องรักษา หรือจุดที่ต้องตรวจ"></textarea></label>
+              <div class="full-width five-s-assignment-section"><h4>ผู้รับผิดชอบแยกตามกะ <span class="required-mark">ต้องเลือกครบทุกกะ</span></h4><p>หัวหน้ากะที่เลือกจะเห็นจุดนี้และต้องส่งผลตรวจพร้อมรูปทุกวัน</p><div id="fiveSShiftAssignments" class="five-s-shift-assignments"></div></div>
               <label class="full-width five-s-reference-input">รูปอ้างอิงตำแหน่ง <span class="optional-mark">ไม่บังคับ</span><input id="fiveSReferencePhoto" type="file" accept="image/*"><small>ใช้ช่วยจำตำแหน่งจุดตรวจ รูปนี้ไม่แทนรูปหลักฐานที่ Leader ต้องถ่ายตอนตรวจ</small><input id="fiveSReferencePhotoURL" type="hidden"><span id="fiveSReferencePhotoPreview" class="five-s-reference-preview" aria-live="polite"></span></label>
               <div id="fiveSCheckpointFormError" class="form-error full-width hidden" role="alert"></div>
               <div class="button-row full-width"><button id="fiveSCancelCheckpointButton" type="button" class="btn btn-outline">ยกเลิก</button><button type="submit" class="btn btn-primary">บันทึกจุดตรวจ</button></div>

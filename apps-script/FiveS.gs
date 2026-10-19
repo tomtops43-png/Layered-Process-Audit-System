@@ -56,6 +56,39 @@ function fiveSCheckpointById_(checkpointId) {
   })[0] || null;
 }
 
+function fiveSCheckpointGroupId_(row) {
+  return cleanString_(row && row.CheckpointGroupID) || cleanString_(row && row.CheckpointID);
+}
+
+function fiveSCheckpointGroups_(rows) {
+  var groups = {};
+  (rows || []).forEach(function (row) {
+    var groupId = fiveSCheckpointGroupId_(row);
+    if (!groupId) return;
+    if (!groups[groupId]) {
+      groups[groupId] = {
+        CheckpointGroupID: groupId, Category: cleanString_(row.Category),
+        CheckpointName: cleanString_(row.CheckpointName), Area: cleanString_(row.Area),
+        StandardText: cleanString_(row.StandardText), ReferencePhotoURL: cleanString_(row.ReferencePhotoURL),
+        ActiveStatus: cleanString_(row.ActiveStatus), SortOrder: toNumber_(row.SortOrder),
+        ShiftAssignments: []
+      };
+    }
+    groups[groupId].ShiftAssignments.push({
+      CheckpointID: cleanString_(row.CheckpointID), Shift: cleanString_(row.Shift),
+      LeaderUserID: cleanString_(row.LeaderUserID), LeaderName: cleanString_(row.LeaderName),
+      ActiveStatus: cleanString_(row.ActiveStatus)
+    });
+    if (isActive_(row.ActiveStatus)) groups[groupId].ActiveStatus = 'Active';
+  });
+  return Object.keys(groups).map(function (id) {
+    groups[id].ShiftAssignments.sort(function (a, b) { return a.Shift.localeCompare(b.Shift); });
+    return groups[id];
+  }).sort(function (a, b) {
+    return a.SortOrder - b.SortOrder || a.CheckpointName.localeCompare(b.CheckpointName);
+  });
+}
+
 function fiveSInspectionId_(date, checkpointId) {
   return date + '|' + cleanString_(checkpointId);
 }
@@ -74,9 +107,7 @@ function getFiveSSetupData(payload, currentUser) {
     ensureFiveSSheets_();
     return jsonResponse(true, 'โหลดข้อมูลตั้งค่าจุดตรวจ 5.ส แล้ว', {
       shifts: fiveSActiveShifts_(), leaders: fiveSLeaderUsers_(),
-      checkpoints: getRowsAsObjects(SHEET_NAMES.FIVE_S_CHECKPOINTS).sort(function (a, b) {
-        return toNumber_(a.SortOrder) - toNumber_(b.SortOrder) || cleanString_(a.CheckpointName).localeCompare(cleanString_(b.CheckpointName));
-      })
+      checkpoints: fiveSCheckpointGroups_(getRowsAsObjects(SHEET_NAMES.FIVE_S_CHECKPOINTS))
     });
   } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
 }
@@ -139,7 +170,7 @@ function saveFiveSCheckpoint(payload, currentUser) {
   try {
     if (!fiveSCanManageCheckpoints_(currentUser)) throw new Error('คุณไม่มีสิทธิจัดการจุดตรวจ 5.ส');
     ensureFiveSSheets_();
-    requireFields_(payload, ['category', 'checkpointName', 'area', 'standardText', 'shift', 'leaderUserId']);
+    requireFields_(payload, ['category', 'checkpointName', 'area', 'standardText']);
     var category = cleanString_(payload.category);
     var allowedCategories = ['สะสาง (Seiri)', 'สะดวก (Seiton)', 'สะอาด (Seiso)', 'มาตรฐาน (Seiketsu)', 'สร้างนิสัย (Shitsuke)'];
     if (allowedCategories.indexOf(category) === -1) throw new Error('กรุณาเลือกหัวข้อ 5.ส ให้ถูกต้อง');
@@ -149,49 +180,85 @@ function saveFiveSCheckpoint(payload, currentUser) {
     if (!checkpointName || checkpointName.length > 120) throw new Error('ชื่อจุดตรวจต้องมีความยาวไม่เกิน 120 ตัวอักษร');
     if (!area || area.length > 120) throw new Error('กรุณาระบุพื้นที่ของจุดตรวจ');
     if (!standardText || standardText.length > 1000) throw new Error('กรุณาระบุมาตรฐานการตรวจ (ไม่เกิน 1,000 ตัวอักษร)');
-    var shift = fiveSActiveShifts_().filter(function (row) { return valuesEqual_(row.value, payload.shift); })[0];
-    if (!shift) throw new Error('กะนี้ไม่มีใน Master List หรือถูกปิดใช้งาน');
-    var leader = fiveSLeaderUsers_().filter(function (row) { return valuesEqual_(row.UserID, payload.leaderUserId); })[0];
-    if (!leader) throw new Error('กรุณาเลือก Leader ที่เปิดใช้งาน');
+    var activeShifts = fiveSActiveShifts_();
+    if (!activeShifts.length) throw new Error('ไม่มีรายชื่อกะที่เปิดใช้งาน กรุณาตรวจสอบ Master List');
+    var assignments = Array.isArray(payload.shiftAssignments) ? payload.shiftAssignments : [];
+    var leaders = fiveSLeaderUsers_();
+    var assignmentsByShift = {};
+    assignments.forEach(function (assignment) {
+      var shiftValue = cleanString_(assignment && assignment.shift);
+      var leaderId = cleanString_(assignment && assignment.leaderUserId);
+      if (!shiftValue || !leaderId) throw new Error('กรุณาเลือก Leader ให้ครบทุกกะ');
+      if (assignmentsByShift[shiftValue]) throw new Error('เลือกกะซ้ำ กรุณาตรวจสอบรายการกะ');
+      if (!activeShifts.some(function (shift) { return valuesEqual_(shift.value, shiftValue); })) {
+        throw new Error('พบกะที่ปิดใช้งานหรือไม่อยู่ใน Master List');
+      }
+      var leader = leaders.filter(function (row) { return valuesEqual_(row.UserID, leaderId); })[0];
+      if (!leader) throw new Error('กรุณาเลือก Leader ที่เปิดใช้งานให้ครบทุกกะ');
+      assignmentsByShift[shiftValue] = { shift: shiftValue, leader: leader };
+    });
+    if (Object.keys(assignmentsByShift).length !== activeShifts.length || activeShifts.some(function (shift) { return !assignmentsByShift[shift.value]; })) {
+      throw new Error('จุดตรวจแต่ละรายการต้องมอบหมาย Leader ให้ครบทุกกะที่เปิดใช้งาน');
+    }
     var activeStatus = isActive_(payload.activeStatus || 'Active') ? 'Active' : 'Inactive';
     var lock = LockService.getScriptLock();
     lock.waitLock(15000);
     var result;
     try {
       var timestamp = formatDateTimeBangkok(new Date());
-      var checkpointId = cleanString_(payload.checkpointId);
-      var existing = checkpointId ? fiveSCheckpointById_(checkpointId) : null;
-      if (checkpointId && !existing) throw new Error('ไม่พบจุดตรวจ 5.ส ที่ต้องการแก้ไข');
+      var checkpointGroupId = cleanString_(payload.checkpointGroupId);
+      var allRows = getRowsAsObjects(SHEET_NAMES.FIVE_S_CHECKPOINTS);
+      var existingRows = checkpointGroupId ? allRows.filter(function (row) {
+        return valuesEqual_(row.CheckpointGroupID, checkpointGroupId) ||
+          (!cleanString_(row.CheckpointGroupID) && valuesEqual_(row.CheckpointID, checkpointGroupId));
+      }) : [];
+      if (checkpointGroupId && !existingRows.length) throw new Error('ไม่พบชุดจุดตรวจ 5.ส ที่ต้องการแก้ไข');
+      if (!checkpointGroupId) checkpointGroupId = generateIdWithoutLock_('FSG', SHEET_NAMES.FIVE_S_CHECKPOINTS, 'CheckpointGroupID', getPeriodMonth(new Date()));
       var referencePhotoUrl = Object.prototype.hasOwnProperty.call(payload, 'referencePhotoURL')
         ? cleanString_(payload.referencePhotoURL)
-        : cleanString_(existing && existing.ReferencePhotoURL);
+        : cleanString_(existingRows[0] && existingRows[0].ReferencePhotoURL);
       if (referencePhotoUrl) {
+        var existingCheckpointIds = existingRows.map(function (row) { return cleanString_(row.CheckpointID); });
         var hasReferenceAttachment = getRowsAsObjects(SHEET_NAMES.ATTACHMENTS).some(function (attachment) {
           return valuesEqual_(attachment.RelatedType, 'FiveSCheckpoint') &&
-            valuesEqual_(attachment.RelatedID, checkpointId) &&
+            (valuesEqual_(attachment.RelatedID, checkpointGroupId) || existingCheckpointIds.some(function (id) { return valuesEqual_(attachment.RelatedID, id); })) &&
             valuesEqual_(attachment.FileType, 'Evidence') &&
             cleanString_(attachment.DriveFileURL) === referencePhotoUrl;
         });
         if (!hasReferenceAttachment) throw new Error('รูปอ้างอิงต้องอัปโหลดผ่านระบบก่อนบันทึก');
       }
-      var sortOrder = existing ? toNumber_(existing.SortOrder) : getRowsAsObjects(SHEET_NAMES.FIVE_S_CHECKPOINTS).reduce(function (max, row) {
+      var sortOrder = existingRows.length ? Math.min.apply(null, existingRows.map(function (row) { return toNumber_(row.SortOrder); })) : allRows.reduce(function (max, row) {
         return Math.max(max, toNumber_(row.SortOrder));
       }, 0) + 1;
-      var row = {
-        CheckpointID: checkpointId || generateIdWithoutLock_('FSC', SHEET_NAMES.FIVE_S_CHECKPOINTS, 'CheckpointID', getPeriodMonth(new Date())),
-        Category: category, CheckpointName: checkpointName, Area: area, StandardText: standardText,
-        ReferencePhotoURL: referencePhotoUrl,
-        Shift: shift.value, LeaderUserID: leader.UserID, LeaderName: leader.FullName,
-        ActiveStatus: activeStatus, SortOrder: sortOrder,
-        CreatedAt: existing ? existing.CreatedAt : timestamp,
-        CreatedBy: existing ? existing.CreatedBy : currentUser.UserID,
-        UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
-      };
-      if (existing) updateObjectById(SHEET_NAMES.FIVE_S_CHECKPOINTS, 'CheckpointID', checkpointId, row);
-      else appendObject(SHEET_NAMES.FIVE_S_CHECKPOINTS, row);
-      result = row;
+      var savedAssignments = activeShifts.map(function (shift) {
+        var assignment = assignmentsByShift[shift.value];
+        var existing = existingRows.filter(function (row) { return valuesEqual_(row.Shift, shift.value); })[0] || null;
+        var row = {
+          CheckpointID: existing ? cleanString_(existing.CheckpointID) : generateIdWithoutLock_('FSC', SHEET_NAMES.FIVE_S_CHECKPOINTS, 'CheckpointID', getPeriodMonth(new Date())),
+          CheckpointGroupID: checkpointGroupId, Category: category, CheckpointName: checkpointName,
+          Area: area, StandardText: standardText, ReferencePhotoURL: referencePhotoUrl,
+          Shift: shift.value, LeaderUserID: assignment.leader.UserID, LeaderName: assignment.leader.FullName,
+          ActiveStatus: activeStatus, SortOrder: sortOrder,
+          CreatedAt: existing ? existing.CreatedAt : timestamp,
+          CreatedBy: existing ? existing.CreatedBy : currentUser.UserID,
+          UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
+        };
+        if (existing) updateObjectById(SHEET_NAMES.FIVE_S_CHECKPOINTS, 'CheckpointID', row.CheckpointID, row);
+        else appendObject(SHEET_NAMES.FIVE_S_CHECKPOINTS, row);
+        return { CheckpointID: row.CheckpointID, Shift: row.Shift, LeaderUserID: row.LeaderUserID };
+      });
+      existingRows.filter(function (row) {
+        return !activeShifts.some(function (shift) { return valuesEqual_(shift.value, row.Shift); }) && isActive_(row.ActiveStatus);
+      }).forEach(function (row) {
+        row.CheckpointGroupID = checkpointGroupId;
+        row.ActiveStatus = 'Inactive';
+        row.UpdatedAt = timestamp;
+        row.UpdatedBy = currentUser.UserID;
+        updateObjectById(SHEET_NAMES.FIVE_S_CHECKPOINTS, 'CheckpointID', row.CheckpointID, row);
+      });
+      result = { checkpointGroupID: checkpointGroupId, checkpointIDs: savedAssignments.map(function (row) { return row.CheckpointID; }), assignments: savedAssignments };
     } finally { lock.releaseLock(); }
-    return jsonResponse(true, 'บันทึกจุดตรวจ 5.ส แล้ว', { checkpoint: result });
+    return jsonResponse(true, 'บันทึกจุดตรวจครบทุกกะแล้ว', result);
   } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
 }
 

@@ -6126,22 +6126,30 @@ function renderFiveSSummary(board) {
 }
 
 function renderFiveSSetup(setup) {
-  const shiftOptions = (setup.shifts || []).map(row => `<option value="${escapeAttr(row.value)}">${escapeHtml(row.label)}</option>`).join('');
-  const leaderOptions = (setup.leaders || []).map(row => `<option value="${escapeAttr(row.UserID)}">${escapeHtml(row.FullName || row.Username)}</option>`).join('');
-  const shiftSelect = $('#fiveSCheckpointShift');
-  const leaderSelect = $('#fiveSLeader');
-  const previousShift = shiftSelect.value;
-  const previousLeader = leaderSelect.value;
-  shiftSelect.innerHTML = '<option value="">เลือกกะ</option>' + shiftOptions;
-  leaderSelect.innerHTML = '<option value="">เลือก Leader</option>' + leaderOptions;
-  if ((setup.shifts || []).some(row => row.value === previousShift)) shiftSelect.value = previousShift;
-  if ((setup.leaders || []).some(row => row.UserID === previousLeader)) leaderSelect.value = previousLeader;
   const rows = setup.checkpoints || [];
-  $('#fiveSCheckpointTable').innerHTML = rows.length ? `<table class="five-s-table"><thead><tr><th>หัวข้อ 5.ส</th><th>จุดตรวจ / พื้นที่</th><th>กะ</th><th>Leader</th><th>สถานะ</th><th></th></tr></thead><tbody>${rows.map(row => `
+  $('#fiveSCheckpointTable').innerHTML = rows.length ? `<table class="five-s-table"><thead><tr><th>หัวข้อ 5.ส</th><th>จุดตรวจ / พื้นที่</th><th>กะ / Leader</th><th>สถานะ</th><th></th></tr></thead><tbody>${rows.map(row => `
     <tr><td>${escapeHtml(row.Category)}</td><td><strong>${escapeHtml(row.CheckpointName)}</strong><small>${escapeHtml(row.Area)} · ${escapeHtml(row.StandardText)}</small>${row.ReferencePhotoURL ? `<a class="five-s-reference-link" href="${escapeAttr(row.ReferencePhotoURL)}" target="_blank" rel="noopener"><img src="${escapeAttr(driveThumbnailUrl_(row.ReferencePhotoURL))}" alt="รูปอ้างอิง ${escapeAttr(row.CheckpointName)}" loading="lazy"><span>ดูรูปอ้างอิง</span></a>` : ''}</td>
-      <td>${escapeHtml(row.Shift)}</td><td>${escapeHtml(row.LeaderName)}</td><td><span class="five-s-status ${isActiveStatus(row.ActiveStatus) ? 'active' : 'inactive'}">${isActiveStatus(row.ActiveStatus) ? 'Active' : 'Inactive'}</span></td>
-      <td><button type="button" class="btn btn-outline btn-compact" data-five-s-edit="${escapeAttr(row.CheckpointID)}">แก้ไข</button></td></tr>`).join('')}</tbody></table>`
+      <td>${(row.ShiftAssignments || []).map(item => `<span class="five-s-assignment-summary"><strong>กะ ${escapeHtml(item.Shift)}</strong> · ${escapeHtml(item.LeaderName || 'ยังไม่กำหนด')}</span>`).join('')}</td><td><span class="five-s-status ${isActiveStatus(row.ActiveStatus) ? 'active' : 'inactive'}">${isActiveStatus(row.ActiveStatus) ? 'Active' : 'Inactive'}</span></td>
+      <td><button type="button" class="btn btn-outline btn-compact" data-five-s-edit="${escapeAttr(row.CheckpointGroupID)}">แก้ไข</button></td></tr>`).join('')}</tbody></table>`
     : '<div class="empty-state">ยังไม่มีจุดตรวจ กด “เพิ่มจุดตรวจ” เพื่อเริ่มกำหนดรายการ</div>';
+}
+
+function renderFiveSShiftAssignmentInputs(assignments = []) {
+  const shifts = state.fiveSSetup?.shifts || [];
+  const leaders = state.fiveSSetup?.leaders || [];
+  const assignedLeaderByShift = new Map((assignments || []).map(item => [String(item.Shift), String(item.LeaderUserID || '')]));
+  const target = $('#fiveSShiftAssignments');
+  if (!shifts.length) {
+    target.innerHTML = '<div class="empty-state">ไม่พบกะที่เปิดใช้งาน กรุณาตรวจสอบ Master List ก่อน</div>';
+    return;
+  }
+  target.innerHTML = shifts.map(shift => `
+    <label class="five-s-shift-assignment">กะ ${escapeHtml(shift.label)}
+      <select data-five-s-shift="${escapeAttr(shift.value)}" required>
+        <option value="">เลือก Leader ประจำกะนี้</option>
+        ${leaders.map(leader => `<option value="${escapeAttr(leader.UserID)}" ${assignedLeaderByShift.get(String(shift.value)) === String(leader.UserID) ? 'selected' : ''}>${escapeHtml(leader.FullName || leader.Username)}</option>`).join('')}
+      </select>
+    </label>`).join('');
 }
 
 function isActiveStatus(value) { return !['inactive', 'false', 'no', '0'].includes(String(value || '').trim().toLowerCase()); }
@@ -6149,14 +6157,13 @@ function isActiveStatus(value) { return !['inactive', 'false', 'no', '0'].includ
 function openFiveSCheckpointEditor(row = null) {
   const form = $('#fiveSCheckpointForm');
   form.reset();
-  $('#fiveSCheckpointId').value = row?.CheckpointID || '';
+  $('#fiveSCheckpointGroupId').value = row?.CheckpointGroupID || '';
   $('#fiveSCategory').value = row?.Category || '';
   $('#fiveSCheckpointName').value = row?.CheckpointName || '';
   $('#fiveSArea').value = row?.Area || '';
-  $('#fiveSCheckpointShift').value = row?.Shift || '';
-  $('#fiveSLeader').value = row?.LeaderUserID || '';
   $('#fiveSCheckpointStatus').value = row?.ActiveStatus || 'Active';
   $('#fiveSStandardText').value = row?.StandardText || '';
+  renderFiveSShiftAssignmentInputs(row?.ShiftAssignments || []);
   $('#fiveSReferencePhotoURL').value = row?.ReferencePhotoURL || '';
   $('#fiveSReferencePhoto').value = '';
   renderFiveSReferencePhotoPreview(row?.ReferencePhotoURL || '');
@@ -6171,7 +6178,7 @@ function closeFiveSCheckpointEditor() {
   preview.dataset.previewUrl = '';
   preview.innerHTML = '';
   $('#fiveSCheckpointForm').reset();
-  $('#fiveSCheckpointId').value = '';
+  $('#fiveSCheckpointGroupId').value = '';
   $('#fiveSReferencePhotoURL').value = '';
   $('#fiveSCheckpointForm').classList.add('hidden');
   $('#fiveSCheckpointFormError').classList.add('hidden');
@@ -6180,39 +6187,42 @@ function closeFiveSCheckpointEditor() {
 async function saveFiveSCheckpointFromForm() {
   const errorEl = $('#fiveSCheckpointFormError');
   errorEl.classList.add('hidden');
-  let savedCheckpointId = $('#fiveSCheckpointId').value;
+  let savedCheckpointGroupId = $('#fiveSCheckpointGroupId').value;
   let checkpointSaved = false;
   try {
     showLoading('กำลังบันทึกจุดตรวจ 5.ส...');
     const payload = {
-      checkpointId: savedCheckpointId,
+      checkpointGroupId: savedCheckpointGroupId,
       category: $('#fiveSCategory').value,
       checkpointName: $('#fiveSCheckpointName').value.trim(),
       area: $('#fiveSArea').value.trim(), standardText: $('#fiveSStandardText').value.trim(),
-      shift: $('#fiveSCheckpointShift').value, leaderUserId: $('#fiveSLeader').value,
+      shiftAssignments: Array.from($('#fiveSShiftAssignments').querySelectorAll('[data-five-s-shift]')).map(select => ({
+        shift: select.dataset.fiveSShift, leaderUserId: select.value
+      })),
       activeStatus: $('#fiveSCheckpointStatus').value,
       referencePhotoURL: $('#fiveSReferencePhotoURL').value
     };
     const firstSave = await apiCall('saveFiveSCheckpoint', payload);
     checkpointSaved = true;
-    savedCheckpointId = firstSave.checkpoint?.CheckpointID || savedCheckpointId;
-    if (!savedCheckpointId) throw new Error('บันทึกจุดตรวจแล้ว แต่ไม่ได้รับรหัสจุดตรวจ กรุณารีเฟรชก่อนลองอีกครั้ง');
-    $('#fiveSCheckpointId').value = savedCheckpointId;
+    savedCheckpointGroupId = firstSave.checkpointGroupID || savedCheckpointGroupId;
+    const referenceAttachmentCheckpointId = firstSave.checkpointIDs?.[0] || '';
+    if (!savedCheckpointGroupId || !referenceAttachmentCheckpointId) throw new Error('บันทึกจุดตรวจแล้ว แต่ไม่ได้รับรหัสชุดจุดตรวจ กรุณารีเฟรชก่อนลองอีกครั้ง');
+    $('#fiveSCheckpointGroupId').value = savedCheckpointGroupId;
     const file = $('#fiveSReferencePhoto').files?.[0];
     if (file) {
-      const uploaded = await uploadFiveSCheckpointReferencePhoto(file, savedCheckpointId);
+      const uploaded = await uploadFiveSCheckpointReferencePhoto(file, referenceAttachmentCheckpointId);
       if (!uploaded.DriveFileURL) throw new Error('อัปโหลดรูปแล้วแต่ไม่ได้รับลิงก์รูป กรุณาลองบันทึกอีกครั้ง');
       $('#fiveSReferencePhotoURL').value = uploaded.DriveFileURL;
       $('#fiveSReferencePhoto').value = '';
       renderFiveSReferencePhotoPreview(uploaded.DriveFileURL);
-      await apiCall('saveFiveSCheckpoint', { ...payload, checkpointId: savedCheckpointId, referencePhotoURL: uploaded.DriveFileURL });
+      await apiCall('saveFiveSCheckpoint', { ...payload, checkpointGroupId: savedCheckpointGroupId, referencePhotoURL: uploaded.DriveFileURL });
     }
     closeFiveSCheckpointEditor();
     showToast('บันทึกจุดตรวจ 5.ส แล้ว', 'success');
     await loadFiveSPage();
   } catch (error) {
     errorEl.textContent = checkpointSaved
-      ? `บันทึกข้อมูลจุดตรวจแล้ว แต่รูปอ้างอิงยังไม่เสร็จ: ${error.message || 'กรุณาตรวจสอบแล้วกดบันทึกอีกครั้ง'}`
+      ? `บันทึกจุดตรวจแล้ว แต่การตั้งค่ารูปอ้างอิงยังไม่เสร็จ: ${error.message || 'กรุณาตรวจสอบแล้วกดบันทึกอีกครั้ง'}`
       : (error.message || 'บันทึกจุดตรวจไม่สำเร็จ');
     errorEl.classList.remove('hidden');
   } finally { hideLoading(); }
@@ -6237,7 +6247,7 @@ function handleFiveSReferencePhotoChange(event) {
 function handleFiveSCheckpointTableClick(event) {
   const button = event.target.closest('[data-five-s-edit]');
   if (!button) return;
-  const row = state.fiveSSetup?.checkpoints?.find(item => item.CheckpointID === button.dataset.fiveSEdit);
+  const row = state.fiveSSetup?.checkpoints?.find(item => item.CheckpointGroupID === button.dataset.fiveSEdit);
   if (row) openFiveSCheckpointEditor(row);
 }
 

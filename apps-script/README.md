@@ -110,7 +110,7 @@ HTTP status codes are not used to distinguish API errors because Apps Script `Co
 
 ## Daily 5S inspections
 
-- Admin or an individually authorized user (`fiveS.checkpoint.manage`) assigns each checkpoint to an active Leader and shift, with a 5S category, area, and inspection standard. An optional location reference photo is stored in the `FiveSCheckpoints` row and its Drive metadata is recorded in `Attachments` as `FiveSCheckpoint`. Leaders can view that reference while inspecting and still submit a separate mandatory evidence photo with each Pass or Need Action result; a note is also required for Need Action.
+- Admin or an individually authorized user (`fiveS.checkpoint.manage`) assigns every active shift's checkpoint to an active Leader, with a 5S category, area, and inspection standard. Saving is rejected unless every active shift has a selected Leader. Each assignment is stored as a row in `FiveSCheckpoints`, linked by `CheckpointGroupID`; active assignments appear as due every day and require the assigned Leader to submit a result and evidence photo. An optional location reference photo is shared by the group and its Drive metadata is recorded in `Attachments` as `FiveSCheckpoint`. A note is also required for Need Action.
 - The daily result, assigned shift and Leader, remark, and evidence-photo reference are stored in `FiveSInspections`. Images are stored in the configured Google Drive `EVIDENCE_FOLDER_ID` folder; inspection evidence metadata is recorded in `Attachments` as `FiveSInspection`. Inspection uploads are accepted only for today's active checkpoint assigned to that Leader.
 - Admin, Manager, Supervisor, and Engineer can view daily progress and evidence across shifts. Leaders can view and submit their assigned checkpoints.
 

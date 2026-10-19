@@ -1103,6 +1103,14 @@ body.mtg-tv-open{overflow:hidden}
 .five-s-table th{background:var(--gray-bg);font-size:.75rem;color:var(--muted);white-space:nowrap}
 .five-s-table td strong,.five-s-table td small{display:block;line-height:1.5;overflow-wrap:anywhere}
 .five-s-table td small{margin-top:3px;color:var(--muted);font-size:.76rem;white-space:pre-line}
+.five-s-assignment-section{padding:14px;border:1px solid var(--border);border-radius:12px;background:var(--gray-bg)}
+.five-s-assignment-section h4{margin:0;font-size:.98rem}
+.five-s-assignment-section>p{margin:5px 0 12px;color:var(--muted);font-size:.82rem;line-height:1.5}
+.five-s-shift-assignments{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.five-s-shift-assignment{min-width:0;padding:12px;border:1px solid var(--border);border-radius:10px;background:#fff;font-weight:750}
+.five-s-shift-assignment select{margin-top:7px}
+.five-s-assignment-summary{display:block;margin:2px 0;line-height:1.5}
+.five-s-assignment-summary strong{display:inline}
 .btn-compact{padding:6px 10px;font-size:.78rem;white-space:nowrap}
 @media (max-width:800px){.five-s-summary{grid-template-columns:1fr}.five-s-table{min-width:720px}}
 @media (max-width:560px){.five-s-checkpoint-card{padding:14px}.five-s-card-head{gap:8px}.five-s-card-head h4{font-size:1rem}.five-s-status{font-size:.7rem;padding:4px 8px}.five-s-stat{padding:15px}.five-s-audit-form .form-grid{grid-template-columns:1fr}.five-s-photo img{height:120px}}
