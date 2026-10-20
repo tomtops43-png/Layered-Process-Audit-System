@@ -9,7 +9,7 @@
   <!-- The first API call happens seconds after load; warm the TLS connection now. -->
   <link rel="preconnect" href="https://script.google.com" crossorigin>
   <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
-  <link rel="stylesheet" href="style.css?v=20261020-training-print-layout-v4">
+  <link rel="stylesheet" href="style.css?v=20261020-meeting-photo-order-v1">
 </head>
 <body>
   <div id="publicQuizView" class="login-view public-quiz-view hidden">
@@ -494,7 +494,7 @@
         <label>ความสำคัญ<select id="meetingPostPriority"><option value="ปกติ" selected>ปกติ</option><option value="สำคัญ">สำคัญ</option><option value="ด่วน">ด่วน</option></select></label>
         <label class="check-label hidden" id="meetingPostPinnedField"><input id="meetingPostPinned" type="checkbox"> 📌 ปักหมุด (แสดงทุกวันจนกว่าจะจบเรื่อง)</label>
         <label class="full-width">หัวข้อ *<input id="meetingPostTopic" required maxlength="200" placeholder="เช่น เครื่อง XX มีปัญหา / ประกาศเรื่อง..."></label>
-        <label class="full-width">รายละเอียด<textarea id="meetingPostDetail" rows="5" placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)&#10;&#10;พิมพ์ --- คั่นบรรทัด เพื่อแยกเป็นหลายสไลด์ตอนฉายจอ TV"></textarea><small class="field-help">💡 พิมพ์ <b>---</b> (ขีดสามตัว) ไว้บรรทัดเดียว เพื่อแบ่งเนื้อหาเป็นหลายสไลด์ในโหมด TV — หัวข้อเดิมจะค้างทุกสไลด์<br>📷 อยากให้รูปไหนอยู่สไลด์ไหน พิมพ์ <b>[รูป1]</b> <b>[รูป2]</b> ในตำแหน่งเนื้อหาที่ต้องการแทรกรูป (ดูเลขรูปได้จากใต้ภาพหลังอัปโหลด) — รูปจะปรากฏตรง marker นั้นในสไลด์; รูปที่ยังไม่ได้กำหนดจุดจะแยกเป็นสไลด์ท้ายหัวข้อ; หากไม่ได้กำหนดรูปเลย จะรวมรูปไว้ท้ายหัวข้อ เมื่อเลื่อนหรือลบรูป เลขอ้างอิงจะปรับตามรูปให้อัตโนมัติ</small></label>
+        <label class="full-width">รายละเอียด<textarea id="meetingPostDetail" rows="5" placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)&#10;&#10;พิมพ์ --- คั่นบรรทัด เพื่อแยกเป็นหลายสไลด์ตอนฉายจอ TV"></textarea><small class="field-help">💡 พิมพ์ <b>---</b> (ขีดสามตัว) ไว้บรรทัดเดียว เพื่อแบ่งเนื้อหาเป็นหลายสไลด์ในโหมด TV — หัวข้อเดิมจะค้างทุกสไลด์<br>📷 อยากให้รูปไหนอยู่สไลด์ไหน พิมพ์ <b>[รูป1]</b> <b>[รูป2]</b> ในตำแหน่งเนื้อหาที่ต้องการแทรกรูป (ดูเลขรูปได้จากใต้ภาพหลังอัปโหลด) — รูปจะปรากฏตรง marker นั้นในสไลด์; รูปที่ยังไม่ได้กำหนดจุดจะแยกเป็นสไลด์ท้ายหัวข้อ; หากไม่ได้กำหนดรูปเลย จะรวมรูปไว้ท้ายหัวข้อ เมื่อเลื่อนรูปจะเปลี่ยนภาพตามลำดับเลขใหม่ ส่วนลบรูปจะปรับเลขอ้างอิงที่เหลือให้อัตโนมัติ</small></label>
         <div id="trainingFields" class="training-editor-fields form-grid full-width hidden">
           <label>เวลา Training<input id="meetingTrainingTime" type="time"></label>
           <label>สถานที่ Training<input id="meetingTrainingPlace" maxlength="160" placeholder="เช่น Assembly H9 / Team A"></label>
@@ -549,6 +549,6 @@
   <section id="trainingPrintRoot" class="hidden" aria-hidden="true"></section>
   <script src="config.js" defer></script>
   <script src="vendor/qrcode.js" defer></script>
-  <script src="app.js?v=20261020-training-print-layout-v4" defer></script>
+  <script src="app.js?v=20261020-meeting-photo-order-v1" defer></script>
 </body>
 </html>

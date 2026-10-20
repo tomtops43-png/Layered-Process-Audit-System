@@ -4300,9 +4300,9 @@ function moveMeetingPhoto(idx, dir) {
   const items = state.meetingPhotoItems;
   const j = idx + dir;
   if (j < 0 || j >= items.length) return;
-  const previousItems = items.slice();
+  // Markers point to ordered slots: moving a photo should change the image
+  // shown at [รูปN], while leaving the marker at that slide position.
   [items[idx], items[j]] = [items[j], items[idx]];
-  remapMeetingPhotoReferences(previousItems, items);
   renderMeetingPhotoManager();
 }
 
@@ -4414,7 +4414,11 @@ async function saveMeetingPostFromForm() {
     }
     const originalUrls = meetingPhotoList(data.post || {});
     if (savedId && finalUrls.join(', ') !== originalUrls.join(', ')) {
-      await apiCall('saveMeetingPost', { postId: savedId, photoUrl: finalUrls.join(', ') });
+      const photoUpdate = await apiCall('saveMeetingPost', { postId: savedId, photoUrl: finalUrls.join(', ') });
+      const persistedUrls = meetingPhotoList(photoUpdate.post || {});
+      if (persistedUrls.join('\n') !== finalUrls.join('\n')) {
+        throw new Error('บันทึกลำดับรูปไม่สำเร็จ กรุณาลองบันทึกอีกครั้ง');
+      }
     }
     // PPT / PDF slide file: upload a new one, or clear the existing one.
     if (slideFile && savedId) {
