@@ -3031,14 +3031,10 @@ function trainingPrintDetailHtml(row) {
       return `<figure class="training-print-photo"><img src="${escapeAttr(driveThumbnailUrl_(url, 1200))}" alt="รูปที่ ${number}"><figcaption>รูปที่ ${number}</figcaption></figure>`;
     });
     const sectionLabel = slide.sectionCount > 1
-      ? `<p class="training-print-detail-label">${slide.isUnassignedPhotos ? 'รูปที่ยังไม่ได้ระบุตำแหน่งในรายละเอียด' : `เนื้อหา ${index + 1}`}</p>`
+      ? `<p class="training-print-detail-label">${slide.isUnassignedPhotos ? 'รูปที่ยังไม่ได้ระบุตำแหน่งในรายละเอียด' : `สไลด์ ${index + 1}`}</p>`
       : '';
     return `<div class="training-print-detail-section">${sectionLabel}<div class="training-print-detail-text">${textHtml}</div>${loosePhotos.join('')}</div>`;
   }).join('');
-}
-
-function trainingAttendanceRows(count = 16) {
-  return Array.from({ length: count }, (_, index) => `<tr><td>${index + 1}</td><td></td><td></td><td></td><td></td></tr>`).join('');
 }
 
 async function printTrainingRecord(postId, { includeSlides = true, rowOverride = null } = {}) {
@@ -3056,15 +3052,9 @@ async function printTrainingRecord(postId, { includeSlides = true, rowOverride =
         <tr><th>Training and implementation unit</th><td>${escapeHtml(row.TrainingUnit || row.LineName || row.LineID || '') || '&nbsp;'}</td><th>Trainer</th><td>${escapeHtml(row.TrainerName || row.CreatedByName || '') || '&nbsp;'}</td></tr>
         <tr><th colspan="4">Signed:</th></tr>
         <tr><th colspan="4">Planned training?： <span class="training-record-checks">${String(row.TrainingPlanned || 'Yes').toLowerCase() === 'no' ? '☐ Yes　　 ☒ No，But recorded' : '☒ Yes　　 ☐ No，But recorded'}</span></th></tr>
-        <tr><th colspan="4">Training implementation effect:<br><span class="training-record-effect">${escapeHtml(row.TrainingEffect || '____________________________________________________________').replace(/\n/g, '<br>')}</span></th></tr>
+        <tr><th colspan="4">Training implementation effect:<br><span class="training-record-effect">${row.TrainingEffect ? escapeHtml(row.TrainingEffect).replace(/\n/g, '<br>') : '&nbsp;'}</span></th></tr>
       </tbody></table>
     </article>
-    <section class="training-print-attendance">
-      <h1>Training attendance / พนักงานลงชื่อรับการ Training</h1>
-      <div class="training-attendance-heading"><strong>${escapeHtml(row.Topic || '-')}</strong><span>${dateAndTime}</span></div>
-      <table class="training-sign-table"><thead><tr><th>No.</th><th>Employee name / ชื่อ-นามสกุล</th><th>Employee ID</th><th>Shift / Unit</th><th>Signature / ลายเซ็น</th></tr></thead><tbody>${trainingAttendanceRows()}</tbody></table>
-      <p class="training-print-foot">เอกสารนี้ใช้บันทึกว่าพนักงานได้รับการ Training ตามหัวข้อและวันที่ข้างต้น</p>
-    </section>
     ${includeSlides ? `<section class="training-print-slides"><h2>Training slides / เนื้อหาที่ใช้ฝึกอบรม</h2>${slides.length ? slides.map((slide, index) => trainingPrintSlideHtml(slide, index, row)).join('') : '<p>ไม่มีรายละเอียด รูป หรือไฟล์สไลด์แนบ</p>'}</section>` : ''}`;
   printRoot.classList.remove('hidden');
   printRoot.style.cssText = 'display:block;position:fixed;left:-10000px;top:0;width:210mm;visibility:hidden;';
