@@ -61,6 +61,7 @@ const state = {
   editingFinding: null,
   meetingPosts: [],
   meetingCarryOver: [],
+  trainingRecords: [],
   meetingCanCreate: false,
   meetingCanManage: false,
   meetingCanManageQuiz: false,
@@ -213,6 +214,14 @@ function bindEvents() {
     if (rule) openAuditRuleEditor(rule);
   });
   $('#addMeetingPostButton').addEventListener('click', () => openMeetingEditor());
+  $('#addTrainingRecordButton').addEventListener('click', () => openMeetingEditor('', 'Training'));
+  $('#trainingRefreshButton').addEventListener('click', loadTrainingPage);
+  $('#loadTrainingRecordsButton').addEventListener('click', loadTrainingPage);
+  $('#trainingDateFrom').addEventListener('change', loadTrainingPage);
+  $('#trainingDateTo').addEventListener('change', loadTrainingPage);
+  $('#trainingSearch').addEventListener('input', renderTrainingArchive);
+  $('#trainingArchive').addEventListener('click', handleTrainingArchiveClick);
+  $('#meetingPostType').addEventListener('change', syncMeetingEditorType);
   $('#meetingTvButton').addEventListener('click', openMeetingTv);
   document.addEventListener('keydown', event => {
     if ($('#meetingTv').classList.contains('hidden') || document.querySelector('dialog[open]')) return;
@@ -223,6 +232,7 @@ function bindEvents() {
   document.addEventListener('fullscreenchange', () => {
     if (!document.fullscreenElement && !$('#meetingTv').classList.contains('hidden')) closeMeetingTv();
   });
+  window.addEventListener('afterprint', clearTrainingPrintView);
   $('#loadMeetingPostsButton').addEventListener('click', () => loadMeetingBoard());
   $('#meetingDate').addEventListener('change', () => loadMeetingBoard());
   $('#meetingForm').addEventListener('submit', event => { event.preventDefault(); saveMeetingPostFromForm(); });
@@ -2910,6 +2920,144 @@ const MEETING_CATEGORY_META = {
   'ทั่วไป': { icon: '📋', cls: 'mtg-cat-general' }
 };
 
+async function loadTrainingPage() {
+  const container = $('#trainingArchive');
+  if (!container) return;
+  container.innerHTML = '<div class="empty-state">กำลังโหลดประวัติ Training...</div>';
+  const payload = { includeHistory: true, contentType: 'Training' };
+  if ($('#trainingDateFrom').value) payload.dateFrom = $('#trainingDateFrom').value;
+  if ($('#trainingDateTo').value) payload.dateTo = $('#trainingDateTo').value;
+  try {
+    const data = await apiCall('getMeetingPosts', payload, { priority: 'high' });
+    state.trainingRecords = data.posts || [];
+    renderTrainingArchive();
+  } catch (error) {
+    state.trainingRecords = [];
+    $('#trainingArchiveSummary').innerHTML = '';
+    container.innerHTML = emptyHtml(error.message || 'โหลดประวัติ Training ไม่สำเร็จ');
+    showToast(error.message || 'โหลดประวัติ Training ไม่สำเร็จ', 'error');
+  }
+}
+
+function trainingRecordSlidesHtml(row) {
+  const images = String(row.SlideImageURLs || '').split(',').map(url => url.trim()).filter(Boolean);
+  const imageSlides = images.length
+    ? `<div class="training-slide-gallery">${images.map((url, index) => `<figure><img src="${escapeAttr(driveThumbnailUrl_(url, 900))}" alt="สไลด์ Training ${index + 1}" loading="lazy"><figcaption>สไลด์ ${index + 1}</figcaption></figure>`).join('')}</div>`
+    : '';
+  const fileId = meetingDriveFileId(row.SlideFileURL);
+  const filePreview = row.SlideFileURL
+    ? `<div class="training-slide-file"><a href="${escapeAttr(row.SlideFileURL)}" target="_blank" rel="noopener">📊 เปิดไฟล์สไลด์ต้นฉบับ${row.SlideFileName ? ' · ' + escapeHtml(row.SlideFileName) : ''}</a>${!images.length && fileId ? `<iframe title="พรีวิวสไลด์ Training" src="https://drive.google.com/file/d/${escapeAttr(fileId)}/preview" loading="lazy" allowfullscreen></iframe>` : ''}</div>`
+    : '';
+  return `${meetingDetailHtml(row.Detail, meetingPhotoList(row).length)}${meetingPhotoGallery(row.PhotoURL)}${imageSlides}${filePreview}`;
+}
+
+function trainingRecordCardHtml(row) {
+  const details = [formatDate(row.MeetingDate)];
+  if (row.TrainingTime) details.push(row.TrainingTime);
+  if (row.TrainingUnit) details.push(row.TrainingUnit);
+  if (row.Shift) details.push('กะ ' + row.Shift);
+  if (row.LineName || row.LineID) details.push(row.LineName || row.LineID);
+  const trainer = row.TrainerName || row.CreatedByName || '';
+  const summaryText = row.TrainingEffect ? `<div class="training-effect"><strong>ผลการ Training</strong><p>${escapeHtml(row.TrainingEffect)}</p></div>` : '';
+  const actions = [
+    `<button type="button" class="btn btn-outline" data-training-print="${escapeAttr(row.PostID)}">🖨 พิมพ์แบบบันทึกและสไลด์</button>`,
+    row.CanEdit ? `<button type="button" class="btn btn-outline" data-training-edit="${escapeAttr(row.PostID)}">แก้ไข</button>` : ''
+  ].filter(Boolean).join('');
+  return `<article class="training-record-card">
+    <div class="training-card-heading"><span class="training-type-chip">🎓 TRAINING</span><span class="training-card-date">${escapeHtml(formatDate(row.MeetingDate))}</span></div>
+    <h3>${escapeHtml(row.Topic || 'Training')}</h3>
+    <p class="training-card-meta">${details.slice(1).map(escapeHtml).join(' · ')}${trainer ? `${details.length > 1 ? ' · ' : ''}ผู้ให้ Training ${escapeHtml(trainer)}` : ''}</p>
+    ${summaryText}
+    <details class="training-review"><summary>ทบทวนเนื้อหาและสไลด์</summary><div class="training-review-content">${trainingRecordSlidesHtml(row) || '<p class="muted">ยังไม่มีรายละเอียดหรือไฟล์สไลด์</p>'}</div></details>
+    ${actions ? `<div class="training-card-actions">${actions}</div>` : ''}
+  </article>`;
+}
+
+function renderTrainingArchive() {
+  const container = $('#trainingArchive');
+  if (!container) return;
+  const query = String($('#trainingSearch')?.value || '').trim().toLocaleLowerCase();
+  const rows = (state.trainingRecords || []).filter(row => {
+    if (!query) return true;
+    return [row.Topic, row.Detail, row.TrainingUnit, row.TrainingPlace, row.TrainerName, row.TrainingEffect]
+      .some(value => String(value || '').toLocaleLowerCase().includes(query));
+  });
+  $('#trainingArchiveSummary').innerHTML = `<div class="training-summary-card"><strong>${rows.length}</strong><span>รายการ Training${query ? ' ที่ตรงกับคำค้น' : ''}</span></div>`;
+  container.innerHTML = rows.length ? rows.map(trainingRecordCardHtml).join('') : emptyHtml(query ? 'ไม่พบรายการที่ตรงกับคำค้น' : 'ยังไม่มีประวัติ Training เลือกโหมด Training ตอนเพิ่มหัวข้อจากหน้า Meeting');
+}
+
+function handleTrainingArchiveClick(event) {
+  const print = event.target.closest('[data-training-print]');
+  if (print) return printTrainingRecord(print.dataset.trainingPrint);
+  const edit = event.target.closest('[data-training-edit]');
+  if (edit) return openMeetingEditor(edit.dataset.trainingEdit, 'Training');
+}
+
+function trainingPrintSlideHtml(slide, index, row) {
+  if (slide.isPpt) {
+    return `<article class="training-print-slide"><p class="training-print-slide-label">สไลด์ ${index + 1} · หน้า ${slide.pptPage}/${slide.pptTotal}</p><img src="${escapeAttr(driveThumbnailUrl_(slide.pptUrl, 1600))}" alt="สไลด์ Training หน้า ${slide.pptPage}"></article>`;
+  }
+  if (slide.isDoc) {
+    const fileId = meetingDriveFileId(slide.docUrl);
+    const previewUrl = fileId ? `https://drive.google.com/file/d/${fileId}/preview` : slide.docUrl;
+    return `<article class="training-print-slide"><p class="training-print-slide-label">ไฟล์สไลด์แนบ · ${escapeHtml(slide.docName || row.SlideFileName || 'เอกสารประกอบ')}</p><iframe title="ไฟล์สไลด์ Training" src="${escapeAttr(previewUrl)}"></iframe><a href="${escapeAttr(slide.docUrl)}" target="_blank" rel="noopener">เปิดไฟล์ต้นฉบับ</a></article>`;
+  }
+  const photos = (slide.photos || []).map((url, i) => `<img src="${escapeAttr(driveThumbnailUrl_(url, 1200))}" alt="รูปประกอบ ${i + 1}">`).join('');
+  return `<article class="training-print-slide"><p class="training-print-slide-label">เนื้อหา Training · สไลด์ ${index + 1}</p>${slide.sectionText ? `<div class="training-print-slide-text">${escapeHtml(slide.sectionText)}</div>` : ''}${photos}</article>`;
+}
+
+function trainingAttendanceRows(count = 16) {
+  return Array.from({ length: count }, (_, index) => `<tr><td>${index + 1}</td><td></td><td></td><td></td><td></td></tr>`).join('');
+}
+
+async function printTrainingRecord(postId) {
+  const row = (state.trainingRecords || []).find(item => String(item.PostID) === String(postId)) || findMeetingPost(postId);
+  if (!row) return showToast('ไม่พบรายการ Training นี้', 'error');
+  const dateAndTime = `${formatDate(row.MeetingDate)}${row.TrainingTime ? ' · ' + escapeHtml(row.TrainingTime) : ''}`;
+  const slides = meetingTvPostSlides([{ row, carry: false }]);
+  const printRoot = $('#trainingPrintRoot');
+  printRoot.innerHTML = `<article class="training-print-form">
+      <p class="training-print-eyebrow">TRAINING RECORD</p><h1>Training implementation effect record sheet</h1>
+      <div class="training-print-facts">
+        <div><span>Training program</span><strong>${escapeHtml(row.Topic || '-')}</strong></div>
+        <div><span>Training Date (date, hour)</span><strong>${dateAndTime}</strong></div>
+        <div><span>Training place</span><strong>${escapeHtml(row.TrainingPlace || '-')}</strong></div>
+        <div><span>Training and implementation unit</span><strong>${escapeHtml(row.TrainingUnit || row.LineName || row.LineID || '-')}</strong></div>
+        <div><span>Trainer</span><strong>${escapeHtml(row.TrainerName || row.CreatedByName || '-')}</strong></div>
+        <div><span>Training topic / brief introduction</span><strong>${escapeHtml(row.Detail || '-').replace(/\n/g, '<br>')}</strong></div>
+        <div><span>Planned training?</span><strong>${String(row.TrainingPlanned || 'Yes').toLowerCase() === 'no' ? '☐ Yes　 ☒ No' : '☒ Yes　 ☐ No'}</strong></div>
+        <div><span>Training implementation effect</span><strong>${escapeHtml(row.TrainingEffect || '________________________________________________________')}</strong></div>
+      </div>
+      <div class="training-print-signature"><span>Trainer signature: __________________________________</span><span>Date: ____________________</span></div>
+      <h2>Training attendance / พนักงานลงชื่อรับการ Training</h2>
+      <table class="training-sign-table"><thead><tr><th>No.</th><th>Employee name / ชื่อ-นามสกุล</th><th>Employee ID</th><th>Shift / Unit</th><th>Signature / ลายเซ็น</th></tr></thead><tbody>${trainingAttendanceRows()}</tbody></table>
+      <p class="training-print-foot">เอกสารนี้ใช้บันทึกว่าพนักงานได้รับการ Training ตามหัวข้อและวันที่ข้างต้น</p>
+    </article>
+    <section class="training-print-slides"><h2>Training slides / เนื้อหาที่ใช้ฝึกอบรม</h2>${slides.length ? slides.map((slide, index) => trainingPrintSlideHtml(slide, index, row)).join('') : '<p>ไม่มีรายละเอียด รูป หรือไฟล์สไลด์แนบ</p>'}</section>`;
+  printRoot.classList.remove('hidden');
+  printRoot.style.cssText = 'display:block;position:fixed;left:-10000px;top:0;width:210mm;visibility:hidden;';
+  document.body.classList.add('training-printing');
+  const imageLoads = Array.from(printRoot.querySelectorAll('img')).map(image => image.complete
+    ? Promise.resolve()
+    : new Promise(resolve => {
+      image.addEventListener('load', resolve, { once: true });
+      image.addEventListener('error', resolve, { once: true });
+    }));
+  await Promise.race([Promise.all(imageLoads), new Promise(resolve => window.setTimeout(resolve, 5000))]);
+  printRoot.style.cssText = '';
+  window.print();
+}
+
+function clearTrainingPrintView() {
+  document.body.classList.remove('training-printing');
+  const printRoot = $('#trainingPrintRoot');
+  if (printRoot) {
+    printRoot.classList.add('hidden');
+    printRoot.style.cssText = '';
+    printRoot.innerHTML = '';
+  }
+}
+
 function meetingCategoryMeta(category) {
   return MEETING_CATEGORY_META[String(category || '').trim()] || MEETING_CATEGORY_META['ทั่วไป'];
 }
@@ -3024,7 +3172,7 @@ function renderMeetingBoard() {
   const carryOver = state.meetingCarryOver;
   const discussed = posts.filter(p => ['discussed', 'closed'].includes(String(p.Status || '').toLowerCase())).length;
   const progress = posts.length
-    ? `<div class="mtg-progress${discussed >= posts.length ? ' mtg-progress-done' : ''}">คุยแล้ว ${discussed} จาก ${posts.length} หัวข้อ${discussed >= posts.length ? ' ✅' : ''}</div>`
+    ? `<div class="mtg-progress${discussed >= posts.length ? ' mtg-progress-done' : ''}">คุย/Training แล้ว ${discussed} จาก ${posts.length} หัวข้อ${discussed >= posts.length ? ' ✅' : ''}</div>`
     : '';
   const shownQuizDates = new Set();
   const renderDailyPostCard = (row, isCarry) => {
@@ -3061,6 +3209,7 @@ function meetingAckSectionHtml(row) {
 }
 
 function meetingPostCardHtml(row, isCarry, showQuizActions = true) {
+  const isTraining = String(row.ContentType || '').toLowerCase() === 'training';
   const cat = meetingCategoryMeta(row.Category);
   const status = String(row.Status || 'Open').toLowerCase();
   const statusMeta = status === 'closed' ? { label: 'จบเรื่อง', cls: 'status-closed' } :
@@ -3068,10 +3217,11 @@ function meetingPostCardHtml(row, isCarry, showQuizActions = true) {
   const priority = String(row.Priority || 'ปกติ');
   const priorityChip = priority === 'ด่วน' ? '<span class="mtg-priority mtg-priority-urgent">ด่วน</span>' :
     priority === 'สำคัญ' ? '<span class="mtg-priority mtg-priority-important">สำคัญ</span>' : '';
+  const completionLabel = isTraining ? 'Training แล้ว' : 'คุยแล้ว';
   const canTick = state.meetingCanCreate;
   const actions = [];
-  if (canTick && status === 'open') actions.push(`<button class="btn btn-secondary" data-mtg-status="Discussed" data-mtg-id="${escapeAttr(row.PostID)}">✓ คุยแล้ว</button>`);
-  if (canTick && status === 'discussed') actions.push(`<button class="btn btn-outline" data-mtg-status="Closed" data-mtg-id="${escapeAttr(row.PostID)}">จบเรื่อง</button>`);
+  if (canTick && status === 'open') actions.push(`<button class="btn btn-secondary" data-mtg-status="Discussed" data-mtg-id="${escapeAttr(row.PostID)}">✓ ${completionLabel}</button>`);
+  if (canTick && status === 'discussed') actions.push(`<button class="btn btn-outline" data-mtg-status="Closed" data-mtg-id="${escapeAttr(row.PostID)}">${isTraining ? 'ปิด Training' : 'จบเรื่อง'}</button>`);
   if (canTick && status !== 'open') actions.push(`<button class="btn btn-ghost" data-mtg-status="Open" data-mtg-id="${escapeAttr(row.PostID)}">↩ รอคุย</button>`);
   const quiz = row.MeetingQuiz || {};
   if (showQuizActions) {
@@ -3092,6 +3242,7 @@ function meetingPostCardHtml(row, isCarry, showQuizActions = true) {
     <div class="mtg-head">
       <div class="mtg-head-left">
         ${isMeetingPinned(row) ? '<span class="mtg-pin" title="ปักหมุด">📌</span>' : ''}
+        ${isTraining ? '<span class="training-type-chip">🎓 TRAINING</span>' : ''}
         <span class="mtg-cat-chip ${cat.cls}">${cat.icon} ${escapeHtml(row.Category || 'ทั่วไป')}</span>
         ${priorityChip}
         ${isCarry ? `<span class="mtg-carry-chip">ค้างจาก ${formatDate(row.MeetingDate)}</span>` : ''}
@@ -3995,12 +4146,14 @@ function meetingPhotoGallery(urlCsv) {
 
 function findMeetingPost(postId) {
   return state.meetingPosts.find(p => p.PostID === postId) ||
-    state.meetingCarryOver.find(p => p.PostID === postId) || null;
+    state.meetingCarryOver.find(p => p.PostID === postId) ||
+    state.trainingRecords.find(p => p.PostID === postId) || null;
 }
 
-function openMeetingEditor(postId = '') {
+function openMeetingEditor(postId = '', defaultContentType = 'Meeting') {
   const row = postId ? findMeetingPost(postId) : null;
   state.editingMeetingPost = row;
+  $('#meetingPostType').value = row ? (String(row.ContentType || '').toLowerCase() === 'training' ? 'Training' : 'Meeting') : defaultContentType;
   $('#meetingDialogTitle').textContent = row ? `แก้ไขหัวข้อ ${row.PostID}` : 'เพิ่มหัวข้อประชุม';
   $('#meetingPostId').value = row ? row.PostID : '';
   $('#meetingPostDate').value = row ? String(row.MeetingDate || '').slice(0, 10) : ($('#meetingDate').value || localDateInput(new Date()));
@@ -4013,6 +4166,12 @@ function openMeetingEditor(postId = '') {
   $('#meetingPostPinned').checked = row ? isMeetingPinned(row) : false;
   $('#meetingPostTopic').value = row ? (row.Topic || '') : '';
   $('#meetingPostDetail').value = row ? (row.Detail || '') : '';
+  $('#meetingTrainingTime').value = row ? (row.TrainingTime || '') : '';
+  $('#meetingTrainingPlace').value = row ? (row.TrainingPlace || '') : '';
+  $('#meetingTrainingUnit').value = row ? (row.TrainingUnit || '') : '';
+  $('#meetingTrainerName').value = row ? (row.TrainerName || '') : (state.user?.FullName || state.user?.Username || '');
+  $('#meetingTrainingPlanned').value = row ? (row.TrainingPlanned || 'Yes') : 'Yes';
+  $('#meetingTrainingEffect').value = row ? (row.TrainingEffect || '') : '';
   populateMeetingAckUsers(row ? String(row.AckRequiredUserIDs || '').split(',').map(s => s.trim()).filter(Boolean) : []);
   $('#meetingPostPhoto').value = '';
   clearMeetingPhotoItems();
@@ -4021,7 +4180,17 @@ function openMeetingEditor(postId = '') {
   $('#meetingPostSlideFile').value = '';
   renderMeetingSlideFileCurrent(row);
   $('#deleteMeetingPostButton').classList.toggle('hidden', !row);
+  syncMeetingEditorType();
   $('#meetingDialog').showModal();
+}
+
+function syncMeetingEditorType() {
+  const isTraining = $('#meetingPostType').value === 'Training';
+  $('#trainingFields').classList.toggle('hidden', !isTraining);
+  $('#meetingAckField').classList.toggle('hidden', isTraining);
+  $('#meetingPostPinnedField').classList.toggle('hidden', isTraining || !state.meetingCanManage);
+  $('#meetingDialogEyebrow').textContent = isTraining ? 'TRAINING SLIDES · RECORD' : 'MORNING MEETING';
+  if (!state.editingMeetingPost) $('#meetingDialogTitle').textContent = isTraining ? 'เพิ่มหัวข้อ Training' : 'เพิ่มหัวข้อประชุม';
 }
 
 // ===== Photo manager (reorder / remove / number) in the meeting form =====
@@ -4121,6 +4290,7 @@ async function saveMeetingPostFromForm() {
   if (!topic) return showToast('กรุณากรอกหัวข้อ', 'warning');
   const postId = $('#meetingPostId').value;
   const payload = {
+    contentType: $('#meetingPostType').value,
     meetingDate: $('#meetingPostDate').value || localDateInput(new Date()),
     shift: $('#meetingPostShift').value,
     lineId: $('#meetingPostLine').value || 'ALL',
@@ -4128,6 +4298,12 @@ async function saveMeetingPostFromForm() {
     priority: $('#meetingPostPriority').value,
     topic,
     detail: $('#meetingPostDetail').value.trim(),
+    trainingTime: $('#meetingTrainingTime').value,
+    trainingPlace: $('#meetingTrainingPlace').value.trim(),
+    trainingUnit: $('#meetingTrainingUnit').value.trim(),
+    trainerName: $('#meetingTrainerName').value.trim(),
+    trainingPlanned: $('#meetingTrainingPlanned').value,
+    trainingEffect: $('#meetingTrainingEffect').value.trim(),
     pinned: $('#meetingPostPinned').checked,
     ackUserIds: $$('#meetingAckUserGroup input:checked').map(input => input.value)
   };
@@ -4135,7 +4311,8 @@ async function saveMeetingPostFromForm() {
   const photoItems = state.meetingPhotoItems || [];
   const slideFile = ($('#meetingPostSlideFile').files || [])[0];
   const removeSlide = $('#meetingRemoveSlideFile') && $('#meetingRemoveSlideFile').checked;
-  showLoading('กำลังบันทึกหัวข้อประชุม...');
+  const contentType = payload.contentType;
+  showLoading(contentType === 'Training' ? 'กำลังบันทึก Training...' : 'กำลังบันทึกหัวข้อประชุม...');
   try {
     const data = await apiCall('saveMeetingPost', payload);
     const savedId = data.post?.PostID || postId;
@@ -4175,8 +4352,9 @@ async function saveMeetingPostFromForm() {
     }
     clearMeetingPhotoItems();
     $('#meetingDialog').close();
-    showToast(postId ? 'แก้ไขหัวข้อแล้ว' : 'เพิ่มหัวข้อลงบอร์ดแล้ว', 'success');
+    showToast(contentType === 'Training' ? (postId ? 'บันทึกการแก้ไข Training แล้ว' : 'บันทึกหัวข้อ Training แล้ว') : (postId ? 'แก้ไขหัวข้อแล้ว' : 'เพิ่มหัวข้อลงบอร์ดแล้ว'), 'success');
     await loadMeetingBoard();
+    if ($('#page-training')?.classList.contains('active-page')) await loadTrainingPage();
   } catch (error) {
     showToast(error.message, 'error');
   } finally {
@@ -4301,9 +4479,9 @@ async function setMeetingPostStatus(button, postId, status, fromTv = false) {
 // ===== TV / presentation mode =====
 // Full-screen slide deck for projecting the board during the pre-shift meeting:
 // slide 0 is the agenda, then one big-type slide per topic (carry-overs last).
-function meetingTvDeck() {
-  return state.meetingPosts.map(row => ({ row, carry: false }))
-    .concat(state.meetingCarryOver.map(row => ({ row, carry: true })));
+function meetingTvDeck(posts = state.meetingPosts, carryOver = state.meetingCarryOver) {
+  return posts.map(row => ({ row, carry: false }))
+    .concat(carryOver.map(row => ({ row, carry: true })));
 }
 
 // A line of --- (3+ dashes) in the Detail splits a post into multiple TV slides,
@@ -4331,9 +4509,9 @@ function meetingStripPhotoRefs(text) {
 // Flatten the deck into one entry per slide — a post with N sections yields N.
 // Photos are pinned to whichever slide names them ([รูปN]); anything not named
 // falls to the last slide so existing posts keep all photos at the end.
-function meetingTvPostSlides() {
+function meetingTvPostSlides(deck = meetingTvDeck()) {
   const slides = [];
-  meetingTvDeck().forEach((item, deckPos) => {
+  deck.forEach((item, deckPos) => {
     const rawSections = meetingSlideSections(item.row.Detail);
     const allPhotos = meetingPhotoList(item.row);
     const used = new Set();
@@ -4380,7 +4558,7 @@ function tvHasFindingSlide() {
 
 function meetingTvDailyQuiz() {
   const meetingDate = String($('#meetingDate')?.value || localDateInput(new Date())).slice(0, 10);
-  const todaysPosts = state.meetingPosts.filter(row => String(row.MeetingDate || '').slice(0, 10) === meetingDate);
+  const todaysPosts = state.meetingPosts.filter(row => String(row.MeetingDate || '').slice(0, 10) === meetingDate && String(row.ContentType || '').toLowerCase() !== 'training');
   const post = todaysPosts.find(row => row.MeetingQuiz?.available) ||
     todaysPosts.find(row => row.MeetingQuiz?.canGenerate) ||
     todaysPosts.find(row => row.MeetingQuiz?.canManage);
@@ -4590,13 +4768,15 @@ function refreshMeetingTvQuizStatus() {
 // section; photos, meta, and the discuss button appear only on the last section.
 function meetingTvPostSlideHtml(slide) {
   const { row, carry, sectionText, sectionIndex, sectionCount, isLast } = slide;
+  const isTraining = String(row.ContentType || '').toLowerCase() === 'training';
   const st = String(row.Status || 'Open').toLowerCase();
   const cat = meetingCategoryMeta(row.Category);
   const priority = String(row.Priority || 'ปกติ');
+  const completionLabel = isTraining ? 'Training แล้ว' : 'คุยแล้ว';
   const photos = slide.photos || [];
   const actions = [];
-  if (isLast && state.meetingCanCreate && st === 'open') actions.push(`<button class="mtg-tv-action mtg-tv-action-primary" data-mtg-status="Discussed" data-mtg-id="${escapeAttr(row.PostID)}">✓ คุยแล้ว — ไปหัวข้อถัดไป</button>`);
-  if (isLast && state.meetingCanCreate && st === 'discussed') actions.push(`<button class="mtg-tv-action" data-mtg-status="Closed" data-mtg-id="${escapeAttr(row.PostID)}">จบเรื่อง</button>`);
+  if (isLast && state.meetingCanCreate && st === 'open') actions.push(`<button class="mtg-tv-action mtg-tv-action-primary" data-mtg-status="Discussed" data-mtg-id="${escapeAttr(row.PostID)}">✓ ${completionLabel} — ไปหัวข้อถัดไป</button>`);
+  if (isLast && state.meetingCanCreate && st === 'discussed') actions.push(`<button class="mtg-tv-action" data-mtg-status="Closed" data-mtg-id="${escapeAttr(row.PostID)}">${isTraining ? 'ปิด Training' : 'จบเรื่อง'}</button>`);
   let mid;
   if (slide.isPpt) {
     mid = `<div class="mtg-tv-photo-hint">🔍 คลิกรูปเพื่อขยาย แล้วใช้ + / − เพื่อซูม</div><div class="mtg-tv-ppt"><img src="${escapeAttr(driveThumbnailUrl_(slide.pptUrl, 1600))}" data-photo-url="${escapeAttr(slide.pptUrl)}" alt="สไลด์ PPT ${slide.pptPage}" loading="lazy"></div>`;
@@ -4612,13 +4792,14 @@ function meetingTvPostSlideHtml(slide) {
   return `<div class="mtg-tv-slide tv-anim-${meetingTvDir}">
       <div class="mtg-tv-chips">
         ${isMeetingPinned(row) ? '<span class="mtg-tv-chip">📌 ปักหมุด</span>' : ''}
+        ${isTraining ? '<span class="mtg-tv-chip mtg-tv-training-chip">🎓 TRAINING</span>' : ''}
         <span class="mtg-tv-chip mtg-tv-cat ${cat.cls}">${cat.icon} ${escapeHtml(row.Category || 'ทั่วไป')}</span>
         ${priority === 'ด่วน' ? '<span class="mtg-tv-chip mtg-tv-urgent">ด่วน</span>' : priority === 'สำคัญ' ? '<span class="mtg-tv-chip mtg-tv-important">สำคัญ</span>' : ''}
         ${carry ? `<span class="mtg-tv-chip mtg-tv-carrychip">⏳ ค้างจาก ${formatDate(row.MeetingDate)}</span>` : ''}
         ${slide.isPpt ? `<span class="mtg-tv-chip mtg-tv-sectionchip">📊 PPT ${slide.pptPage}/${slide.pptTotal}</span>` : ''}
         ${slide.isDoc ? '<span class="mtg-tv-chip mtg-tv-sectionchip">📊 สไลด์ PPT</span>' : ''}
         ${sectionCount > 1 ? `<span class="mtg-tv-chip mtg-tv-sectionchip">สไลด์ ${sectionIndex + 1}/${sectionCount}</span>` : ''}
-        ${st !== 'open' ? `<span class="mtg-tv-chip mtg-tv-donechip">${st === 'closed' ? '✔ จบเรื่อง' : '✓ คุยแล้ว'}</span>` : ''}
+        ${st !== 'open' ? `<span class="mtg-tv-chip mtg-tv-donechip">${st === 'closed' ? (isTraining ? '✔ ปิด Training' : '✔ จบเรื่อง') : `✓ ${completionLabel}`}</span>` : ''}
       </div>
       <div class="mtg-tv-topic">${escapeHtml(row.Topic || '-')}</div>
       ${mid}
@@ -4658,9 +4839,10 @@ function renderMeetingTv() {
         const cat = meetingCategoryMeta(item.row.Category);
         const priority = String(item.row.Priority || 'ปกติ');
         const slideCount = slideCountByDeck[i] || 1;
-        const sub = [item.row.LineName || item.row.LineID || 'ทุกไลน์', item.row.Category || 'ทั่วไป', `ลงโดย ${item.row.CreatedByName || '-'}`].join(' · ');
+        const isTraining = String(item.row.ContentType || '').toLowerCase() === 'training';
+        const sub = [isTraining ? '🎓 Training' : '📣 Meeting', item.row.LineName || item.row.LineID || 'ทุกไลน์', item.row.Category || 'ทั่วไป', `ลงโดย ${item.row.CreatedByName || '-'}`].join(' · ');
         return `<li style="animation-delay:${Math.min(i * 70, 700)}ms" class="mtg-tv-li"><button class="mtg-tv-item${done ? ' done' : ''}" data-tv-goto="${firstSlideByDeck[i]}">
-          <span class="mtg-tv-item-icon">${done ? '✅' : cat.icon}</span>
+          <span class="mtg-tv-item-icon">${done ? '✅' : (isTraining ? '🎓' : cat.icon)}</span>
           <span class="mtg-tv-item-text">${escapeHtml(item.row.Topic || '-')}<span class="mtg-tv-item-line">${escapeHtml(sub)}</span></span>
           ${slideCount > 1 ? `<span class="mtg-tv-chip mtg-tv-sectionchip">${slideCount} สไลด์</span>` : ''}
           ${priority === 'ด่วน' ? '<span class="mtg-tv-chip mtg-tv-urgent">ด่วน</span>' : priority === 'สำคัญ' ? '<span class="mtg-tv-chip mtg-tv-important">สำคัญ</span>' : ''}
@@ -4696,8 +4878,8 @@ function renderMeetingTv() {
   const topicTotal = deck.length;
   container.innerHTML = `
     <div class="mtg-tv-top">
-      <span class="mtg-tv-brand">📣 Meeting ก่อนเข้างาน</span>
-      <span class="mtg-tv-progress${topicTotal && discussed >= topicTotal ? ' all-done' : ''}">คุยแล้ว ${discussed}/${topicTotal} หัวข้อ</span>
+      <span class="mtg-tv-brand">📣 Meeting ก่อนเข้างาน · 🎓 Training</span>
+      <span class="mtg-tv-progress${topicTotal && discussed >= topicTotal ? ' all-done' : ''}">คุย/Training แล้ว ${discussed}/${topicTotal} หัวข้อ</span>
       <button class="mtg-tv-close" id="meetingTvClose" aria-label="ปิดโหมด TV">✕ ปิด</button>
     </div>
     <div class="mtg-tv-body">${body}</div>
@@ -6277,6 +6459,7 @@ async function navigateTo(page) {
       }, 3000);
     }
   }
+  if (page === 'training') await loadTrainingPage();
   if (page === 'five-s') {
     await loadFiveSPage();
   }
@@ -6871,7 +7054,7 @@ function applyPermissionVisibility() {
   // Customer is an external account — the internal pre-shift Meeting board is
   // always hidden for them, even if a stray meeting.view permission slips in.
   if (String(state.user?.Role || '').toLowerCase() === 'customer') {
-    $$('#mainNav [data-page="meeting"]').forEach(btn => btn.classList.add('hidden'));
+    $$('#mainNav [data-page="meeting"], #mainNav [data-page="training"]').forEach(btn => btn.classList.add('hidden'));
   }
   $('#shiftManagementPanel').classList.toggle('hidden', String(state.user?.Role || '').toLowerCase() !== 'admin');
 }

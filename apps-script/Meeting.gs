@@ -31,6 +31,14 @@ function ensureMeetingSheet_(sheetName) {
 function ensureMeetingPostsSheet_() { return ensureMeetingSheet_(SHEET_NAMES.MEETING_POSTS); }
 function ensureMeetingAcksSheet_() { return ensureMeetingSheet_(SHEET_NAMES.MEETING_ACKS); }
 
+function meetingContentType_(row) {
+  return valuesEqual_(row && row.ContentType, 'Training') ? 'Training' : 'Meeting';
+}
+
+function isTrainingMeetingPost_(row) {
+  return meetingContentType_(row) === 'Training';
+}
+
 /** Latest-ack map keyed by PostID, deduped per user. */
 function getMeetingAcksByPost_() {
   var byPost = {};
@@ -67,6 +75,12 @@ function getMeetingPosts(payload, user) {
     if (!meetingDateValue) return jsonResponse(false, 'Invalid meetingDate: ' + meetingDate, {});
     var lineFilter = cleanString_(payload.lineId);
     var categoryFilter = cleanString_(payload.category);
+    var contentTypeFilter = cleanString_(payload.contentType);
+    var includeHistory = payload.includeHistory === true || valuesEqual_(payload.includeHistory, 'true');
+    var dateFrom = dateOnly_(payload.dateFrom);
+    var dateTo = dateOnly_(payload.dateTo);
+    if (dateFrom && !parseDate_(dateFrom)) return jsonResponse(false, 'Invalid dateFrom: ' + dateFrom, {});
+    if (dateTo && !parseDate_(dateTo)) return jsonResponse(false, 'Invalid dateTo: ' + dateTo, {});
     var carryOverCutoff = new Date(meetingDateValue.getTime() - MEETING_CARRY_OVER_DAYS_ * 86400000);
 
     var rows = getRowsAsObjects(SHEET_NAMES.MEETING_POSTS).filter(function (row) {
@@ -76,6 +90,9 @@ function getMeetingPosts(payload, user) {
       rows = rows.filter(function (row) {
         return valuesEqual_(row.LineID, lineFilter) || isAllFilter_(row.LineID);
       });
+    }
+    if (contentTypeFilter) {
+      rows = rows.filter(function (row) { return meetingContentType_(row) === (valuesEqual_(contentTypeFilter, 'Training') ? 'Training' : 'Meeting'); });
     }
     if (categoryFilter) {
       rows = rows.filter(function (row) { return valuesEqual_(row.Category, categoryFilter); });
@@ -87,6 +104,12 @@ function getMeetingPosts(payload, user) {
       var postDateText = dateOnly_(row.MeetingDate);
       var postDate = parseDate_(postDateText);
       if (!postDate) return;
+      if (includeHistory) {
+        if (dateFrom && postDateText < dateFrom) return;
+        if (dateTo && postDateText > dateTo) return;
+        posts.push(row);
+        return;
+      }
       var closed = valuesEqual_(row.Status, 'Closed');
       var pinnedActive = isAllowed_(row.Pinned) && !closed;
       if (postDateText === meetingDate || (pinnedActive && postDate < meetingDateValue)) {
@@ -105,10 +128,15 @@ function getMeetingPosts(payload, user) {
       var copy = sanitizeForClient_(row);
       copy.CanEdit = canEditMeetingPost_(user, row);
       decorateMeetingAckSummary_(copy, row, ackByPost, user);
-      copy.MeetingQuiz = meetingQuizSummaryForPost_(row, user, quizSummaryCache);
+      copy.MeetingQuiz = isTrainingMeetingPost_(row) ? {} : meetingQuizSummaryForPost_(row, user, quizSummaryCache);
       return copy;
     };
-    posts.sort(meetingPostCompare_);
+    if (includeHistory) {
+      posts.sort(function (a, b) {
+        var dateDiff = dateOnly_(b.MeetingDate).localeCompare(dateOnly_(a.MeetingDate));
+        return dateDiff || meetingPostCompare_(a, b);
+      });
+    } else posts.sort(meetingPostCompare_);
     carryOver.sort(meetingPostCompare_);
     return jsonResponse(true, 'Meeting posts loaded.', {
       meetingDate: meetingDate,
@@ -204,12 +232,19 @@ function saveMeetingPost(payload, user) {
         updates.LineName = resolveMeetingLineName_(newLineId, payload.lineName);
       }
       if (payload.category !== undefined) updates.Category = cleanString_(payload.category);
+      if (payload.contentType !== undefined) updates.ContentType = valuesEqual_(payload.contentType, 'Training') ? 'Training' : 'Meeting';
       if (payload.priority !== undefined) updates.Priority = cleanString_(payload.priority) || 'ปกติ';
       if (payload.topic !== undefined) {
         updates.Topic = cleanString_(payload.topic);
         if (!updates.Topic) return jsonResponse(false, 'Topic is required.', {});
       }
       if (payload.detail !== undefined) updates.Detail = cleanString_(payload.detail);
+      ['trainingTime', 'trainingPlace', 'trainingUnit', 'trainerName', 'trainingPlanned', 'trainingEffect'].forEach(function (key) {
+        if (payload[key] !== undefined) {
+          var field = key.charAt(0).toUpperCase() + key.slice(1);
+          updates[field] = cleanString_(payload[key]);
+        }
+      });
       if (payload.photoUrl !== undefined) updates.PhotoURL = cleanString_(payload.photoUrl);
       if (payload.pinned !== undefined && hasPermission_(user, 'meeting.manage')) {
         updates.Pinned = payload.pinned ? 'Yes' : 'No';
@@ -243,7 +278,11 @@ function saveMeetingPost(payload, user) {
       LineID: isAllFilter_(lineId) ? 'ALL' : lineId,
       LineName: resolveMeetingLineName_(lineId, payload.lineName),
       Category: cleanString_(payload.category), Priority: cleanString_(payload.priority) || 'ปกติ',
+      ContentType: valuesEqual_(payload.contentType, 'Training') ? 'Training' : 'Meeting',
       Topic: cleanString_(payload.topic), Detail: cleanString_(payload.detail),
+      TrainingTime: cleanString_(payload.trainingTime), TrainingPlace: cleanString_(payload.trainingPlace),
+      TrainingUnit: cleanString_(payload.trainingUnit), TrainerName: cleanString_(payload.trainerName),
+      TrainingPlanned: cleanString_(payload.trainingPlanned), TrainingEffect: cleanString_(payload.trainingEffect),
       PhotoURL: cleanString_(payload.photoUrl),
       Status: 'Open',
       Pinned: payload.pinned && hasPermission_(user, 'meeting.manage') ? 'Yes' : 'No',

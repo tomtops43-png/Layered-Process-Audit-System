@@ -1149,3 +1149,69 @@ body.mtg-tv-open{overflow:hidden}
 .btn-compact{padding:6px 10px;font-size:.78rem;white-space:nowrap}
 @media (max-width:800px){.five-s-summary{grid-template-columns:1fr}.five-s-table{min-width:720px}}
 @media (max-width:560px){.five-s-checkpoint-card{padding:14px}.five-s-card-head{gap:8px}.five-s-card-head h4{font-size:1rem}.five-s-status{font-size:.7rem;padding:4px 8px}.five-s-stat{padding:15px}.five-s-audit-form .form-grid{grid-template-columns:1fr}.five-s-photo img{height:120px}}
+
+/* Training archive, review, and print record */
+.training-page-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.training-archive-summary{margin:0 0 14px}
+.training-summary-card{display:flex;align-items:baseline;gap:8px;width:max-content;max-width:100%;padding:12px 16px;border:1px solid #cfe1ef;border-radius:12px;background:#eef7fd;color:var(--navy)}
+.training-summary-card strong{font-size:1.45rem}
+.training-summary-card span{color:var(--muted);font-size:.88rem;font-weight:700}
+.training-archive{display:grid;gap:14px}
+.training-record-card{min-width:0;padding:20px;border:1px solid #dce6ed;border-left:5px solid #276b98;border-radius:14px;background:#fff;box-shadow:var(--shadow)}
+.training-card-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.training-type-chip{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:99px;background:#eaf4fb;color:#13527e;font-size:.72rem;font-weight:900;letter-spacing:.04em;white-space:nowrap}
+.training-card-date{color:var(--muted);font-size:.84rem;font-weight:700}
+.training-record-card h3{margin:12px 0 5px;color:var(--navy-2);font-size:1.12rem;overflow-wrap:anywhere}
+.training-card-meta{margin:0;color:var(--muted);font-size:.83rem;line-height:1.5}
+.training-effect{margin-top:12px;padding:10px 12px;border-radius:10px;background:#f5f8fa}
+.training-effect strong{font-size:.82rem;color:#405164}
+.training-effect p{margin:4px 0 0;line-height:1.5;white-space:pre-wrap}
+.training-review{margin-top:14px;border:1px solid var(--border);border-radius:11px;background:#fbfdfe}
+.training-review summary{padding:12px 14px;color:var(--navy);font-weight:800;cursor:pointer}
+.training-review-content{padding:0 14px 14px;overflow:hidden}
+.training-review-content .mtg-detail{margin:0 0 10px;padding:0;white-space:pre-wrap}
+.training-slide-gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px;margin-top:12px}
+.training-slide-gallery figure{margin:0;min-width:0}
+.training-slide-gallery img{display:block;width:100%;max-height:350px;object-fit:contain;border:1px solid var(--border);border-radius:9px;background:#f3f6f8}
+.training-slide-gallery figcaption{margin-top:5px;color:var(--muted);font-size:.75rem;text-align:center}
+.training-slide-file{display:grid;gap:10px;margin-top:12px}
+.training-slide-file a{color:var(--blue);font-weight:800;overflow-wrap:anywhere}
+.training-slide-file iframe{width:100%;height:min(72vh,700px);border:1px solid var(--border);border-radius:10px;background:#f3f6f8}
+.training-card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.mtg-tv-training-chip{background:#8c5cce!important;color:#fff!important}
+@media(max-width:640px){.training-page-actions{width:100%}.training-page-actions .btn{flex:1}.training-record-card{padding:15px}.training-card-actions{display:grid;grid-template-columns:1fr}}
+
+#trainingPrintRoot{display:none}
+@media print{
+  @page{size:A4 portrait;margin:12mm}
+  body.training-printing{background:#fff!important;color:#111!important}
+  body.training-printing>*{display:none!important}
+  body.training-printing #trainingPrintRoot{display:block!important;position:static!important;width:100%!important;margin:0!important;padding:0!important;background:#fff!important;color:#111!important;font:10pt Arial,"Noto Sans Thai",Tahoma,sans-serif!important}
+  #trainingPrintRoot *{box-sizing:border-box!important;color:#111}
+  .training-print-form{page-break-after:always;break-after:page}
+  .training-print-eyebrow{margin:0 0 4mm;color:#24618a!important;font-size:9pt;font-weight:800;letter-spacing:1.5px}
+  .training-print-form h1{margin:0 0 6mm;font-size:18pt;line-height:1.25}
+  .training-print-facts{display:grid;grid-template-columns:1fr 1fr;gap:0 7mm;border:1px solid #888}
+  .training-print-facts>div{min-width:0;padding:3mm;border-bottom:1px solid #bbb;overflow-wrap:anywhere}
+  .training-print-facts>div:nth-child(odd){border-right:1px solid #bbb}
+  .training-print-facts>div span{display:block;margin-bottom:1.5mm;color:#555!important;font-size:8pt;font-weight:700}
+  .training-print-facts>div strong{display:block;line-height:1.4;white-space:normal}
+  .training-print-signature{display:flex;justify-content:space-between;gap:8mm;margin:5mm 0}
+  .training-print-form h2,.training-print-slides>h2{margin:5mm 0 3mm;font-size:12pt}
+  .training-sign-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8pt}
+  .training-sign-table th,.training-sign-table td{height:8mm;padding:1.5mm;border:1px solid #777;text-align:left;vertical-align:middle}
+  .training-sign-table th{background:#f1f3f5!important;font-weight:800}
+  .training-sign-table th:first-child,.training-sign-table td:first-child{width:7%;text-align:center}
+  .training-sign-table th:nth-child(2){width:29%}
+  .training-sign-table th:nth-child(3){width:16%}
+  .training-sign-table th:nth-child(4){width:16%}
+  .training-sign-table th:nth-child(5){width:32%}
+  .training-print-foot{margin-top:3mm;color:#555!important;font-size:8pt}
+  .training-print-slide{page-break-after:always;break-after:page;min-height:245mm;display:flex;flex-direction:column;justify-content:flex-start;gap:6mm}
+  .training-print-slide-label{margin:0;color:#555!important;font-size:9pt;font-weight:800}
+  .training-print-slide-text{font-size:13pt;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}
+  .training-print-slide>img{display:block;max-width:100%;max-height:220mm;margin:0 auto;object-fit:contain;page-break-inside:avoid}
+  .training-print-slide iframe{width:100%;height:240mm;border:0}
+  .training-print-slide a{color:#145a8b!important;overflow-wrap:anywhere}
+  .training-print-slide:last-child{page-break-after:auto;break-after:auto}
+}

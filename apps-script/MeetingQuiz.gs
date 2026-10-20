@@ -46,6 +46,7 @@ function meetingQuizPost_(postId, user) {
   ensureMeetingQuizSheets_();
   var post = findById_(SHEET_NAMES.MEETING_POSTS, 'PostID', cleanString_(postId));
   if (!post || valuesEqual_(post.Status, 'Deleted')) throw new Error('ไม่พบหัวข้อ Meeting นี้');
+  if (isTrainingMeetingPost_(post)) throw new Error('หัวข้อ Training แสดงในโหมด TV แต่ไม่ใช้สร้างข้อสอบ Meeting');
   if (!canSeeMeetingPost_(user, post)) throw new Error('คุณไม่มีสิทธิ์ดูหัวข้อ Meeting นี้');
   return post;
 }
@@ -99,7 +100,7 @@ function meetingQuizRowsForDate_(meetingDate) {
 function meetingQuizPostsForDate_(meetingDate) {
   var date = dateOnly_(meetingDate);
   var posts = getRowsAsObjects(SHEET_NAMES.MEETING_POSTS).filter(function (row) {
-    return valuesEqual_(dateOnly_(row.MeetingDate), date) && !valuesEqual_(row.Status, 'Deleted');
+    return valuesEqual_(dateOnly_(row.MeetingDate), date) && !valuesEqual_(row.Status, 'Deleted') && !isTrainingMeetingPost_(row);
   });
   posts.sort(meetingPostCompare_);
   return posts;

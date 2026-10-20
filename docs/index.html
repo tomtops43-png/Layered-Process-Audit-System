@@ -9,7 +9,7 @@
   <!-- The first API call happens seconds after load; warm the TLS connection now. -->
   <link rel="preconnect" href="https://script.google.com" crossorigin>
   <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
-  <link rel="stylesheet" href="style.css?v=20261020-quiz-draft-confirm">
+  <link rel="stylesheet" href="style.css?v=20261020-training-records">
 </head>
 <body>
   <div id="publicQuizView" class="login-view public-quiz-view hidden">
@@ -55,6 +55,7 @@
       <nav id="mainNav" class="main-nav">
         <button data-page="dashboard" class="nav-item active"><span>▦</span>Dashboard</button>
         <button data-page="meeting" data-permission-any="meeting.view" class="nav-item"><span>📣</span>Meeting ก่อนเข้างาน <b id="meetingNavBadge" class="nav-badge hidden">0</b></button>
+        <button data-page="training" data-permission-any="meeting.view" class="nav-item"><span>🎓</span>ประวัติ Training</button>
         <button data-page="five-s" data-permission-any="fiveS.audit,fiveS.view.all,fiveS.manage,fiveS.checkpoint.manage" class="nav-item"><span>🧹</span>ตรวจสอบ 5.ส ประจำวัน</button>
         <button data-page="audit" class="nav-item"><span>✓</span>ตรวจ LPA <b id="auditNavBadge" class="nav-badge hidden">0</b></button>
         <button data-page="audit-plan" data-permission-any="audit.plan.view" class="nav-item"><span>▣</span>LPA Schedule Rules</button>
@@ -191,6 +192,23 @@
           </div>
           <div id="meetingShiftDigest"><div class="empty-state">กำลังโหลด Finding...</div></div>
         </div>
+      </section>
+
+      <section id="page-training" class="page">
+        <div class="page-heading">
+          <div><p class="eyebrow">TRAINING RECORDS</p><h2>ประวัติและทบทวน Training</h2><p class="page-helper">สร้างสไลด์จากฟอร์ม Meeting ได้โดยเลือกโหมด Training · สไลด์จะแสดงร่วมในโหมด TV และพิมพ์แบบบันทึกให้พนักงานลงชื่อได้</p></div>
+          <div class="training-page-actions"><button id="trainingRefreshButton" class="btn btn-outline">↻ รีเฟรช</button><button id="addTrainingRecordButton" class="btn btn-primary hidden" data-permission-any="meeting.create">+ สร้าง Training</button></div>
+        </div>
+        <article class="panel filters-panel">
+          <div class="form-grid filter-grid">
+            <label>ตั้งแต่วันที่<input id="trainingDateFrom" type="date"></label>
+            <label>ถึงวันที่<input id="trainingDateTo" type="date"></label>
+            <label class="full-width">ค้นหาหัวข้อ / เนื้อหา<input id="trainingSearch" type="search" placeholder="พิมพ์คำที่ต้องการค้นหา"></label>
+          </div>
+          <button id="loadTrainingRecordsButton" class="btn btn-secondary">แสดงประวัติ</button>
+        </article>
+        <div id="trainingArchiveSummary" class="training-archive-summary"></div>
+        <div id="trainingArchive" class="training-archive"><div class="empty-state">กำลังโหลดประวัติ Training...</div></div>
       </section>
 
       <section id="page-five-s" class="page">
@@ -465,9 +483,10 @@
 
   <dialog id="meetingDialog" class="modal">
     <form id="meetingForm" method="dialog">
-      <div class="modal-head"><div><p class="eyebrow">MORNING MEETING</p><h3 id="meetingDialogTitle">เพิ่มหัวข้อประชุม</h3></div><button type="button" class="icon-button" id="closeMeetingDialog">×</button></div>
+      <div class="modal-head"><div><p class="eyebrow" id="meetingDialogEyebrow">MORNING MEETING · TRAINING</p><h3 id="meetingDialogTitle">เพิ่มหัวข้อประชุม</h3></div><button type="button" class="icon-button" id="closeMeetingDialog">×</button></div>
       <input id="meetingPostId" type="hidden">
       <div class="form-grid">
+        <label>รูปแบบเนื้อหา<select id="meetingPostType"><option value="Meeting">📣 Meeting ก่อนเข้างาน</option><option value="Training">🎓 Training</option></select><small class="field-help">หัวข้อ Training จะอยู่ในประวัติ Training และแสดงในโหมด TV ร่วมกับ Meeting</small></label>
         <label>วันที่ประชุม *<input id="meetingPostDate" type="date" required></label>
         <label>กะ<select id="meetingPostShift"><option value="">ไม่ระบุ</option></select></label>
         <label>Line<select id="meetingPostLine"><option value="ALL">ทุกไลน์ (ALL)</option></select><small class="field-help">เลือก "ทุกไลน์" ถ้าเป็นประกาศทั้งโรงงาน</small></label>
@@ -476,7 +495,16 @@
         <label class="check-label hidden" id="meetingPostPinnedField"><input id="meetingPostPinned" type="checkbox"> 📌 ปักหมุด (แสดงทุกวันจนกว่าจะจบเรื่อง)</label>
         <label class="full-width">หัวข้อ *<input id="meetingPostTopic" required maxlength="200" placeholder="เช่น เครื่อง XX มีปัญหา / ประกาศเรื่อง..."></label>
         <label class="full-width">รายละเอียด<textarea id="meetingPostDetail" rows="5" placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)&#10;&#10;พิมพ์ --- คั่นบรรทัด เพื่อแยกเป็นหลายสไลด์ตอนฉายจอ TV"></textarea><small class="field-help">💡 พิมพ์ <b>---</b> (ขีดสามตัว) ไว้บรรทัดเดียว เพื่อแบ่งเนื้อหาเป็นหลายสไลด์ในโหมด TV — หัวข้อเดิมจะค้างทุกสไลด์<br>📷 อยากให้รูปไหนอยู่สไลด์ไหน พิมพ์ <b>[รูป1]</b> <b>[รูป2]</b> ในช่วงนั้น (ดูเลขรูปได้จากใต้ภาพหลังอัปโหลด) — รูปที่ไม่ได้ระบุจะไปรวมสไลด์สุดท้าย</small></label>
-        <div class="form-field full-width">
+        <div id="trainingFields" class="training-editor-fields form-grid full-width hidden">
+          <label>เวลา Training<input id="meetingTrainingTime" type="time"></label>
+          <label>สถานที่ Training<input id="meetingTrainingPlace" maxlength="160" placeholder="เช่น Assembly H9 / Team A"></label>
+          <label>หน่วยงาน / สายการผลิต<input id="meetingTrainingUnit" maxlength="160" placeholder="เช่น Assembly H9 Line"></label>
+          <label>ผู้ให้ Training<input id="meetingTrainerName" maxlength="120" placeholder="ชื่อผู้ให้ Training"></label>
+          <label>เป็น Training ตามแผนหรือไม่<select id="meetingTrainingPlanned"><option value="Yes">ใช่</option><option value="No">ไม่ใช่</option></select></label>
+          <label class="full-width">ผลการ Training / การนำไปปฏิบัติ<textarea id="meetingTrainingEffect" rows="3" placeholder="เช่น พนักงานเข้าใจขั้นตอนและสามารถปฏิบัติงานได้"></textarea></label>
+          <p class="field-help full-width">แบบพิมพ์จะมีหัวข้อ วันที่และเวลา สถานที่ หน่วยงาน ผู้ให้ Training ผลการฝึก และตารางให้พนักงานลงชื่อรับการ Training</p>
+        </div>
+        <div class="form-field full-width" id="meetingAckField">
           <span class="data-label">🙋 ผู้ที่ต้องกดรับทราบ (เลือกได้หลายคน — ไม่บังคับ)</span>
           <small class="field-help">ระบบจะแจ้งเตือนบนหน้าจอของคนที่เลือก จนกว่าเขาจะกด "รับทราบ"</small>
           <input id="meetingAckSearch" placeholder="พิมพ์ค้นหาชื่อ..." autocomplete="off" style="margin:8px 0">
@@ -518,8 +546,9 @@
     </div>
   </dialog>
 
+  <section id="trainingPrintRoot" class="hidden" aria-hidden="true"></section>
   <script src="config.js" defer></script>
   <script src="vendor/qrcode.js" defer></script>
-  <script src="app.js?v=20261020-quiz-draft-confirm" defer></script>
+  <script src="app.js?v=20261020-training-records" defer></script>
 </body>
 </html>
