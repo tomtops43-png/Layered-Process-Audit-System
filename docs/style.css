@@ -1210,16 +1210,7 @@ body.mtg-tv-open{overflow:hidden}
   .training-record-table th,.training-record-table td{padding:2.5mm 2.7mm;border:1px solid #888;vertical-align:top;text-align:left;overflow-wrap:anywhere}
   .training-record-table th{font-size:10.5pt;font-weight:400}
   .training-record-table td{white-space:normal}
-  .training-record-sign-cell{padding:2mm!important;vertical-align:top}
-  .training-record-sign-title{margin:0 0 1.5mm;font-weight:700}
-  .training-signature-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8.5pt;line-height:1.1}
-  .training-signature-table th,.training-signature-table td{height:6.2mm;padding:.5mm 1.5mm;border:1px solid #888;vertical-align:middle;text-align:left}
-  .training-signature-table th{background:#f1f3f5!important;font-size:8pt;font-weight:700}
-  .training-signature-table th:first-child,.training-signature-table td:first-child{width:8%;text-align:center}
-  .training-signature-table th:nth-child(2){width:48%}
-  .training-signature-table th:nth-child(3){width:44%}
-  .training-signature-table tr{break-inside:avoid;page-break-inside:avoid}
-  .training-signature-table thead{display:table-header-group}
+  .training-record-table tr:nth-child(5) th{height:64mm;padding:2.5mm 2.7mm;vertical-align:top;font-weight:400}
   .training-record-table tr:nth-child(6) th{height:12mm;vertical-align:middle;font-weight:400}
   .training-record-table tr:nth-child(7) th{height:29mm;vertical-align:top;font-weight:400}
   .training-record-checks{margin-left:4mm;font-weight:400}

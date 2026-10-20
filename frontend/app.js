@@ -3037,10 +3037,6 @@ function trainingPrintDetailHtml(row) {
   }).join('');
 }
 
-function trainingSignedRows(count = 30) {
-  return Array.from({ length: count }, (_, index) => `<tr><td>${index + 1}</td><td></td><td></td></tr>`).join('');
-}
-
 async function printTrainingRecord(postId, { includeSlides = true, rowOverride = null } = {}) {
   const row = rowOverride || (state.trainingRecords || []).find(item => String(item.PostID) === String(postId)) || findMeetingPost(postId);
   if (!row) return showToast('ไม่พบรายการ Training นี้', 'error');
@@ -3054,7 +3050,7 @@ async function printTrainingRecord(postId, { includeSlides = true, rowOverride =
         <tr><th>Brief introduction of training content</th><td colspan="3">${trainingPrintDetailHtml(row)}</td></tr>
         <tr><th>Training Date (date, hour)</th><td>${dateAndTime}</td><th>Training place</th><td>${escapeHtml(row.TrainingPlace || '') || '&nbsp;'}</td></tr>
         <tr><th>Training and implementation unit</th><td>${escapeHtml(row.TrainingUnit || row.LineName || row.LineID || '') || '&nbsp;'}</td><th>Trainer</th><td>${escapeHtml(row.TrainerName || row.CreatedByName || '') || '&nbsp;'}</td></tr>
-        <tr class="training-record-sign-row"><td colspan="4" class="training-record-sign-cell"><div class="training-record-sign-title">Signed: / พนักงานผู้เข้ารับการ Training</div><table class="training-signature-table"><thead><tr><th>No.</th><th>Employee name / ชื่อ-นามสกุล</th><th>Signature / ลายเซ็น</th></tr></thead><tbody>${trainingSignedRows()}</tbody></table></td></tr>
+        <tr><th colspan="4">Signed:</th></tr>
         <tr><th colspan="4">Planned training?： <span class="training-record-checks">${String(row.TrainingPlanned || 'Yes').toLowerCase() === 'no' ? '☐ Yes　　 ☒ No，But recorded' : '☒ Yes　　 ☐ No，But recorded'}</span></th></tr>
         <tr><th colspan="4">Training implementation effect:<br><span class="training-record-effect">${row.TrainingEffect ? escapeHtml(row.TrainingEffect).replace(/\n/g, '<br>') : '&nbsp;'}</span></th></tr>
       </tbody></table>
