@@ -3463,12 +3463,21 @@ function syncMeetingQuizAdminPolling() {
 
 function meetingQuizUiQuestion(row = {}) {
   const cleanChoices = values => (values || []).map(value => String(value || '').replace(/^\s*[A-D]\s*[.)、:：-]\s*/i, '').trim());
+  const choicesTH = cleanChoices(row.choicesTH || [row.ChoiceATH || row.choiceATH || '', row.ChoiceBTH || row.choiceBTH || '', row.ChoiceCTH || row.choiceCTH || '', row.ChoiceDTH || row.choiceDTH || '']);
+  const choicesMY = cleanChoices(row.choicesMY || [row.ChoiceAMY || row.choiceAMY || '', row.ChoiceBMY || row.choiceBMY || '', row.ChoiceCMY || row.choiceCMY || '', row.ChoiceDMY || row.choiceDMY || '']);
+  const detectedCount = Math.max(
+    choicesTH.reduce((last, value, index) => value ? index + 1 : last, 0),
+    choicesMY.reduce((last, value, index) => value ? index + 1 : last, 0)
+  );
+  const optionCount = Math.max(2, Math.min(4, Number(row.optionCount || row.OptionCount) || detectedCount || 4));
   return {
     questionTH: row.QuestionTH || row.questionTH || '',
-    choicesTH: cleanChoices(row.choicesTH || [row.ChoiceATH || row.choiceATH || '', row.ChoiceBTH || row.choiceBTH || '', row.ChoiceCTH || row.choiceCTH || '', row.ChoiceDTH || row.choiceDTH || '']),
+    choicesTH,
     questionMY: row.QuestionMY || row.questionMY || '',
-    choicesMY: cleanChoices(row.choicesMY || [row.ChoiceAMY || row.choiceAMY || '', row.ChoiceBMY || row.choiceBMY || '', row.ChoiceCMY || row.choiceCMY || '', row.ChoiceDMY || row.choiceDMY || '']),
-    correctOption: row.CorrectOption || row.correctOption || 'A',
+    choicesMY,
+    optionCount,
+    correctOption: row.CorrectOption !== undefined ? String(row.CorrectOption || '').toUpperCase()
+      : (row.correctOption !== undefined ? String(row.correctOption || '').toUpperCase() : 'A'),
     explanationTH: row.ExplanationTH || row.explanationTH || '',
     explanationMY: row.ExplanationMY || row.explanationMY || '',
     questionImageURL: row.QuestionImageURL || row.questionImageURL || ''
@@ -3503,10 +3512,12 @@ function renderMeetingQuizAdmin() {
   const questionEditor = isDraft ? (model.questions || []).map((raw, index) => {
     const q = meetingQuizUiQuestion(raw);
     const choices = ['A', 'B', 'C', 'D'];
-    const choiceFields = (lang, values) => `<div class="quiz-choice-grid">${choices.map((key, i) => `<label class="quiz-choice-row"><strong>${key}</strong><textarea data-quiz-field="choice${key}${lang}" aria-label="ตัวเลือก ${key} ${lang}" data-required-for-publish>${escapeHtml(values[i] || '')}</textarea></label>`).join('')}</div>`;
+    const choiceFields = (lang, values) => `<div class="quiz-choice-grid">${choices.map((key, i) => `<label class="quiz-choice-row" data-option-index="${i + 1}"${i >= q.optionCount ? ' hidden' : ''}><strong>${key}</strong><textarea data-quiz-field="choice${key}${lang}" aria-label="ตัวเลือก ${key} ${lang}" data-required-for-publish>${escapeHtml(values[i] || '')}</textarea></label>`).join('')}</div>`;
+    const correctOption = choices.slice(0, q.optionCount).includes(q.correctOption) ? q.correctOption : '';
     return `<section class="quiz-editor-question" data-quiz-q="${index}">
       <h4>ข้อ ${index + 1}</h4>
       <div class="quiz-question-image-field"><label>รูปประกอบ (ไม่บังคับ)<input type="file" accept="image/jpeg,image/png,image/webp" data-quiz-image="${index}"></label><input type="hidden" data-quiz-field="questionImageURL" value="${escapeAttr(q.questionImageURL)}"><div class="quiz-question-image-preview" data-quiz-image-preview>${q.questionImageURL ? `<img src="${escapeAttr(driveThumbnailUrl_(q.questionImageURL, 360))}" alt="รูปประกอบข้อ ${index + 1}" loading="lazy"><button type="button" class="btn btn-ghost btn-compact" data-quiz-remove-image>นำรูปออก</button>` : '<span class="field-help">เพิ่มรูปเพื่อใช้ประกอบคำถามหรือเกมได้</span>'}</div><span class="field-help">รูปจะเก็บใน Google Drive และเชื่อมกับข้อสอบนี้</span></div>
+      <label class="quiz-option-count-control">จำนวนตัวเลือก<select data-quiz-option-count>${[2, 3, 4].map(count => `<option value="${count}" ${q.optionCount === count ? 'selected' : ''}>${count} ตัวเลือก</option>`).join('')}</select></label>
       <div class="quiz-editor-language-panel" data-quiz-language-panel="TH">
         <label class="quiz-editor-full-field">คำถามภาษาไทย<textarea data-quiz-field="questionTH" data-required-for-publish>${escapeHtml(q.questionTH)}</textarea></label>
         <strong class="quiz-editor-section-label">ตัวเลือกภาษาไทย</strong>${choiceFields('TH', q.choicesTH)}
@@ -3518,7 +3529,7 @@ function renderMeetingQuizAdmin() {
         <strong class="quiz-editor-section-label">ရွေးချယ်စရာများ (မြန်မာ)</strong>${choiceFields('MY', q.choicesMY)}
         <label class="quiz-editor-full-field">ရှင်းလင်းချက် (မြန်မာ)<textarea data-quiz-field="explanationMY" data-required-for-publish>${escapeHtml(q.explanationMY)}</textarea></label>
       </div>
-      <label class="quiz-editor-correct-answer">คำตอบที่ถูก<select data-quiz-field="correctOption">${choices.map(key => `<option value="${key}" ${q.correctOption === key ? 'selected' : ''}>${key}</option>`).join('')}</select></label>
+      <label class="quiz-editor-correct-answer">คำตอบที่ถูก<select data-quiz-field="correctOption"><option value="" ${correctOption ? '' : 'selected'}>เลือกคำตอบ</option>${choices.map((key, choiceIndex) => `<option value="${key}" ${choiceIndex >= q.optionCount ? 'hidden disabled' : ''} ${correctOption === key ? 'selected' : ''}>${key}</option>`).join('')}</select></label>
     </section>`;
   }).join('') : '';
   const shiftSessions = model.shiftSessions || [];
@@ -3592,9 +3603,10 @@ function meetingQuizPublicUrl(publicToken) {
 function readMeetingQuizAdminQuestions() {
   return $$('#meetingQuizEditor [data-quiz-q]').map(card => {
     const get = field => card.querySelector(`[data-quiz-field="${field}"]`)?.value.trim() || '';
+    const optionCount = Math.max(2, Math.min(4, Number(card.querySelector('[data-quiz-option-count]')?.value) || 4));
     return {
-      questionTH: get('questionTH'), choicesTH: ['A', 'B', 'C', 'D'].map(key => get(`choice${key}TH`)),
-      questionMY: get('questionMY'), choicesMY: ['A', 'B', 'C', 'D'].map(key => get(`choice${key}MY`)),
+      questionTH: get('questionTH'), choicesTH: ['A', 'B', 'C', 'D'].map((key, index) => index < optionCount ? get(`choice${key}TH`) : ''),
+      questionMY: get('questionMY'), choicesMY: ['A', 'B', 'C', 'D'].map((key, index) => index < optionCount ? get(`choice${key}MY`) : ''),
       correctOption: get('correctOption'), explanationTH: get('explanationTH'), explanationMY: get('explanationMY'),
       questionImageURL: get('questionImageURL')
     };
@@ -3620,7 +3632,7 @@ function setMeetingQuizEditorSaving(isSaving) {
 }
 
 function handleMeetingQuizAdminInput(event) {
-  if (!event.target.closest('#meetingQuizEditor [data-quiz-field], #meetingQuizEditor [data-quiz-image]')) return;
+  if (!event.target.closest('#meetingQuizEditor [data-quiz-field], #meetingQuizEditor [data-quiz-image], #meetingQuizEditor [data-quiz-option-count]')) return;
   const model = state.meetingQuizAdmin;
   if (!model?.draftSaveNotice || model.draftSavePending) return;
   model.draftSaveNotice = '';
@@ -3629,6 +3641,33 @@ function handleMeetingQuizAdminInput(event) {
 }
 
 async function handleMeetingQuizAdminChange(event) {
+  const optionCountInput = event.target.closest('[data-quiz-option-count]');
+  if (optionCountInput) {
+    const card = optionCountInput.closest('[data-quiz-q]');
+    const count = Math.max(2, Math.min(4, Number(optionCountInput.value) || 4));
+    card.querySelectorAll('[data-option-index]').forEach(row => {
+      row.hidden = Number(row.dataset.optionIndex) > count;
+    });
+    const correct = card.querySelector('[data-quiz-field="correctOption"]');
+    const selected = correct.value;
+    Array.from(correct.options).forEach(option => {
+      if (!option.value) return;
+      const isAvailable = option.value.charCodeAt(0) - 64 <= count;
+      option.hidden = !isAvailable;
+      option.disabled = !isAvailable;
+    });
+    if (selected && selected.charCodeAt(0) - 64 > count) {
+      correct.value = '';
+      showToast('จำนวนตัวเลือกเปลี่ยนแล้ว กรุณาเลือกเฉลยใหม่', 'warning');
+    }
+    const model = state.meetingQuizAdmin;
+    if (model?.draftSaveNotice && !model.draftSavePending) {
+      model.draftSaveNotice = '';
+      model.draftSaveError = false;
+      updateMeetingQuizDraftNotice(model);
+    }
+    return;
+  }
   const input = event.target.closest('[data-quiz-image]');
   const model = state.meetingQuizAdmin;
   const file = input?.files?.[0];
@@ -3716,10 +3755,11 @@ async function handleMeetingQuizAdminClick(event) {
       const card = button.closest('[data-quiz-q]');
       const get = field => card.querySelector(`[data-quiz-field="${field}"]`)?.value.trim() || '';
       const questionNo = Number(card.dataset.quizQ) + 1;
+      const optionCount = Math.max(2, Math.min(4, Number(card.querySelector('[data-quiz-option-count]')?.value) || 4));
       button.textContent = 'กำลังแปล...';
       const translated = await apiCall('translateMeetingQuizQuestionToMyanmar', {
         postId: model.postId, quizId: model.quiz.QuizID, questionNo,
-        questionTH: get('questionTH'), choicesTH: ['A', 'B', 'C', 'D'].map(key => get(`choice${key}TH`)),
+        questionTH: get('questionTH'), choicesTH: ['A', 'B', 'C', 'D'].slice(0, optionCount).map(key => get(`choice${key}TH`)),
         explanationTH: get('explanationTH')
       });
       card.querySelector('[data-quiz-field="questionMY"]').value = translated.questionMY;
@@ -3958,7 +3998,7 @@ function renderMeetingQuizExam() {
   }
   const choices = ['A', 'B', 'C', 'D'];
   const questions = model.questions || [];
-  content.innerHTML = `<div class="quiz-status-note">${escapeHtml(model.participant.displayName || '')}${ownShift ? ` · ${lang === 'MY' ? 'အဆိုင်း' : 'กะ'} ${escapeHtml(ownShift)}` : ''} · ${lang === 'TH' ? 'ภาษาไทย · เริ่มจับเวลาแล้ว · ตอบให้ครบทุกข้อ แล้วส่งคำตอบ' : 'မြန်မာဘာသာ · အချိန်စတင်မှတ်တမ်းတင်နေပါပြီ · အားလုံးဖြေပြီး တင်သွင်းပါ'}</div><form id="meetingQuizAnswerForm">${questions.map(q => `<fieldset class="quiz-exam-question"><legend>${meetingQuizQuestionNumber(q.QuestionNo)}. ${escapeHtml(q['Question' + lang] || '')}</legend>${q.QuestionImageURL ? `<img class="quiz-question-exam-image" src="${escapeAttr(driveThumbnailUrl_(q.QuestionImageURL, 900))}" alt="รูปประกอบข้อ ${meetingQuizQuestionNumber(q.QuestionNo)}" loading="lazy">` : ''}${choices.map(choice => `<label class="quiz-exam-choice"><input type="radio" name="q${meetingQuizQuestionNumber(q.QuestionNo)}" value="${choice}" ${model.answers[meetingQuizQuestionNumber(q.QuestionNo)] === choice ? 'checked' : ''} required><span>${choice}. ${escapeHtml(q['Choice' + choice + lang] || '')}</span></label>`).join('')}</fieldset>`).join('')}<div class="modal-actions"><button type="submit" class="btn btn-primary">${lang === 'MY' ? 'စာမေးပွဲတင်သွင်းရန်' : 'ส่งข้อสอบ'}</button></div></form>`;
+  content.innerHTML = `<div class="quiz-status-note">${escapeHtml(model.participant.displayName || '')}${ownShift ? ` · ${lang === 'MY' ? 'အဆိုင်း' : 'กะ'} ${escapeHtml(ownShift)}` : ''} · ${lang === 'TH' ? 'ภาษาไทย · เริ่มจับเวลาแล้ว · ตอบให้ครบทุกข้อ แล้วส่งคำตอบ' : 'မြန်မာဘာသာ · အချိန်စတင်မှတ်တမ်းတင်နေပါပြီ · အားလုံးဖြေပြီး တင်သွင်းပါ'}</div><form id="meetingQuizAnswerForm">${questions.map(q => `<fieldset class="quiz-exam-question"><legend>${meetingQuizQuestionNumber(q.QuestionNo)}. ${escapeHtml(q['Question' + lang] || '')}</legend>${q.QuestionImageURL ? `<img class="quiz-question-exam-image" src="${escapeAttr(driveThumbnailUrl_(q.QuestionImageURL, 900))}" alt="รูปประกอบข้อ ${meetingQuizQuestionNumber(q.QuestionNo)}" loading="lazy">` : ''}${choices.filter(choice => String(q['Choice' + choice + lang] || '').trim()).map(choice => `<label class="quiz-exam-choice"><input type="radio" name="q${meetingQuizQuestionNumber(q.QuestionNo)}" value="${choice}" ${model.answers[meetingQuizQuestionNumber(q.QuestionNo)] === choice ? 'checked' : ''} required><span>${choice}. ${escapeHtml(q['Choice' + choice + lang] || '')}</span></label>`).join('')}</fieldset>`).join('')}<div class="modal-actions"><button type="submit" class="btn btn-primary">${lang === 'MY' ? 'စာမေးပွဲတင်သွင်းရန်' : 'ส่งข้อสอบ'}</button></div></form>`;
 }
 
 function meetingQuizQuestionNumber(value) { const number = Number(value); return Number.isFinite(number) ? number : 0; }

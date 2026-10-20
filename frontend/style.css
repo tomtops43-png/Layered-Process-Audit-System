@@ -743,6 +743,8 @@ textarea{line-height:1.45}
 #meetingQuizAdminDialog .quiz-editor-question{position:relative;padding:18px;margin:14px 0;border:1px solid #e1e8ee;border-radius:15px;background:#fff;box-shadow:0 4px 16px rgba(18,60,105,.055)}
 #meetingQuizAdminDialog .quiz-editor-question h4{display:flex;align-items:center;gap:10px;margin:0 0 16px;color:var(--navy-2);font-size:1rem;line-height:1.45;font-weight:800}
 #meetingQuizAdminDialog .quiz-editor-question h4::before{content:"";width:7px;height:22px;flex:0 0 auto;border-radius:99px;background:linear-gradient(180deg,#3d91ca,var(--navy))}
+#meetingQuizAdminDialog .quiz-option-count-control{display:grid;grid-template-columns:minmax(120px,190px);gap:6px;margin:0 0 14px;color:#405164;font-size:.85rem;font-weight:700}
+#meetingQuizAdminDialog .quiz-option-count-control select{width:100%;padding:8px 10px}
 #meetingQuizAdminDialog .quiz-editor-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
 #meetingQuizAdminDialog .quiz-editor-grid label,#meetingQuizAdminDialog .quiz-editor-grid>div>strong{font-size:.85rem;font-weight:700;color:#405164;line-height:1.5}
 #meetingQuizAdminDialog .quiz-editor-grid label{align-items:stretch;min-width:0;gap:7px}
@@ -751,6 +753,7 @@ textarea{line-height:1.45}
 #meetingQuizAdminDialog .quiz-editor-grid textarea:focus{background:#fff}
 #meetingQuizAdminDialog .quiz-choice-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
 #meetingQuizAdminDialog .quiz-choice-row{display:grid;grid-template-columns:30px minmax(0,1fr);gap:8px;align-items:start;min-width:0;margin:0;padding:0}
+#meetingQuizAdminDialog .quiz-choice-row[hidden]{display:none}
 #meetingQuizAdminDialog .quiz-choice-row>strong{display:grid;place-items:center;width:28px;height:28px;margin-top:8px;border-radius:9px;background:var(--cyan);color:var(--navy);font-size:.78rem;font-weight:800}
 #meetingQuizAdminDialog .quiz-choice-row textarea{min-height:78px}
 #meetingQuizAdminDialog .quiz-editor-question select{min-height:46px;border-radius:10px;background:#fcfdfe;font-weight:700}
