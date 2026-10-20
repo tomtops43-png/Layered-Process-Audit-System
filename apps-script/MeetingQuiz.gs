@@ -880,25 +880,64 @@ function extractMeetingSlideText_(fileId, fileName) {
 
 /** OCR the converted TV slide images only when the original deck is unavailable or has no text. */
 function extractMeetingSlideImageText_(imageUrls, fileName) {
-  var chunks = [];
+  var entries = [];
   (Array.isArray(imageUrls) ? imageUrls : []).forEach(function (url, index) {
     var fileId = meetingQuizDriveFileId_(url);
     if (!fileId) return;
-    var source = DriveApp.getFileById(fileId);
-    var temporaryId = '';
-    try {
-      var name = cleanString_(fileName || source.getName()) + ' page ' + (index + 1);
-      var document = Drive.Files.copy({ title: name + ' (quiz OCR)', mimeType: 'application/vnd.google-apps.document' }, fileId,
-        { convert: true, ocr: true, ocrLanguage: 'th' });
-      temporaryId = document.id;
-      var text = DocumentApp.openById(temporaryId).getBody().getText().trim();
-      if (text) chunks.push('หน้า ' + (index + 1) + ': ' + text);
-    } finally {
-      if (temporaryId) {
-        try { DriveApp.getFileById(temporaryId).setTrashed(true); } catch (cleanupError) {}
-      }
-    }
+    entries.push({ fileId: fileId, page: index + 1 });
   });
+  if (!entries.length) return '';
+
+  // OCR conversion is the slowest part for image-only slide decks. Send the
+  // Drive copy/OCR requests together, then read the converted Docs and clean
+  // them up. This keeps every slide in the source without waiting on one OCR
+  // conversion to finish before starting the next one.
+  var temporaryIds = [];
+  var chunks = [];
+  try {
+    var token = ScriptApp.getOAuthToken();
+    var baseName = cleanString_(fileName) || 'Training slides';
+    var requests = entries.map(function (entry) {
+      var title = baseName + ' page ' + entry.page + ' (quiz OCR)';
+      return {
+        url: 'https://www.googleapis.com/drive/v2/files/' + encodeURIComponent(entry.fileId) + '/copy?convert=true&ocr=true&ocrLanguage=th',
+        method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+        headers: { Authorization: 'Bearer ' + token },
+        payload: JSON.stringify({ title: title, mimeType: 'application/vnd.google-apps.document' })
+      };
+    });
+    var responses = UrlFetchApp.fetchAll(requests);
+    var documents = [];
+    var copyError = '';
+    responses.forEach(function (response, index) {
+      var status = response.getResponseCode();
+      if (status < 200 || status >= 300) {
+        if (!copyError) copyError = 'Google Drive อ่านข้อความจากรูปสไลด์ไม่สำเร็จ (HTTP ' + status + ')';
+        return;
+      }
+      var document;
+      try { document = JSON.parse(response.getContentText()); }
+      catch (parseError) {
+        if (!copyError) copyError = 'Google Drive ส่งผล OCR กลับมาไม่ถูกต้อง';
+        return;
+      }
+      if (!document || !document.id) {
+        if (!copyError) copyError = 'ไม่พบไฟล์ชั่วคราวสำหรับอ่านรูปสไลด์หน้า ' + entries[index].page;
+        return;
+      }
+      temporaryIds.push(document.id);
+      documents.push({ id: document.id, page: entries[index].page });
+    });
+    if (copyError) throw new Error(copyError);
+    documents.forEach(function (document) {
+      var text = DocumentApp.openById(document.id).getBody().getText().trim();
+      if (text) chunks.push('หน้า ' + document.page + ': ' + text);
+    });
+  } finally {
+    temporaryIds.forEach(function (temporaryId) {
+      try { DriveApp.getFileById(temporaryId).setTrashed(true); } catch (cleanupError) {}
+    });
+  }
   return chunks.join('\n');
 }
 
@@ -978,6 +1017,7 @@ function callMeetingQuizGenerator_(prompt) {
       generationConfig: {
         responseMimeType: 'application/json',
         responseJsonSchema: meetingQuizResponseSchema_(),
+        maxOutputTokens: 4096,
         thinkingConfig: { thinkingLevel: 'low' }
       }
     })
