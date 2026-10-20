@@ -3259,6 +3259,7 @@ function meetingPostCardHtml(row, isCarry, showQuizActions = true) {
   if (canTick && status === 'open') actions.push(`<button class="btn btn-secondary" data-mtg-status="Discussed" data-mtg-id="${escapeAttr(row.PostID)}">✓ ${completionLabel}</button>`);
   if (canTick && status === 'discussed') actions.push(`<button class="btn btn-outline" data-mtg-status="Closed" data-mtg-id="${escapeAttr(row.PostID)}">${isTraining ? 'ปิด Training' : 'จบเรื่อง'}</button>`);
   if (canTick && status !== 'open') actions.push(`<button class="btn btn-ghost" data-mtg-status="Open" data-mtg-id="${escapeAttr(row.PostID)}">↩ รอคุย</button>`);
+  if (isTraining) actions.push(`<button class="btn btn-outline" data-training-form-print="${escapeAttr(row.PostID)}" title="พิมพ์แบบฟอร์มลงชื่อก่อนเริ่ม Training">🖨 พิมพ์แบบฟอร์มลงชื่อ</button>`);
   const quiz = row.MeetingQuiz || {};
   if (showQuizActions) {
     if (quiz.allSubmitted) actions.push(`<button class="btn btn-primary" data-mtg-quiz-review="${escapeAttr(row.PostID)}">🔑 เฉลย</button>`);
@@ -3304,6 +3305,8 @@ function meetingPostCardHtml(row, isCarry, showQuizActions = true) {
 }
 
 function handleMeetingQuizBoardClick(event) {
+  const trainingPrint = event.target.closest('[data-training-form-print]');
+  if (trainingPrint) return printTrainingRecord(trainingPrint.dataset.trainingFormPrint, { includeSlides: false });
   const manage = event.target.closest('[data-mtg-quiz-manage]');
   if (manage) return openMeetingQuizAdmin(manage.dataset.mtgQuizManage);
   const open = event.target.closest('[data-mtg-quiz-open]');
