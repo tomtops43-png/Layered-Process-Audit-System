@@ -185,7 +185,7 @@ function meetingQuizSummaryForPost_(post, user, summaryCache) {
     registeredCount: registeredCount,
     submittedCount: submittedCount,
     shiftSessions: sessions,
-    people: meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(quiz.QuizID), meetingQuizRosterRows_()).filter(function (row) {
+    people: meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(quiz.QuizID), []).filter(function (row) {
       return !valuesEqual_(row.ParticipantStatus, 'Excused');
     }).map(function (row) {
       var submitted = valuesEqual_(row.ParticipantStatus, 'Submitted');
@@ -417,7 +417,9 @@ function meetingQuizShiftSessions_(quiz, includeTopThree) {
       rosterCount: counts.rosterCount, pendingCount: counts.pending,
       excusedCount: counts.excused, absentCount: counts.absent,
       rosterConfigured: counts.rosterConfigured,
-      allSubmitted: valuesEqual_(shift.rosterStatus, 'Stopped') && counts.submitted === counts.participants
+      // A stopped shift is final even if some registered people did not submit.
+      // Rankings include only submitted attempts; pending attempts are excluded.
+      allSubmitted: valuesEqual_(shift.rosterStatus, 'Stopped')
     };
     if (includeTopThree && session.examStopped) {
       session.topThree = meetingQuizTopThree_(quiz.QuizID, shift.value, quiz.MeetingDate);
@@ -491,13 +493,11 @@ function meetingQuizFindParticipant_(quizId, token) {
   })[0] || null;
 }
 
-function meetingQuizParticipantForRegistration_(quizId, employeeId, fullName, rosterRows) {
+function meetingQuizParticipantForRegistration_(quizId, employeeId) {
   var targetId = cleanString_(employeeId).toLowerCase();
-  var targetName = meetingQuizNormalizeEmployeeName_(fullName);
-  return meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(quizId), rosterRows).filter(function (row) {
-    var rowId = meetingQuizResolveParticipantEmployeeId_(row, rosterRows).toLowerCase();
-    var rowName = meetingQuizNormalizeEmployeeName_(meetingQuizParticipantFullName_(row));
-    return (targetId && rowId === targetId) || (targetName && rowName === targetName);
+  if (!targetId) return null;
+  return meetingQuizParticipants_(quizId).filter(function (row) {
+    return cleanString_(row.EmployeeID).toLowerCase() === targetId;
   })[0] || null;
 }
 
@@ -733,20 +733,12 @@ function meetingQuizUniqueParticipantRows_(rows, rosterRows) {
   return Object.keys(selected).map(function (key) { return selected[key]; });
 }
 
-function meetingQuizTopThree_(quizId, shift, meetingDate) {
-  var roster = meetingQuizRosterForShift_(meetingDate, shift);
-  var rosterRows = meetingQuizRosterRows_();
-  var eligibleKeys = {};
-  if (roster.configured) meetingQuizUniqueRosterRows_(rosterRows).forEach(function (employee) {
-    var key = cleanString_(employee.EmployeeID).toLowerCase();
-    if (key && !roster.absenceMap[key]) eligibleKeys[key] = true;
-  });
+function meetingQuizTopThree_(quizId, shift) {
+  // Quiz participants are the source of truth for a particular attempt. Do not
+  // filter rankings through the permanent employee roster, which may be stale.
+  var rosterRows = [];
   return meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(quizId, shift), rosterRows).filter(function (row) {
     return valuesEqual_(row.ParticipantStatus, 'Submitted');
-  }).filter(function (row) {
-    if (!roster.configured) return true;
-    var id = meetingQuizResolveParticipantEmployeeId_(row, rosterRows);
-    return id && eligibleKeys[id.toLowerCase()];
   }).sort(function (a, b) {
     var aDuration = cleanString_(a.DurationMs) === '' ? null : toNumber_(a.DurationMs);
     var bDuration = cleanString_(b.DurationMs) === '' ? null : toNumber_(b.DurationMs);
@@ -757,7 +749,7 @@ function meetingQuizTopThree_(quizId, shift, meetingDate) {
       cleanString_(a.DisplayName).localeCompare(cleanString_(b.DisplayName));
   }).slice(0, 3).map(function (row, index) {
     return {
-      rank: index + 1, employeeId: meetingQuizResolveParticipantEmployeeId_(row, rosterRows),
+      rank: index + 1, employeeId: cleanString_(row.EmployeeID),
       displayName: meetingQuizParticipantFullName_(row), score: toNumber_(row.Score),
       total: toNumber_(row.TotalQuestions) || 5, submittedAt: cleanString_(row.SubmittedAt),
       durationMs: cleanString_(row.DurationMs) === '' ? null : toNumber_(row.DurationMs),
@@ -773,65 +765,27 @@ function meetingQuizDurationLabel_(durationMs) {
   return minutes ? minutes + ' นาที ' + remainingSeconds + ' วินาที' : seconds + ' วินาที';
 }
 
-function meetingQuizRosterCounts_(quizId, shift, meetingDate) {
-  var rows = meetingQuizParticipants_(quizId, shift);
-  var roster = meetingQuizRosterForShift_(meetingDate, shift);
-  if (!roster.configured) {
-    var uniqueRows = meetingQuizUniqueParticipantRows_(rows, meetingQuizRosterRows_());
-    var legacyEligible = uniqueRows.filter(function (row) { return !valuesEqual_(row.ParticipantStatus, 'Excused'); });
-    var legacySubmitted = legacyEligible.filter(function (row) { return valuesEqual_(row.ParticipantStatus, 'Submitted'); });
-    var legacyStarted = legacyEligible.filter(function (row) {
-      return valuesEqual_(row.ParticipantStatus, 'Submitted') || toNumber_(row.StartedAtMs) > 0;
-    });
-    var legacyExcused = uniqueRows.length - legacyEligible.length;
-    return {
-      participants: legacyStarted.length, started: legacyStarted.length, submitted: legacySubmitted.length,
-      registered: legacyEligible.length, rosterCount: 0, pending: legacyStarted.length - legacySubmitted.length,
-      excused: legacyExcused, absent: 0, rosterConfigured: false
-    };
-  }
-  var rosterMembers = roster.members;
-  var rosterRows = meetingQuizRosterRows_();
-  var participantByEmployee = {};
-  rows.forEach(function (row) {
-    var id = meetingQuizResolveParticipantEmployeeId_(row, rosterRows).toLowerCase();
-    if (!id) return;
-    var current = participantByEmployee[id];
-    var nextPriority = valuesEqual_(row.ParticipantStatus, 'Submitted') ? 3 : (valuesEqual_(row.ParticipantStatus, 'Registered') ? 2 : 1);
-    var currentPriority = current ? (valuesEqual_(current.ParticipantStatus, 'Submitted') ? 3 : (valuesEqual_(current.ParticipantStatus, 'Registered') ? 2 : 1)) : -1;
-    if (!current || nextPriority > currentPriority) participantByEmployee[id] = row;
+function meetingQuizRosterCounts_(quizId, shift) {
+  // Count the registrations attached to this quiz, never the permanent roster.
+  var uniqueRows = meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(quizId, shift), []);
+  var eligible = uniqueRows.filter(function (row) { return !valuesEqual_(row.ParticipantStatus, 'Excused'); });
+  var submitted = eligible.filter(function (row) { return valuesEqual_(row.ParticipantStatus, 'Submitted'); });
+  var started = eligible.filter(function (row) {
+    return valuesEqual_(row.ParticipantStatus, 'Submitted') || toNumber_(row.StartedAtMs) > 0;
   });
-  var expected = [];
-  var absent = 0;
-  var excused = 0;
-  rosterMembers.forEach(function (employee) {
-    if (roster.absenceMap[employee.key]) { absent++; return; }
-    var participant = participantByEmployee[employee.key];
-    if (participant && valuesEqual_(participant.ParticipantStatus, 'Excused')) { excused++; return; }
-    expected.push(employee);
-  });
-  var registered = expected.filter(function (employee) { return Boolean(participantByEmployee[employee.key]); });
-  var started = registered.filter(function (employee) {
-    var participant = participantByEmployee[employee.key];
-    return valuesEqual_(participant.ParticipantStatus, 'Submitted') || toNumber_(participant.StartedAtMs) > 0;
-  });
-  var submitted = registered.filter(function (employee) {
-    return valuesEqual_(participantByEmployee[employee.key].ParticipantStatus, 'Submitted');
-  });
+  var pending = started.filter(function (row) { return !valuesEqual_(row.ParticipantStatus, 'Submitted'); });
+  var excused = uniqueRows.length - eligible.length;
   return {
     participants: started.length, started: started.length, submitted: submitted.length,
-    registered: registered.length, rosterCount: rosterMembers.length,
-    pending: started.length - submitted.length, excused: excused, absent: absent,
-    rosterConfigured: true
+    registered: eligible.length, rosterCount: 0, pending: pending.length,
+    excused: excused, absent: 0, rosterConfigured: false
   };
 }
 
 function meetingQuizAllSubmitted_(quiz, sessions) {
   if (!quiz) return false;
   sessions = sessions || meetingQuizShiftSessions_(quiz);
-  return sessions.length > 0 && sessions.every(function (row) {
-    return row.examStopped && row.submittedCount === row.participantCount;
-  }) && (meetingQuizRosterConfigured_() || sessions.some(function (row) { return row.participantCount > 0; }));
+  return sessions.length > 0 && sessions.every(function (row) { return row.examStopped; });
 }
 
 function meetingQuizSourceText_(posts) {
@@ -1523,8 +1477,7 @@ function getMeetingQuizAdmin(payload, user) {
       selected.PublicToken = newMeetingQuizToken_();
       updateObjectById(SHEET_NAMES.MEETING_QUIZZES, 'QuizID', selected.QuizID, { PublicToken: selected.PublicToken });
     }
-    var rosterRows = meetingQuizRosterRows_();
-    var participants = selected ? meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(selected.QuizID), rosterRows).map(function (row) {
+    var participants = selected ? meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(selected.QuizID), []).map(function (row) {
       return {
         ParticipantID: row.ParticipantID, Shift: cleanString_(row.Shift), FirstName: row.FirstName, LastName: row.LastName,
         EmployeeID: cleanString_(row.EmployeeID),
@@ -1534,30 +1487,7 @@ function getMeetingQuizAdmin(payload, user) {
         Score: row.Score, TotalQuestions: row.TotalQuestions
       };
     }) : [];
-    var shiftSessions = selected ? meetingQuizShiftSessions_(selected, true).map(function (session) {
-      if (!session.rosterConfigured) return session;
-      var roster = meetingQuizRosterForShift_(selected.MeetingDate, session.shift);
-      var rosterRows = meetingQuizRosterRows_();
-      var byEmployee = {};
-      meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(selected.QuizID, session.shift), rosterRows).forEach(function (participant) {
-        var key = meetingQuizResolveParticipantEmployeeId_(participant, rosterRows).toLowerCase();
-        if (key) byEmployee[key] = participant;
-      });
-      session.rosterMembers = roster.members.filter(function (employee) {
-        return !roster.absenceMap[employee.key];
-      }).map(function (employee) {
-        var participant = byEmployee[employee.key];
-        return {
-          employeeId: employee.employeeId, displayName: employee.displayName,
-          participantId: participant ? cleanString_(participant.ParticipantID) : '',
-          status: participant ? cleanString_(participant.ParticipantStatus) : 'NotRegistered',
-          hasStarted: Boolean(participant && (valuesEqual_(participant.ParticipantStatus, 'Submitted') || toNumber_(participant.StartedAtMs) > 0)),
-          score: participant ? cleanString_(participant.Score) : '',
-          total: participant ? toNumber_(participant.TotalQuestions) || 5 : 5
-        };
-      });
-      return session;
-    }) : [];
+    var shiftSessions = selected ? meetingQuizShiftSessions_(selected, true) : [];
     return jsonResponse(true, 'ข้อมูลข้อสอบพร้อมแล้ว', {
       canGenerate: hasPermission_(user, 'meeting.quiz.generate'),
       canManage: hasPermission_(user, 'meeting.quiz.manage'),
@@ -1582,8 +1512,8 @@ function getMeetingQuizAdmin(payload, user) {
       questions: selected ? meetingQuizQuestions_(selected.QuizID).map(meetingQuizQuestionForReview_) : [],
       participants: participants,
       shiftSessions: shiftSessions,
-      employeeRosterConfigured: meetingQuizRosterConfigured_(),
-      employeeRosterCount: meetingQuizUniqueRosterRows_(meetingQuizRosterRows_()).length,
+      employeeRosterConfigured: false,
+      employeeRosterCount: 0,
       rosterSheetName: SHEET_NAMES.MEETING_QUIZ_EMPLOYEES,
       attendanceSheetName: SHEET_NAMES.MEETING_QUIZ_ATTENDANCE,
       summary: selected ? meetingQuizSummaryForPost_(post, user) : { available: false, canManage: true }
@@ -1870,15 +1800,15 @@ function stopMeetingQuizShift(payload, user) {
     requireMeetingQuizManager_(user, post);
     var quiz = meetingQuizForPost_(post);
     if (!quiz) throw new Error('ยังไม่มีข้อสอบที่เผยแพร่');
-    if (!meetingQuizUniqueRosterRows_(meetingQuizRosterRows_()).length) {
-      throw new Error('กรุณาเพิ่มพนักงานสถานะ Active ในชีต MeetingQuizEmployees ก่อนหยุดสอบและจัดอันดับ');
-    }
     var shift = meetingQuizNormalizeShift_(quiz, payload.shift);
     var session = meetingQuizShiftSessions_(quiz).filter(function (row) { return valuesEqual_(row.shift, shift); })[0];
     if (session.examStopped) return jsonResponse(true, 'กะนี้หยุดสอบแล้ว', { quizId: quiz.QuizID, shift: shift, topThree: meetingQuizTopThree_(quiz.QuizID, shift, quiz.MeetingDate) });
-    if (session.pendingCount > 0) throw new Error('ยังมีผู้ที่เริ่มสอบแต่ไม่ส่ง ' + session.pendingCount + ' คนในกะนี้ กรุณารอให้ส่งข้อสอบหรือทำเครื่องหมายยกเว้นก่อนหยุดสอบ');
     meetingQuizSetShiftRoster_(quiz, shift, 'Stopped', user);
-    return jsonResponse(true, 'หยุดสอบกะนี้แล้ว', { quizId: quiz.QuizID, shift: shift, topThree: meetingQuizTopThree_(quiz.QuizID, shift, quiz.MeetingDate) });
+    return jsonResponse(true, 'หยุดสอบกะนี้แล้ว ผู้ที่ยังไม่ส่งจะไม่ถูกนำมาจัดอันดับ', {
+      quizId: quiz.QuizID, shift: shift,
+      topThree: meetingQuizTopThree_(quiz.QuizID, shift),
+      submittedCount: session.submittedCount, excludedCount: session.pendingCount + session.registeredCount - session.startedCount
+    });
   } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
   finally { try { lock.releaseLock(); } catch (_) {} }
 }
@@ -1926,7 +1856,7 @@ function getMeetingQuiz(payload, user) {
       registeredCount: counts.registered, rosterCount: counts.rosterCount,
       submittedCount: counts.submitted, allSubmitted: meetingQuizAllSubmitted_(quiz),
       shiftAllSubmitted: shiftSession.allSubmitted,
-      employeeRosterConfigured: meetingQuizRosterConfigured_(),
+      employeeRosterConfigured: false,
       participant: participant ? {
         participantId: participant.ParticipantID, displayName: participant.DisplayName,
         employeeId: cleanString_(participant.EmployeeID), language: participant.Language,
@@ -1967,97 +1897,29 @@ function registerMeetingQuizParticipant(payload, user) {
         quiz, existingTokenParticipant, token, language, false
       ));
     }
+    requireFields_(payload, ['employeeId', 'firstName', 'lastName', 'shift']);
+    var employeeId = cleanString_(payload.employeeId).toUpperCase();
     var first = cleanString_(payload.firstName);
     var last = cleanString_(payload.lastName);
-    var rosterRows = meetingQuizRosterRows_();
-    var employee = meetingQuizFindEmployeeForRegistration_(first, last, rosterRows);
-    var employeeId = '';
-    var shift;
-    var createdEmployee = false;
-    var existingDailyAttempt = null;
-    if (employee) {
-      employeeId = cleanString_(employee.EmployeeID);
-      if (!cleanString_(payload.shift)) throw new Error('กรุณาเลือกกะปัจจุบันของคุณ');
-      shift = meetingQuizNormalizeShift_(quiz, payload.shift);
-      var shiftOption = meetingQuizShiftOptions_(quiz).filter(function (row) { return valuesEqual_(row.value, shift); })[0];
-      first = cleanString_(employee.FirstName) || first;
-      last = cleanString_(employee.LastName) || last;
-      existingDailyAttempt = meetingQuizParticipantForRegistration_(quiz.QuizID, employeeId, first + ' ' + last, rosterRows);
-      if (existingDailyAttempt && valuesEqual_(existingDailyAttempt.ParticipantStatus, 'Excused')) {
-        throw new Error('รายชื่อนี้ได้รับการยกเว้นจากรอบสอบแล้ว กรุณาติดต่อ Leader');
-      }
-      if (!shiftOption || (shiftOption.rosterStatus === 'Stopped' && !valuesEqual_(existingDailyAttempt && existingDailyAttempt.ParticipantStatus, 'Submitted'))) {
-        throw new Error('กะนี้หยุดสอบแล้ว กรุณาติดต่อ Leader');
-      }
-    } else {
-      if (first.length > 100 || last.length > 100) throw new Error('ชื่อและนามสกุลต้องไม่เกิน 100 ตัวอักษร');
-      if (!cleanString_(payload.shift)) throw new Error('กรุณาเลือกกะปัจจุบันของคุณ');
-      shift = meetingQuizNormalizeShift_(quiz, payload.shift);
-      var selectedEmployeeShift = meetingQuizShiftOptions_(quiz).filter(function (row) { return valuesEqual_(row.value, shift); })[0];
-      existingDailyAttempt = meetingQuizParticipantForRegistration_(quiz.QuizID, '', first + ' ' + last, rosterRows);
-      if (existingDailyAttempt && valuesEqual_(existingDailyAttempt.ParticipantStatus, 'Excused')) {
-        throw new Error('รายชื่อนี้ได้รับการยกเว้นจากรอบสอบแล้ว กรุณาติดต่อ Leader');
-      }
-      var isPreviouslySubmitted = valuesEqual_(existingDailyAttempt && existingDailyAttempt.ParticipantStatus, 'Submitted');
-      if (!selectedEmployeeShift || (selectedEmployeeShift.rosterStatus === 'Stopped' && !isPreviouslySubmitted)) {
-        throw new Error('กะนี้หยุดสอบแล้ว กรุณาติดต่อ Leader');
-      }
-      if (!existingDailyAttempt && selectedEmployeeShift.rosterStatus !== 'Open') {
-        throw new Error('กะนี้ปิดรับชื่อใหม่แล้ว กรุณาติดต่อ Leader');
-      }
-      // A new name is saved once to the employee master, then this form is used
-      // as daily attendance for each meeting rather than creating a new person.
-      var now = formatDateTimeBangkok(new Date());
-      employeeId = generateIdWithoutLock_('MQE', SHEET_NAMES.MEETING_QUIZ_EMPLOYEES, 'EmployeeID', getPeriodMonth(new Date()));
-      employee = {
-        EmployeeID: employeeId, FirstName: first, LastName: last, DisplayName: '', Shift: shift,
-        ActiveStatus: 'Active', CreatedAt: now, UpdatedAt: now
-      };
-      createdEmployee = true;
+    if (employeeId.length > 50) throw new Error('รหัสพนักงานต้องไม่เกิน 50 ตัวอักษร');
+    if (first.length > 100 || last.length > 100) throw new Error('ชื่อและนามสกุลต้องไม่เกิน 100 ตัวอักษร');
+    var shift = meetingQuizNormalizeShift_(quiz, payload.shift);
+    var shiftOption = meetingQuizShiftOptions_(quiz).filter(function (row) { return valuesEqual_(row.value, shift); })[0];
+    if (!shiftOption || shiftOption.rosterStatus !== 'Open') {
+      throw new Error(shiftOption && shiftOption.rosterStatus === 'Stopped'
+        ? 'กะนี้หยุดสอบแล้ว กรุณาติดต่อ Leader'
+        : 'กะนี้ปิดรับรายชื่อใหม่แล้ว กรุณาติดต่อ Leader');
     }
-    var absence = meetingQuizAttendanceMap_(quiz.MeetingDate)[employeeId.toLowerCase()];
-    if (absence && !valuesEqual_(existingDailyAttempt && existingDailyAttempt.ParticipantStatus, 'Submitted')) {
-      throw new Error('รายชื่อนี้ถูกทำเครื่องหมายว่า ' + absence + ' จึงไม่อยู่ในรายชื่อเข้าสอบวันนี้');
-    }
-    var shiftSession = meetingQuizShiftSessions_(quiz).filter(function (row) { return valuesEqual_(row.shift, shift); })[0];
-    if (!shiftSession || (shiftSession.examStopped && !valuesEqual_(existingDailyAttempt && existingDailyAttempt.ParticipantStatus, 'Submitted'))) {
-      throw new Error('กะนี้หยุดสอบแล้ว กรุณาติดต่อ Leader');
-    }
-    var now = formatDateTimeBangkok(new Date());
-    if (createdEmployee) {
-      employee.CreatedAt = now;
-      employee.UpdatedAt = now;
-      appendObject(SHEET_NAMES.MEETING_QUIZ_EMPLOYEES, employee);
-    } else if (!valuesEqual_(employee.Shift, shift)) {
-      updateObjectById(SHEET_NAMES.MEETING_QUIZ_EMPLOYEES, 'EmployeeID', employeeId, { Shift: shift, UpdatedAt: now });
-      employee.Shift = shift;
-      employee.UpdatedAt = now;
-    }
-    var displayName = meetingQuizEmployeeName_(employee);
-    var newToken = newMeetingQuizToken_();
+    var existingDailyAttempt = meetingQuizParticipantForRegistration_(quiz.QuizID, employeeId);
     if (existingDailyAttempt) {
-      if (!valuesEqual_(existingDailyAttempt.ParticipantStatus, 'Submitted')) {
-        updateObjectById(SHEET_NAMES.MEETING_QUIZ_PARTICIPANTS, 'ParticipantID', existingDailyAttempt.ParticipantID, {
-          Shift: shift, FirstName: first, LastName: last, DisplayName: displayName,
-          Language: language, EmployeeID: employeeId, TokenHash: hashMeetingQuizToken_(newToken), UpdatedAt: now
-        });
-        existingDailyAttempt.Shift = shift;
-        existingDailyAttempt.FirstName = first;
-        existingDailyAttempt.LastName = last;
-        existingDailyAttempt.DisplayName = displayName;
-        existingDailyAttempt.Language = language;
-        existingDailyAttempt.EmployeeID = employeeId;
-      } else {
-        updateObjectById(SHEET_NAMES.MEETING_QUIZ_PARTICIPANTS, 'ParticipantID', existingDailyAttempt.ParticipantID, {
-          EmployeeID: employeeId, TokenHash: hashMeetingQuizToken_(newToken), UpdatedAt: now
-        });
-        existingDailyAttempt.EmployeeID = employeeId;
+      if (valuesEqual_(existingDailyAttempt.ParticipantStatus, 'Excused')) {
+        throw new Error('รหัสพนักงานนี้ถูกยกเว้นจากข้อสอบรอบนี้แล้ว กรุณาติดต่อ Leader');
       }
-      existingDailyAttempt.TokenHash = hashMeetingQuizToken_(newToken);
-      return jsonResponse(true,
-        valuesEqual_(existingDailyAttempt.ParticipantStatus, 'Submitted') ? 'พบผลสอบเดิม เปิดเฉลยของคุณได้เลย' : 'เช็กชื่อแล้ว ทำข้อสอบต่อจากเดิมได้',
-        meetingQuizRegistrationResult_(quiz, existingDailyAttempt, newToken, language, createdEmployee));
+      throw new Error('รหัสพนักงานนี้ลงชื่อในข้อสอบรอบนี้แล้ว · กรุณาใช้อุปกรณ์เดิมเพื่อทำต่อ หรือแจ้ง Leader');
     }
+    var displayName = [first, last].join(' ');
+    var newToken = newMeetingQuizToken_();
+    var now = formatDateTimeBangkok(new Date());
     var participantId = generateId('MQP', SHEET_NAMES.MEETING_QUIZ_PARTICIPANTS, 'ParticipantID', getPeriodMonth(new Date()));
     appendObject(SHEET_NAMES.MEETING_QUIZ_PARTICIPANTS, {
       ParticipantID: participantId, QuizID: quiz.QuizID, PostID: post.PostID, Shift: shift,
@@ -2069,7 +1931,7 @@ function registerMeetingQuizParticipant(payload, user) {
     });
     return jsonResponse(true, 'ลงชื่อแล้ว เริ่มทำข้อสอบได้', {
       participantId: participantId, participantToken: newToken, shift: shift, employeeId: employeeId, displayName: displayName,
-      employeeCreated: createdEmployee, hasStarted: false, startedAtMs: 0, durationMs: 0,
+      employeeCreated: false, hasStarted: false, startedAtMs: 0, durationMs: 0,
       questions: meetingQuizQuestions_(quiz.QuizID).map(meetingQuizQuestionForClient_)
     });
   } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
@@ -2162,7 +2024,7 @@ function getMeetingQuizAnswerKey(payload, user) {
     var context = meetingQuizRequestContext_(payload, user);
     var quiz = context.quiz;
     if (!quiz) throw new Error('หัวข้อนี้ยังไม่มีข้อสอบ');
-    if (!meetingQuizAllSubmitted_(quiz)) throw new Error('เฉลยรวมจะแสดงเมื่อปิดรับรายชื่อครบทั้งสองกะ และผู้เข้าสอบทุกคนส่งแล้ว');
+    if (!meetingQuizAllSubmitted_(quiz)) throw new Error('เฉลยรวมจะแสดงเมื่อหัวหน้าหยุดสอบครบทุกกะ');
     return jsonResponse(true, 'เปิดเฉลยรวมได้แล้ว', {
       quizId: quiz.QuizID,
       questions: meetingQuizQuestions_(quiz.QuizID).map(meetingQuizQuestionForReview_)
