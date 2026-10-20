@@ -3385,21 +3385,37 @@ function meetingQuizIsToday(value) {
   return String(value || '').slice(0, 10) === today;
 }
 
-async function generateMeetingQuizDraft(model, { automatic = false } = {}) {
+async function generateMeetingQuizDraft(model, { automatic = false, createNewVersion = false } = {}) {
   if (!model) return;
   model.autoGenerating = true;
   model.generationError = '';
   renderMeetingQuizAdmin();
+  if (createNewVersion) setMeetingQuizEditorSaving(true);
   if (!automatic) showLoading('กำลังอ่านสไลด์และสร้างข้อสอบ 5 ข้อ...');
   try {
+    if (createNewVersion && String(model.quiz?.Status || '').toLowerCase() === 'draft') {
+      const currentDraftQuestions = readMeetingQuizAdminQuestions();
+      model.questions = currentDraftQuestions;
+      await apiCall('saveMeetingQuizDraft', {
+        postId: model.postId, quizId: model.quiz.QuizID, questions: currentDraftQuestions
+      });
+    }
     const data = await apiCall('generateMeetingQuiz', {
       postId: model.postId,
-      ...(String(model.quiz?.Status || '').toLowerCase() === 'draft' ? { quizId: model.quiz.QuizID } : {})
+      ...(String(model.quiz?.Status || '').toLowerCase() === 'draft' ? { quizId: model.quiz.QuizID } : {}),
+      ...(createNewVersion ? {
+        createNewVersion: true,
+        ...(String(model.quiz?.Status || '').toLowerCase() === 'draft' ? { replaceQuizId: model.quiz.QuizID } : {})
+      } : {})
     });
     if (!data?.quiz || !Array.isArray(data.questions) || data.questions.length !== 5) {
       throw new Error('ระบบไม่ได้รับข้อสอบครบ 5 ข้อจาก API กรุณาตรวจสถานะและลองอีกครั้ง');
     }
-    Object.assign(model, { quiz: data.quiz, questions: data.questions || [], participants: [] });
+    const quizVersions = [data.quiz, ...(model.quizVersions || []).filter(version =>
+      version.QuizID !== data.quiz.QuizID && version.QuizID !== data.deletedQuizId
+    )];
+    Object.assign(model, { quiz: data.quiz, questions: data.questions || [], participants: [], quizVersions });
+    return data;
   } catch (error) {
     model.generationError = error.message;
     throw error;
@@ -3506,6 +3522,7 @@ function renderMeetingQuizAdmin() {
   const statusText = !quiz ? 'ยังไม่มีฉบับข้อสอบ' : isDraft ? `${isManualDraft ? 'ฉบับร่างสร้างเอง/เกม' : 'ฉบับร่าง'} v${quiz.VersionNo || ''}` : 'เผยแพร่แล้ว · แยกรายชื่อและการปิดรับตามกะ';
   const hasSlides = Number(model.post?.SlideCount || 0) > 0;
   const canGenerate = Boolean(model.canGenerate) && !quiz && hasSlides;
+  const canRegenerate = Boolean(model.canGenerate) && Boolean(quiz) && isDraft && hasSlides;
   const canStartManual = Boolean(model.canManage) && (!quiz || isDraft) && !isManualDraft;
   const canAttachTrainingImages = isTraining && isDraft && !isManualDraft && Boolean(model.canManage) &&
     (model.questions || []).some(question => !String(question.QuestionImageURL || question.questionImageURL || '').trim());
@@ -3566,6 +3583,14 @@ function renderMeetingQuizAdmin() {
     return `<section class="quiz-shift-roster"><div class="quiz-roster-summary"><strong>${escapeHtml(session.label || session.shift)}</strong><span>${stats}</span><div class="quiz-roster-controls">${rosterButton}${stopButton}</div></div>${peopleHtml}${podium}</section>`;
   }).join('');
   const sourceTopics = (model.post?.SourceTopics || []).map(topic => topic.Topic).filter(Boolean);
+  const quizVersions = model.quizVersions || [];
+  const versionPicker = quizVersions.length > 1 ? `<label class="quiz-version-picker">เลือกฉบับข้อสอบ<select data-quiz-version aria-label="เลือกฉบับข้อสอบ">${quizVersions.map(version => {
+    const status = String(version.Status || '').toLowerCase() === 'published' ? 'เผยแพร่แล้ว' : 'ฉบับร่าง';
+    const source = String(version.SourceType || '').toLowerCase() === 'manual' ? 'สร้างเอง' : 'AI';
+    const created = String(version.CreatedAt || '').slice(0, 10);
+    const label = `${status} v${version.VersionNo || 1} · ${source}${created ? ` · ${created}` : ''}`;
+    return `<option value="${escapeAttr(version.QuizID)}" ${version.QuizID === quiz?.QuizID ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+  }).join('')}</select></label>` : '';
   const generationFeedback = model.autoGenerating
     ? `<div class="quiz-status-note">กำลังวิเคราะห์รายละเอียดและสไลด์${isTraining ? 'ของ Training นี้' : 'ทุกหัวข้อวันนี้'} แล้วสร้างข้อสอบ 5 ข้อ…</div>`
     : (model.generationError ? `<div class="quiz-status-note">สร้างข้อสอบไม่สำเร็จ: ${escapeHtml(model.generationError)} · ตรวจการตั้งค่า AI/API แล้วกด Gen เพื่อลองอีกครั้ง</div>` : '');
@@ -3579,12 +3604,12 @@ function renderMeetingQuizAdmin() {
     </div>
   </details>` : '';
   $('#meetingQuizAdminContent').innerHTML = `
-    <div class="quiz-admin-toolbar"><div><strong>${escapeHtml(model.post?.Topic || '')}</strong><div class="field-help">${escapeHtml(model.post?.MeetingDate || '')} · ${escapeHtml(statusText)}${sourceTopics.length ? `<br>หัวข้อที่ใช้: ${sourceTopics.map(escapeHtml).join(' · ')}` : ''}</div></div><div class="quiz-admin-actions">${quiz && !isDraft ? `<span class="field-help">ส่งแล้ว ${summary.submittedCount || 0}/${summary.participantCount || 0} คน${model.lastRefreshedAt ? ` · อัปเดต ${new Date(model.lastRefreshedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : ''}</span><button type="button" class="btn btn-outline" data-quiz-refresh>รีเฟรชสถานะ</button>` : ''}${canGenerate && !model.autoGenerating ? `<button type="button" class="btn btn-secondary" data-quiz-generate>✨ Gen ข้อสอบ 5 ข้อ${isTraining ? 'จาก Training นี้' : 'จากทุกหัวข้อวันนี้'}</button>` : ''}${canAttachTrainingImages ? '<button type="button" class="btn btn-outline" data-quiz-attach-training-images>🖼️ ใส่รูปสไลด์ให้ข้อสอบอัตโนมัติ</button>' : ''}${canStartManual ? '<button type="button" class="btn btn-outline" data-quiz-manual>✍️ สร้างข้อสอบเอง / เกม</button>' : ''}</div></div>
+    <div class="quiz-admin-toolbar"><div><strong>${escapeHtml(model.post?.Topic || '')}</strong><div class="field-help">${escapeHtml(model.post?.MeetingDate || '')} · ${escapeHtml(statusText)}${sourceTopics.length ? `<br>หัวข้อที่ใช้: ${sourceTopics.map(escapeHtml).join(' · ')}` : ''}</div>${versionPicker}</div><div class="quiz-admin-actions">${quiz && !isDraft ? `<span class="field-help">ส่งแล้ว ${summary.submittedCount || 0}/${summary.participantCount || 0} คน${model.lastRefreshedAt ? ` · อัปเดต ${new Date(model.lastRefreshedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : ''}</span><button type="button" class="btn btn-outline" data-quiz-refresh>รีเฟรชสถานะ</button>` : ''}${canGenerate && !model.autoGenerating ? `<button type="button" class="btn btn-secondary" data-quiz-generate>✨ Gen ข้อสอบ 5 ข้อ${isTraining ? 'จาก Training นี้' : 'จากทุกหัวข้อวันนี้'}</button>` : ''}${canRegenerate && !model.autoGenerating ? '<button type="button" class="btn btn-secondary" data-quiz-regenerate>🔄 Gen ใหม่ · ลบฉบับเดิม</button>' : ''}${canAttachTrainingImages ? '<button type="button" class="btn btn-outline" data-quiz-attach-training-images>🖼️ ใส่รูปสไลด์ให้ข้อสอบอัตโนมัติ</button>' : ''}${canStartManual ? '<button type="button" class="btn btn-outline" data-quiz-manual>✍️ สร้างข้อสอบเอง / เกม</button>' : ''}</div></div>
     ${aiSettings}
     ${generationFeedback}
     ${quiz && !isDraft ? `<div class="quiz-status-note">ใช้ QR และข้อสอบชุดเดียวกันทุกกะ · ผู้เข้าสอบทุกคนเลือกกะปัจจุบันตอนลงชื่อ ระบบอัปเดตกะในทะเบียนและป้องกันชื่อซ้ำ · สถานะอัปเดตอัตโนมัติทุก 3 วินาที</div>${!model.employeeRosterConfigured || !Number(model.employeeRosterCount || 0) ? `<div class="quiz-status-note">ยังไม่มีรายชื่อประจำในชีต ${escapeHtml(model.rosterSheetName || 'MeetingQuizEmployees')} ผู้สอบที่ไม่มีชื่อในทะเบียนจะถูกเพิ่มโดยอัตโนมัติเมื่อพิมพ์ชื่อและนามสกุลพร้อมเลือกกะ · หากมีรายชื่อประจำให้ใส่ EmployeeID, FirstName, LastName, Shift, ActiveStatus=Active เพื่อใช้คำนวณยอดที่ต้องสอบ · วันที่ลา/ป่วยเพิ่มในชีต ${escapeHtml(model.attendanceSheetName || 'MeetingQuizAttendance')} โดยใส่ MeetingDate, EmployeeID และ Status=Leave หรือ Sick</div>` : ''}<h4>ผลสอบและรายชื่อผู้เข้าสอบ แยกตามกะ</h4>${roster}` : ''}
     ${publicUrl ? `<section class="quiz-qr-panel"><div><h4>QR สำหรับพนักงานเข้าสอบ</h4><p class="field-help">สแกน QR แล้วพิมพ์ชื่อ–นามสกุล เลือกกะปัจจุบันและภาษา · ระบบตรวจทะเบียนและอัปเดตกะให้โดยไม่สร้างชื่อซ้ำ</p><div class="quiz-qr-link">${escapeHtml(publicUrl)}</div><button type="button" class="btn btn-outline" data-quiz-copy-link="${escapeAttr(publicUrl)}">คัดลอกลิงก์ข้อสอบ</button></div>${qrSvg ? `<div class="quiz-qr-image" aria-label="QR Code สำหรับเข้าสอบ">${qrSvg}</div>` : '<div class="quiz-qr-image quiz-qr-error">ยังสร้าง QR ไม่ได้ กรุณาคัดลอกลิงก์</div>'}</section>` : ''}
-    ${isDraft ? `<div class="quiz-status-note">${isManualDraft ? 'ข้อสอบสร้างเอง/เกม · บันทึกฉบับร่างได้ระหว่างกรอก · ก่อนเผยแพร่กรอกคำถาม ตัวเลือก เฉลย และคำอธิบายทั้งภาษาไทยกับพม่าให้ครบ 5 ข้อ · แนบรูปได้' : `สร้างข้อสอบ${isTraining ? 'ของ Training นี้' : 'ชุดเดียวของวันนี้'}แล้ว · บันทึกฉบับร่างระหว่างแก้ไขได้ · ก่อนเผยแพร่ตรวจให้ครบทั้ง 5 ข้อและสองภาษา${isTraining ? ' · ระบบจับคู่รูปจากสไลด์ให้แต่ละข้ออัตโนมัติ' : ''} · ระบบจะไม่ Gen ชุดซ้ำ`}</div><div id="meetingQuizEditor" data-quiz-editor-language="TH"><div class="quiz-editor-language-switch" role="group" aria-label="เลือกภาษาที่ต้องการแก้ไข"><span>ภาษา</span><button type="button" class="is-active" data-quiz-editor-language="TH" aria-pressed="true">ไทย <small>หลัก</small></button><button type="button" data-quiz-editor-language="MY" aria-pressed="false">မြန်မာ</button></div>${questionEditor}</div><div class="modal-actions">${draftSaveNotice}<button type="button" class="btn btn-outline" data-quiz-save>บันทึกฉบับร่าง</button><button type="button" class="btn btn-primary" data-quiz-publish>เผยแพร่และเปิดรับสอบ</button></div>` : ''}
+    ${isDraft ? `<div class="quiz-status-note">${isManualDraft ? 'ข้อสอบสร้างเอง/เกม · บันทึกฉบับร่างได้ระหว่างกรอก · ก่อนเผยแพร่กรอกคำถาม ตัวเลือก เฉลย และคำอธิบายทั้งภาษาไทยกับพม่าให้ครบ 5 ข้อ · แนบรูปได้' : `สร้างข้อสอบ${isTraining ? 'ของ Training นี้' : 'ชุดเดียวของวันนี้'}แล้ว · บันทึกฉบับร่างระหว่างแก้ไขได้ · ก่อนเผยแพร่ตรวจให้ครบทั้ง 5 ข้อและสองภาษา${isTraining ? ' · ระบบจับคู่รูปจากสไลด์ให้แต่ละข้ออัตโนมัติ' : ''} · Gen ชุดใหม่ได้โดยลบฉบับร่างเดิม`}</div><div id="meetingQuizEditor" data-quiz-editor-language="TH"><div class="quiz-editor-language-switch" role="group" aria-label="เลือกภาษาที่ต้องการแก้ไข"><span>ภาษา</span><button type="button" class="is-active" data-quiz-editor-language="TH" aria-pressed="true">ไทย <small>หลัก</small></button><button type="button" data-quiz-editor-language="MY" aria-pressed="false">မြန်မာ</button></div>${questionEditor}</div><div class="modal-actions">${draftSaveNotice}<button type="button" class="btn btn-outline" data-quiz-save>บันทึกฉบับร่าง</button><button type="button" class="btn btn-primary" data-quiz-publish>เผยแพร่และเปิดรับสอบ</button></div>` : ''}
     ${quiz && !isDraft && !participants.length ? '<div class="quiz-status-note">ยังไม่มีผู้ลงชื่อสอบในรอบนี้</div>' : ''}
     ${quiz && !isDraft && summary.allSubmitted ? '<div class="quiz-status-note">ทุกกะปิดรับรายชื่อและส่งครบแล้ว ปุ่มเฉลยรวมเปิดให้ทุกคนดูบนบอร์ด</div>' : ''}
     ${model.canManage && !model.canGenerate && (!quiz || isDraft) ? '<div class="quiz-status-note">บัญชีนี้สร้างข้อสอบเองได้ แต่ยังไม่มีสิทธิ์ Gen ข้อสอบด้วย AI</div>' : ''}
@@ -3611,6 +3636,22 @@ function readMeetingQuizAdminQuestions() {
       questionImageURL: get('questionImageURL')
     };
   });
+}
+
+function meetingQuizEditorHasUnsavedChanges(model) {
+  if (!model?.quiz || String(model.quiz.Status || '').toLowerCase() !== 'draft' || !$('#meetingQuizEditor')) return false;
+  const comparable = question => {
+    const q = meetingQuizUiQuestion(question);
+    return {
+      questionTH: q.questionTH, choicesTH: q.choicesTH.slice(0, 4),
+      questionMY: q.questionMY, choicesMY: q.choicesMY.slice(0, 4),
+      optionCount: q.optionCount, correctOption: q.correctOption,
+      explanationTH: q.explanationTH, explanationMY: q.explanationMY,
+      questionImageURL: q.questionImageURL
+    };
+  };
+  return JSON.stringify(readMeetingQuizAdminQuestions().map(comparable)) !==
+    JSON.stringify((model.questions || []).map(comparable));
 }
 
 function updateMeetingQuizDraftNotice(model = state.meetingQuizAdmin) {
@@ -3641,6 +3682,29 @@ function handleMeetingQuizAdminInput(event) {
 }
 
 async function handleMeetingQuizAdminChange(event) {
+  const versionSelect = event.target.closest('[data-quiz-version]');
+  if (versionSelect) {
+    const model = state.meetingQuizAdmin;
+    const quizId = versionSelect.value;
+    if (!model || !quizId || quizId === model.quiz?.QuizID) return;
+    try {
+      showLoading('กำลังเปิดฉบับข้อสอบ...');
+      if (meetingQuizEditorHasUnsavedChanges(model)) {
+        await apiCall('saveMeetingQuizDraft', {
+          postId: model.postId, quizId: model.quiz.QuizID, questions: readMeetingQuizAdminQuestions()
+        });
+      }
+      await refreshMeetingQuizAdmin(quizId);
+      if (state.meetingQuizAdmin === model && model.quiz?.QuizID !== quizId) {
+        throw new Error('โหลดฉบับข้อสอบที่เลือกไม่สำเร็จ กรุณาลองอีกครั้ง');
+      }
+      showToast('เปิดฉบับข้อสอบที่เลือกแล้ว', 'success');
+    } catch (error) {
+      showToast(`เปลี่ยนฉบับข้อสอบไม่สำเร็จ: ${error.message}`, 'error');
+      renderMeetingQuizAdmin();
+    } finally { hideLoading(); }
+    return;
+  }
   const optionCountInput = event.target.closest('[data-quiz-option-count]');
   if (optionCountInput) {
     const card = optionCountInput.closest('[data-quiz-q]');
@@ -3721,7 +3785,7 @@ async function handleMeetingQuizAdminClick(event) {
     });
     return;
   }
-  const button = event.target.closest('[data-quiz-copy-link],[data-quiz-generate],[data-quiz-manual],[data-quiz-attach-training-images],[data-quiz-remove-image],[data-quiz-translate-myanmar],[data-quiz-save-api-key],[data-quiz-save],[data-quiz-publish],[data-quiz-lock],[data-quiz-stop],[data-quiz-excuse],[data-quiz-refresh]');
+  const button = event.target.closest('[data-quiz-copy-link],[data-quiz-generate],[data-quiz-regenerate],[data-quiz-manual],[data-quiz-attach-training-images],[data-quiz-remove-image],[data-quiz-translate-myanmar],[data-quiz-save-api-key],[data-quiz-save],[data-quiz-publish],[data-quiz-lock],[data-quiz-stop],[data-quiz-excuse],[data-quiz-refresh]');
   if (!button) return;
   const originalButtonText = button.textContent;
   let savingDraft = false;
@@ -3773,6 +3837,9 @@ async function handleMeetingQuizAdminClick(event) {
       showToast(String(model.post?.ContentType || '').toLowerCase() === 'training'
         ? 'สร้างข้อสอบฉบับร่างจาก Training นี้แล้ว ตรวจแก้ก่อนเผยแพร่'
         : 'สร้างข้อสอบฉบับร่างแล้ว ตรวจแก้ก่อนเผยแพร่', 'success');
+    } else if (button.hasAttribute('data-quiz-regenerate')) {
+      const generated = await generateMeetingQuizDraft(model, { createNewVersion: true });
+      showToast(generated.replaceWarning || 'สร้างข้อสอบชุดใหม่พร้อมรูปแล้ว · ลบฉบับร่างเดิมเรียบร้อย', generated.replaceWarning ? 'warning' : 'success');
     } else if (button.hasAttribute('data-quiz-save-api-key')) {
       const input = $('#meetingQuizApiKey');
       const apiKey = input?.value.trim() || '';

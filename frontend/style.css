@@ -696,6 +696,8 @@ textarea{line-height:1.45}
 #meetingQuizAdminDialog .quiz-admin-toolbar{align-items:flex-start;padding:15px 17px;border:1px solid #e1e9ef;border-radius:14px;background:linear-gradient(180deg,#fbfdff 0%,#f6f9fb 100%)}
 #meetingQuizAdminDialog .quiz-admin-toolbar>div:first-child{flex:1;min-width:min(240px,100%)}
 #meetingQuizAdminDialog .quiz-admin-toolbar strong{display:inline-block;color:var(--navy-2);font-size:1.02rem;line-height:1.5}
+.quiz-version-picker{display:flex;align-items:center;gap:8px;max-width:420px;margin-top:9px;color:var(--muted);font-size:.88rem;font-weight:700}
+.quiz-version-picker select{min-width:220px;min-height:38px;padding:6px 10px;font-size:.88rem}
 #meetingQuizAdminDialog .quiz-status-note{justify-content:flex-start;padding:11px 14px;border:1px solid #dfeaf2;border-radius:11px;background:#f4f9fc;color:#3e566b;line-height:1.55}
 #meetingQuizAdminDialog .quiz-api-settings{margin:14px 0;padding:14px 16px;border:1px solid var(--border);border-radius:14px;background:#f8fafc}
 .quiz-api-settings summary{display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:800}
