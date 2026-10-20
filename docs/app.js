@@ -4520,15 +4520,26 @@ function meetingTvPostSlides(deck = meetingTvDeck()) {
       refs.forEach(i => used.add(i));
       return { text: meetingStripPhotoRefs(text), photoIdx: refs };
     });
+    const hasExplicitPhotoRefs = rawSections.some(text => meetingExtractPhotoRefs(text).length > 0);
     const unused = allPhotos.map((_, i) => i).filter(i => !used.has(i));
-    if (perSection.length && unused.length) {
+    // Preserve the old “put all photos at the end” behavior when the author
+    // has not placed any markers. Once markers exist, keep each slide strictly
+    // tied to its selected photo numbers and put remaining photos on a clearly
+    // labeled overflow slide instead of mixing them into the final topic.
+    if (perSection.length && unused.length && !hasExplicitPhotoRefs) {
       const last = perSection[perSection.length - 1];
       last.photoIdx = last.photoIdx.concat(unused);
+    } else if (perSection.length && unused.length) {
+      perSection.push({ text: 'รูปที่ยังไม่ได้ระบุตำแหน่งในรายละเอียด', photoIdx: unused, isUnassignedPhotos: true });
     }
     const postSlides = perSection.map(sec => {
       const seen = new Set();
       const dedup = sec.photoIdx.filter(i => !seen.has(i) && seen.add(i));
-      return { row: item.row, carry: item.carry, deckPos, sectionText: sec.text, isDoc: false, photos: dedup.map(i => allPhotos[i]) };
+      return {
+        row: item.row, carry: item.carry, deckPos, sectionText: sec.text, isDoc: false,
+        isUnassignedPhotos: Boolean(sec.isUnassignedPhotos),
+        photos: dedup.map(i => allPhotos[i]), photoNumbers: dedup.map(i => i + 1)
+      };
     });
     const pptImages = String(item.row.SlideImageURLs || '').split(',').map(u => u.trim()).filter(Boolean);
     const docUrl = String(item.row.SlideFileURL || '').trim();
@@ -4786,13 +4797,15 @@ function meetingTvPostSlideHtml(slide) {
     mid = `<div class="mtg-tv-embed"><iframe src="${escapeAttr(previewUrl)}" loading="lazy" allowfullscreen></iframe></div>
       <div class="mtg-tv-embed-hint">📊 ${escapeHtml(slide.docName)} · เลื่อนสไลด์ในตัวพรีวิว · <a href="${escapeAttr(slide.docUrl)}" target="_blank" rel="noopener">เปิดเต็มจอ ↗</a></div>`;
   } else {
+    const photoNumbers = slide.photoNumbers || photos.map((_, i) => i + 1);
     mid = `${sectionText ? `<div class="mtg-tv-detail">${escapeHtml(sectionText)}</div>` : ''}
-      ${photos.length ? `<div class="mtg-tv-photo-hint">🔍 คลิกรูปเพื่อขยาย แล้วใช้ + / − เพื่อซูม</div><div class="mtg-tv-photos">${photos.map((u, i) => `<img src="${escapeAttr(driveThumbnailUrl_(u, 1000))}" data-photo-url="${escapeAttr(u)}" alt="รูปที่ ${i + 1}" loading="lazy">`).join('')}</div>` : ''}`;
+      ${photos.length ? `<div class="mtg-tv-photo-hint">🔍 คลิกรูปเพื่อขยาย แล้วใช้ + / − เพื่อซูม</div><div class="mtg-tv-photos">${photos.map((u, i) => `<figure class="mtg-tv-photo-item"><img src="${escapeAttr(driveThumbnailUrl_(u, 1000))}" data-photo-url="${escapeAttr(u)}" alt="รูปที่ ${photoNumbers[i]}" loading="lazy"><figcaption>รูปที่ ${photoNumbers[i]}</figcaption></figure>`).join('')}</div>` : ''}`;
   }
   return `<div class="mtg-tv-slide tv-anim-${meetingTvDir}">
       <div class="mtg-tv-chips">
         ${isMeetingPinned(row) ? '<span class="mtg-tv-chip">📌 ปักหมุด</span>' : ''}
         ${isTraining ? '<span class="mtg-tv-chip mtg-tv-training-chip">🎓 TRAINING</span>' : ''}
+        ${slide.isUnassignedPhotos ? '<span class="mtg-tv-chip mtg-tv-sectionchip">⚠️ รูปที่ยังไม่ได้กำหนดจุด</span>' : ''}
         <span class="mtg-tv-chip mtg-tv-cat ${cat.cls}">${cat.icon} ${escapeHtml(row.Category || 'ทั่วไป')}</span>
         ${priority === 'ด่วน' ? '<span class="mtg-tv-chip mtg-tv-urgent">ด่วน</span>' : priority === 'สำคัญ' ? '<span class="mtg-tv-chip mtg-tv-important">สำคัญ</span>' : ''}
         ${carry ? `<span class="mtg-tv-chip mtg-tv-carrychip">⏳ ค้างจาก ${formatDate(row.MeetingDate)}</span>` : ''}
