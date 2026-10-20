@@ -3015,6 +3015,28 @@ function trainingPrintSlideHtml(slide, index, row) {
   return `<article class="training-print-slide"><p class="training-print-slide-label">เนื้อหา Training · สไลด์ ${index + 1}</p>${inlineContent}</article>`;
 }
 
+// Use the same marker-to-photo mapping as TV so [รูปN] prints as its actual image.
+function trainingPrintDetailHtml(row) {
+  if (!String(row.Detail || '').trim() && !meetingPhotoList(row).length) return '-';
+  const slides = meetingTvPostSlides([{ row, carry: false }]).filter(slide => !slide.isPpt && !slide.isDoc);
+  if (!slides.length) return escapeHtml(row.Detail || '-').replace(/\n/g, '<br>');
+  return slides.map((slide, index) => {
+    const textHtml = slide.hasPhotoMarkers
+      ? (slide.contentParts || []).map(part => part.type === 'photo'
+        ? `<figure class="training-print-inline-photo"><img src="${escapeAttr(driveThumbnailUrl_(part.url, 1200))}" alt="รูปที่ ${part.number}"><figcaption>รูปที่ ${part.number}</figcaption></figure>`
+        : escapeHtml(part.text).replace(/\n/g, '<br>')).join('')
+      : escapeHtml(slide.sectionText || '').replace(/\n/g, '<br>');
+    const loosePhotos = slide.hasPhotoMarkers ? [] : (slide.photos || []).map((url, photoIndex) => {
+      const number = (slide.photoNumbers || [])[photoIndex] || photoIndex + 1;
+      return `<figure class="training-print-photo"><img src="${escapeAttr(driveThumbnailUrl_(url, 1200))}" alt="รูปที่ ${number}"><figcaption>รูปที่ ${number}</figcaption></figure>`;
+    });
+    const sectionLabel = slide.sectionCount > 1
+      ? `<p class="training-print-detail-label">${slide.isUnassignedPhotos ? 'รูปที่ยังไม่ได้ระบุตำแหน่งในรายละเอียด' : `เนื้อหา ${index + 1}`}</p>`
+      : '';
+    return `<div class="training-print-detail-section">${sectionLabel}<div class="training-print-detail-text">${textHtml}</div>${loosePhotos.join('')}</div>`;
+  }).join('');
+}
+
 function trainingAttendanceRows(count = 16) {
   return Array.from({ length: count }, (_, index) => `<tr><td>${index + 1}</td><td></td><td></td><td></td><td></td></tr>`).join('');
 }
@@ -3029,7 +3051,7 @@ async function printTrainingRecord(postId, { includeSlides = true, rowOverride =
       <h1>Training implementation effect record sheet.</h1>
       <table class="training-record-table"><colgroup><col><col><col><col></colgroup><tbody>
         <tr><th>Training program</th><td colspan="3">${escapeHtml(row.Topic || '-')}</td></tr>
-        <tr><th>Brief introduction of training content</th><td colspan="3">${escapeHtml(row.Detail || '-').replace(/\n/g, '<br>')}</td></tr>
+        <tr><th>Brief introduction of training content</th><td colspan="3">${trainingPrintDetailHtml(row)}</td></tr>
         <tr><th>Training Date (date, hour)</th><td>${dateAndTime}</td><th>Training place</th><td>${escapeHtml(row.TrainingPlace || '') || '&nbsp;'}</td></tr>
         <tr><th>Training and implementation unit</th><td>${escapeHtml(row.TrainingUnit || row.LineName || row.LineID || '') || '&nbsp;'}</td><th>Trainer</th><td>${escapeHtml(row.TrainerName || row.CreatedByName || '') || '&nbsp;'}</td></tr>
         <tr><th colspan="4">Signed:</th></tr>

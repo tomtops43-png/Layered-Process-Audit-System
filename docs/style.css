@@ -1215,6 +1215,9 @@ body.mtg-tv-open{overflow:hidden}
   .training-record-table tr:nth-child(7) th{height:29mm;vertical-align:top;font-weight:400}
   .training-record-checks{margin-left:4mm;font-weight:400}
   .training-record-effect{display:inline-block;margin-top:2mm;font-weight:400}
+  .training-print-detail-section+.training-print-detail-section{margin-top:2mm;padding-top:2mm;border-top:1px solid #bbb}
+  .training-print-detail-text{white-space:normal;overflow-wrap:anywhere}
+  .training-print-detail-label{margin:0 0 1.5mm;font-size:8pt;font-weight:700}
   .training-print-attendance{break-before:page;page-break-before:always}
   .training-attendance-heading{display:flex;justify-content:space-between;gap:8mm;margin:0 0 4mm;padding:2.5mm 0;border-top:1px solid #888;border-bottom:1px solid #888}
   .training-print-slides>h2{margin:5mm 0 3mm;font-size:12pt}
