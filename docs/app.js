@@ -5003,7 +5003,7 @@ function meetingTvQuizStatusContentHtml(dailyQuiz) {
   const shifts = sessions.length
     ? sessions.map(session => {
       const stopControl = quiz.canManage && !session.examStopped
-        ? `<button type="button" class="mtg-tv-quiz-stop" data-tv-quiz-post="${escapeAttr(dailyQuiz?.post?.PostID || '')}" data-tv-quiz-stop="${escapeAttr(session.shift)}" ${session.pendingCount > 0 ? `disabled title="ยังค้าง ${Number(session.pendingCount)} คน"` : ''}>หยุดสอบ</button>`
+        ? `<button type="button" class="mtg-tv-quiz-stop" data-tv-quiz-post="${escapeAttr(dailyQuiz?.post?.PostID || '')}" data-tv-quiz-stop="${escapeAttr(session.shift)}" ${session.pendingCount > 0 ? `disabled title="ยังค้าง ${Number(session.pendingCount)} คน"` : ''}>หยุดสอบและประกาศอันดับ</button>`
         : (session.examStopped ? '<span class="mtg-tv-quiz-stopped">หยุดแล้ว</span>' : '');
       return `<div class="mtg-tv-quiz-shift"><span>${escapeHtml(session.label || session.shift || 'กะ')}${Number(session.absentCount || 0) ? `<small> · ลา/ป่วย ${Number(session.absentCount)}</small>` : ''}</span><strong>${Number(session.submittedCount || 0)} <small>/ ${Number(session.participantCount || 0)} คน</small></strong>${stopControl}</div>`;
     }).join('')

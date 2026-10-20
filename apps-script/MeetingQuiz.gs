@@ -299,6 +299,7 @@ function getMeetingQuizStatus(payload, user) {
             participantCount: session.participantCount, submittedCount: session.submittedCount,
             registeredCount: session.registeredCount, pendingCount: session.pendingCount,
             excusedCount: session.excusedCount, absentCount: session.absentCount,
+            topThree: session.topThree || [],
             allSubmitted: session.allSubmitted
           };
         })
@@ -329,6 +330,7 @@ function getMeetingQuizStatus(payload, user) {
             participantCount: session.participantCount, submittedCount: session.submittedCount,
             registeredCount: session.registeredCount, pendingCount: session.pendingCount,
             excusedCount: session.excusedCount, absentCount: session.absentCount,
+            topThree: session.topThree || [],
             allSubmitted: session.allSubmitted
           };
         })
