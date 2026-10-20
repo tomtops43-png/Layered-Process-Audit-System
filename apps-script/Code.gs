@@ -110,6 +110,7 @@ function buildApiHandlers_(payload) {
     getMeetingQuizStatus: function (user) { return getMeetingQuizStatus(payload, user); },
     getMeetingQuiz: function (user) { return getMeetingQuiz(payload, user); },
     getMeetingQuizAdmin: function (user) { return getMeetingQuizAdmin(payload, user); },
+    attachTrainingQuizImages: function (user) { return attachTrainingQuizImages(payload, user); },
     saveMeetingQuizApiKey: function (user) { return saveMeetingQuizApiKey(payload, user); },
     generateMeetingQuiz: function (user) { return generateMeetingQuiz(payload, user); },
     startManualMeetingQuiz: function (user) { return startManualMeetingQuiz(payload, user); },
