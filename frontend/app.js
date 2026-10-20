@@ -4814,28 +4814,51 @@ function tvHasFindingSlide() {
   return Boolean(state.meetingFindingDigest) && hasAnyPermission(['dashboard.view', 'dashboard.view.all']);
 }
 
-function meetingTvDailyQuiz() {
+function meetingTvDailyQuizzes() {
   const meetingDate = String($('#meetingDate')?.value || localDateInput(new Date())).slice(0, 10);
-  const todaysPosts = state.meetingPosts.filter(row => String(row.MeetingDate || '').slice(0, 10) === meetingDate && String(row.ContentType || '').toLowerCase() !== 'training');
-  const post = todaysPosts.find(row => row.MeetingQuiz?.available) ||
-    todaysPosts.find(row => row.MeetingQuiz?.canGenerate) ||
-    todaysPosts.find(row => row.MeetingQuiz?.canManage);
-  return post ? {
-    post,
-    quiz: post.MeetingQuiz || {},
-    canManage: Boolean(post.MeetingQuiz?.canManage),
-    canGenerate: Boolean(post.MeetingQuiz?.canGenerate),
-    hasSlides: Number(post.MeetingQuiz?.slideCount || 0) > 0
-  } : null;
+  const todaysPosts = (state.meetingPosts || []).filter(row => String(row.MeetingDate || '').slice(0, 10) === meetingDate);
+  const meetingPosts = todaysPosts.filter(row => String(row.ContentType || '').toLowerCase() !== 'training');
+  const trainingPosts = todaysPosts.filter(row => String(row.ContentType || '').toLowerCase() === 'training');
+  const makeEntry = (post, isTraining) => {
+    const quiz = post ? (isTraining ? post.TrainingQuiz : post.MeetingQuiz) || {} : {};
+    return {
+      post: post || null, quiz, isTraining,
+      canManage: Boolean(quiz.canManage),
+      canGenerate: Boolean(quiz.canGenerate),
+      hasSlides: Number(quiz.slideCount || 0) > 0
+    };
+  };
+  // A normal Meeting quiz is shared by date; Training quizzes belong to their
+  // individual Training post. Include every published quiz so neither kind
+  // disappears when both are scheduled for the same day.
+  const meetingPost = meetingPosts.find(row => row.MeetingQuiz?.available) ||
+    meetingPosts.find(row => row.MeetingQuiz?.hasDraft || row.MeetingQuiz?.canGenerate || row.MeetingQuiz?.canManage) || meetingPosts[0];
+  const entries = [
+    ...(meetingPost ? [makeEntry(meetingPost, false)] : []),
+    ...trainingPosts.map(post => makeEntry(post, true))
+  ];
+  const published = entries.filter(entry => entry.quiz.available);
+  if (published.length) return published;
+  const drafts = entries.filter(entry => entry.quiz.hasDraft);
+  if (drafts.length) return drafts;
+  const configured = entries.find(entry => entry.canGenerate || entry.canManage);
+  if (configured) return [configured];
+  const fallbackPost = meetingPost || trainingPosts[0] || null;
+  return [makeEntry(fallbackPost, fallbackPost ? String(fallbackPost.ContentType || '').toLowerCase() === 'training' : false)];
+}
+
+function meetingTvDailyQuiz() {
+  return meetingTvDailyQuizzes()[0] || null;
 }
 
 function meetingTvAuxiliarySlides() {
   const slides = [];
-  const dailyQuiz = meetingTvDailyQuiz();
-  // Keep a QR slot in the TV agenda every day; show a setup hint until the
-  // day's quiz is published, then replace it with the scannable QR.
-  slides.push({ type: 'quiz', dailyQuiz });
-  if (dailyQuiz?.quiz?.available) slides.push({ type: 'quizStatus', dailyQuiz });
+  // Keep a QR slot in the TV agenda every day; show setup hints until a quiz
+  // is published, then show one QR and progress slide for each published set.
+  meetingTvDailyQuizzes().forEach(dailyQuiz => {
+    slides.push({ type: 'quiz', dailyQuiz });
+    if (dailyQuiz.quiz?.available) slides.push({ type: 'quizStatus', dailyQuiz });
+  });
   if (tvHasFindingSlide()) slides.push({ type: 'finding' });
   return slides;
 }
@@ -4929,6 +4952,9 @@ function meetingTvFindingSlideHtml() {
 
 function meetingTvQuizSlideHtml(dailyQuiz) {
   const quiz = dailyQuiz?.quiz || {};
+  const examType = dailyQuiz?.isTraining ? 'Training' : 'Meeting';
+  const examLabel = `แบบทดสอบหลัง ${examType}`;
+  const postTitle = dailyQuiz?.post?.Topic || quiz.sourceTitle || `${examType} วันนี้`;
   if (!quiz.available) {
     const setupContent = !dailyQuiz
       ? '<div class="mtg-tv-quiz-empty">ยังไม่มีข้อสอบที่เผยแพร่สำหรับวันนี้</div><p class="mtg-tv-quiz-help">รอ Admin หรือ Engineer สร้างและเผยแพร่ข้อสอบจากหัวข้อประชุมวันนี้</p>'
@@ -4940,8 +4966,9 @@ function meetingTvQuizSlideHtml(dailyQuiz) {
             ? '<div class="mtg-tv-quiz-empty">ยังไม่มีรายละเอียดหรือสไลด์ประกอบสำหรับวันนี้</div><p class="mtg-tv-quiz-help">เพิ่มรายละเอียดหรือแนบสไลด์ในหัวข้อ Meeting ก่อนสร้างข้อสอบ</p>'
           : '<div class="mtg-tv-quiz-empty">วันนี้ยังไม่มีข้อสอบเผยแพร่</div><p class="mtg-tv-quiz-help">รอ Admin หรือ Engineer สร้างและเผยแพร่ข้อสอบจากหัวข้อประชุมวันนี้</p>';
     return `<div class="mtg-tv-slide mtg-tv-quiz-slide tv-anim-${meetingTvDir}">
-      <div class="mtg-tv-chips"><span class="mtg-tv-chip mtg-tv-quiz-chip">📝 แบบทดสอบหลัง Meeting</span></div>
+      <div class="mtg-tv-chips"><span class="mtg-tv-chip mtg-tv-quiz-chip">📝 ${examLabel}</span></div>
       <h1 class="mtg-tv-title">QR Code ข้อสอบ</h1>
+      <p class="mtg-tv-quiz-help">${escapeHtml(postTitle)}</p>
       ${setupContent}
     </div>`;
   }
@@ -4956,11 +4983,11 @@ function meetingTvQuizSlideHtml(dailyQuiz) {
     } catch (error) { console.warn('Could not build TV quiz QR code:', error); }
   }
   return `<div class="mtg-tv-slide mtg-tv-quiz-slide tv-anim-${meetingTvDir}">
-    <div class="mtg-tv-chips"><span class="mtg-tv-chip mtg-tv-quiz-chip">📝 แบบทดสอบหลัง Meeting</span></div>
+    <div class="mtg-tv-chips"><span class="mtg-tv-chip mtg-tv-quiz-chip">📝 ${examLabel}</span></div>
     <h1 class="mtg-tv-title">QR Code ข้อสอบ</h1>
-    <p class="mtg-tv-quiz-help">สแกน QR Code เพื่อทำข้อสอบของ Meeting วันนี้ · ไม่ต้อง Login</p>
+    <p class="mtg-tv-quiz-help">${escapeHtml(postTitle)} · สแกน QR Code เพื่อทำข้อสอบ · ไม่ต้อง Login</p>
     ${qrSvg ? `<div class="mtg-tv-quiz-qr" aria-label="QR Code สำหรับเข้าสอบ">${qrSvg}</div>` : '<div class="mtg-tv-quiz-error">ข้อสอบเผยแพร่แล้ว แต่ QR ยังไม่พร้อม กรุณารีเฟรชหน้า Meeting</div>'}
-    <div class="mtg-tv-quiz-caption">ข้อสอบชุดเดียว 5 ข้อ · สแกน QR พิมพ์ชื่อและนามสกุล เลือกกะปัจจุบันและภาษาที่ต้องการ</div>
+    <div class="mtg-tv-quiz-caption">สแกน QR พิมพ์ชื่อและนามสกุล เลือกกะปัจจุบันและภาษาที่ต้องการ</div>
   </div>`;
 }
 
@@ -4976,7 +5003,7 @@ function meetingTvQuizStatusContentHtml(dailyQuiz) {
   const shifts = sessions.length
     ? sessions.map(session => {
       const stopControl = quiz.canManage && !session.examStopped
-        ? `<button type="button" class="mtg-tv-quiz-stop" data-tv-quiz-stop="${escapeAttr(session.shift)}" ${session.pendingCount > 0 ? `disabled title="ยังค้าง ${Number(session.pendingCount)} คน"` : ''}>หยุดสอบ</button>`
+        ? `<button type="button" class="mtg-tv-quiz-stop" data-tv-quiz-post="${escapeAttr(dailyQuiz?.post?.PostID || '')}" data-tv-quiz-stop="${escapeAttr(session.shift)}" ${session.pendingCount > 0 ? `disabled title="ยังค้าง ${Number(session.pendingCount)} คน"` : ''}>หยุดสอบ</button>`
         : (session.examStopped ? '<span class="mtg-tv-quiz-stopped">หยุดแล้ว</span>' : '');
       return `<div class="mtg-tv-quiz-shift"><span>${escapeHtml(session.label || session.shift || 'กะ')}${Number(session.absentCount || 0) ? `<small> · ลา/ป่วย ${Number(session.absentCount)}</small>` : ''}</span><strong>${Number(session.submittedCount || 0)} <small>/ ${Number(session.participantCount || 0)} คน</small></strong>${stopControl}</div>`;
     }).join('')
@@ -5009,17 +5036,21 @@ function meetingTvQuizStatusContentHtml(dailyQuiz) {
 }
 
 function meetingTvQuizStatusSlideHtml(dailyQuiz) {
+  const examType = dailyQuiz?.isTraining ? 'Training' : 'Meeting';
+  const postId = dailyQuiz?.post?.PostID || '';
   return `<div class="mtg-tv-slide mtg-tv-quiz-slide mtg-tv-quiz-status-slide tv-anim-${meetingTvDir}">
-    <div class="mtg-tv-chips"><span class="mtg-tv-chip mtg-tv-quiz-chip">📝 แบบทดสอบหลัง Meeting</span></div>
+    <div class="mtg-tv-chips"><span class="mtg-tv-chip mtg-tv-quiz-chip">📝 แบบทดสอบหลัง ${examType}</span></div>
     <h1 class="mtg-tv-title">สถานะการส่งข้อสอบ</h1>
     <p class="mtg-tv-quiz-help">ติดตามจำนวนผู้ส่งแยกตามกะ · หน้านี้อัปเดตอัตโนมัติ</p>
-    <div id="meetingTvQuizStatusContent" class="mtg-tv-quiz-status-content">${meetingTvQuizStatusContentHtml(dailyQuiz)}</div>
+    <div data-tv-quiz-status-content="${escapeAttr(postId)}" class="mtg-tv-quiz-status-content">${meetingTvQuizStatusContentHtml(dailyQuiz)}</div>
   </div>`;
 }
 
 function refreshMeetingTvQuizStatus() {
-  const content = $('#meetingTvQuizStatusContent');
-  if (content) content.innerHTML = meetingTvQuizStatusContentHtml(meetingTvDailyQuiz());
+  $$('[data-tv-quiz-status-content]').forEach(content => {
+    const entry = meetingTvDailyQuizzes().find(item => String(item.post?.PostID || '') === String(content.dataset.tvQuizStatusContent || ''));
+    if (entry) content.innerHTML = meetingTvQuizStatusContentHtml(entry);
+  });
 }
 
 // One post section rendered as a TV slide. The topic + chips repeat on every
@@ -5119,13 +5150,23 @@ function renderMeetingTv() {
       }).join('')}${auxiliarySlides.map((slide, i) => {
         const delay = Math.min((deck.length + i) * 70, 700);
         const target = postSlides.length + i + 1;
-        if (slide.type === 'quiz') return `<li style="animation-delay:${delay}ms" class="mtg-tv-li"><button class="mtg-tv-item mtg-tv-item-quiz" data-tv-goto="${target}">
+        if (slide.type === 'quiz') {
+          const examType = slide.dailyQuiz?.isTraining ? 'Training' : 'Meeting';
+          const quiz = slide.dailyQuiz?.quiz || {};
+          const subtitle = quiz.available
+            ? `สแกนเพื่อทำข้อสอบ ${examType} · ${slide.dailyQuiz?.post?.Topic || quiz.sourceTitle || 'วันนี้'}`
+            : quiz.hasDraft ? `มีฉบับร่าง ${examType} · Admin/Engineer ตรวจและเผยแพร่`
+              : slide.dailyQuiz?.canGenerate && slide.dailyQuiz?.hasSlides ? `Admin/Engineer แตะเพื่อ Gen ข้อสอบ ${examType}`
+                : slide.dailyQuiz?.canGenerate ? 'เพิ่มรายละเอียดหรือสไลด์ก่อน Gen ข้อสอบ'
+                  : slide.dailyQuiz?.post ? `รอ Admin/Engineer สร้างและเผยแพร่ข้อสอบ ${examType}` : 'ยังไม่มีข้อสอบเผยแพร่สำหรับวันที่นี้';
+          return `<li style="animation-delay:${delay}ms" class="mtg-tv-li"><button class="mtg-tv-item mtg-tv-item-quiz" data-tv-goto="${target}">
           <span class="mtg-tv-item-icon">📱</span>
-          <span class="mtg-tv-item-text">QR Code ข้อสอบ<span class="mtg-tv-item-line">${slide.dailyQuiz?.quiz?.available ? 'สแกนเพื่อทำข้อสอบ Meeting วันนี้ · 5 ข้อ' : slide.dailyQuiz?.quiz?.hasDraft ? 'มีฉบับร่าง · Admin/Engineer ตรวจและเผยแพร่' : slide.dailyQuiz?.canGenerate && slide.dailyQuiz?.hasSlides ? 'Admin/Engineer แตะเพื่อ Gen ข้อสอบอัตโนมัติ 5 ข้อ' : slide.dailyQuiz?.canGenerate ? 'เพิ่มรายละเอียดหรือสไลด์ก่อน Gen ข้อสอบ' : slide.dailyQuiz ? 'รอ Admin/Engineer สร้างและเผยแพร่ข้อสอบ' : 'ยังไม่มีข้อสอบเผยแพร่สำหรับวันที่นี้'}</span></span>
+          <span class="mtg-tv-item-text">QR Code ข้อสอบ ${examType}<span class="mtg-tv-item-line">${escapeHtml(subtitle)}</span></span>
         </button></li>`;
+        }
         if (slide.type === 'quizStatus') return `<li style="animation-delay:${delay}ms" class="mtg-tv-li"><button class="mtg-tv-item mtg-tv-item-quiz-status" data-tv-goto="${target}">
           <span class="mtg-tv-item-icon">📊</span>
-          <span class="mtg-tv-item-text">สถานะการส่งข้อสอบ<span class="mtg-tv-item-line">ส่งแล้ว ${Number(slide.dailyQuiz?.quiz?.submittedCount || 0)}/${Number(slide.dailyQuiz?.quiz?.participantCount || 0)} คน · ดูแยกตามกะ</span></span>
+          <span class="mtg-tv-item-text">สถานะข้อสอบ ${slide.dailyQuiz?.isTraining ? 'Training' : 'Meeting'}<span class="mtg-tv-item-line">ส่งแล้ว ${Number(slide.dailyQuiz?.quiz?.submittedCount || 0)}/${Number(slide.dailyQuiz?.quiz?.participantCount || 0)} คน · ดูแยกตามกะ</span></span>
         </button></li>`;
         return `<li style="animation-delay:${delay}ms" class="mtg-tv-li"><button class="mtg-tv-item mtg-tv-item-finding" data-tv-goto="${target}">
           <span class="mtg-tv-item-icon">📢</span>
@@ -5176,11 +5217,11 @@ function renderMeetingTv() {
 
 async function stopMeetingQuizFromTv(button) {
   if (!button || button.disabled) return;
-  const dailyQuiz = meetingTvDailyQuiz();
-  const postId = dailyQuiz?.post?.PostID;
+  const postId = button.dataset.tvQuizPost;
+  const dailyQuiz = meetingTvDailyQuizzes().find(item => String(item.post?.PostID || '') === String(postId || ''));
   const shift = button.dataset.tvQuizStop;
   if (!postId || !shift) return;
-  const label = dailyQuiz.quiz?.shiftSessions?.find(session => String(session.shift) === String(shift))?.label || shift;
+  const label = dailyQuiz?.quiz?.shiftSessions?.find(session => String(session.shift) === String(shift))?.label || shift;
   const confirmed = await showConfirm({
     title: `หยุดสอบ${label}?`,
     message: 'หลังหยุดสอบ ระบบจะแสดง 3 อันดับแรกของกะนี้ และไม่รับคำตอบเพิ่ม',
@@ -5215,10 +5256,15 @@ async function generateMeetingQuizFromTv(button) {
     await apiCall('generateMeetingQuiz', { postId }, { priority: 'high' });
     const selectedPost = state.meetingPosts.find(row => String(row.PostID) === String(postId));
     const meetingDate = String(selectedPost?.MeetingDate || '').slice(0, 10);
-    state.meetingPosts.forEach(row => {
-      if (String(row.MeetingDate || '').slice(0, 10) !== meetingDate) return;
-      row.MeetingQuiz = Object.assign({}, row.MeetingQuiz || {}, { available: false, hasDraft: true });
-    });
+    const isTraining = String(selectedPost?.ContentType || '').toLowerCase() === 'training';
+    if (isTraining && selectedPost) {
+      selectedPost.TrainingQuiz = Object.assign({}, selectedPost.TrainingQuiz || {}, { available: false, hasDraft: true });
+    } else {
+      state.meetingPosts.forEach(row => {
+        if (String(row.MeetingDate || '').slice(0, 10) !== meetingDate || String(row.ContentType || '').toLowerCase() === 'training') return;
+        row.MeetingQuiz = Object.assign({}, row.MeetingQuiz || {}, { available: false, hasDraft: true });
+      });
+    }
     closeMeetingTv();
     showToast('สร้างข้อสอบฉบับร่างแล้ว กำลังเปิดหน้าตรวจแก้และเผยแพร่', 'success');
     await openMeetingQuizAdmin(postId);
