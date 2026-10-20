@@ -1801,10 +1801,6 @@ function publishMeetingQuiz(payload, user) {
     if (previousPublished) throw new Error(isTrainingMeetingPost_(post) ? 'Training นี้มีข้อสอบเผยแพร่แล้ว' : 'วันนี้มีข้อสอบเผยแพร่แล้ว ทำข้อสอบได้วันละ 1 ชุดต่อ Meeting');
     var source = meetingQuizSourceText_(sourcePosts);
     var sourceChanged = !valuesEqual_(quiz.SourceType, 'Manual') && !meetingQuizSourceHashMatches_(quiz, sourcePosts, source);
-    var allowStaleSource = payload.allowStaleSource === true || valuesEqual_(payload.allowStaleSource, 'true');
-    if (sourceChanged && !allowStaleSource) {
-      throw new Error('เนื้อหาหัวข้อหรือสไลด์เปลี่ยนหลังสร้างข้อสอบ กรุณาสร้างข้อสอบใหม่จากเนื้อหาล่าสุด');
-    }
     var now = formatDateTimeBangkok(new Date());
     var shiftRoster = {};
     meetingQuizActiveShifts_().forEach(function (shift) { shiftRoster[shift.value] = 'Open'; });
@@ -1814,9 +1810,10 @@ function publishMeetingQuiz(payload, user) {
       RosterClosedAt: '', RosterClosedBy: '', ShiftRosterJSON: JSON.stringify(shiftRoster),
       ShiftRosterClosedAtJSON: '{}', ShiftRosterClosedByJSON: '{}', UpdatedAt: now, UpdatedBy: user.UserID
     };
-    // Keep the original SourceHash for traceability, while marking an explicitly
-    // approved publication that no longer matches the latest source slides.
-    if (sourceChanged && allowStaleSource) publishUpdate.SourceType = 'AI-OVERRIDE';
+    // Quiz questions may intentionally include supplemental content beyond
+    // the slides. Keep the original SourceHash for traceability and mark the
+    // publication when the source changed, but never block a reviewed draft.
+    if (sourceChanged) publishUpdate.SourceType = 'AI-OVERRIDE';
     updateObjectById(SHEET_NAMES.MEETING_QUIZZES, 'QuizID', quiz.QuizID, publishUpdate);
     return jsonResponse(true, 'เผยแพร่ข้อสอบแล้ว เปิดรับรายชื่อผู้เข้าสอบได้', { quizId: quiz.QuizID });
   } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
