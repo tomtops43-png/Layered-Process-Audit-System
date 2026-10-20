@@ -3187,20 +3187,31 @@ async function refreshMeetingQuizBoardStatus() {
   const posts = [...(state.meetingPosts || []), ...(state.meetingCarryOver || [])];
   // The board response already contains the lightweight create/draft flags.
   // Only fetch full roster and submission progress when a quiz is published.
-  if (!posts.some(post => post.MeetingQuiz?.available)) return;
+  if (!posts.some(post => post.MeetingQuiz?.available || post.TrainingQuiz?.available)) return;
   const meetingDates = [...new Set(posts.map(post => String(post.MeetingDate || '').slice(0, 10)).filter(Boolean))];
   if (!meetingDates.length) return;
+  const trainingPostIds = [...new Set(posts
+    .filter(post => String(post.ContentType || '').toLowerCase() === 'training' && post.TrainingQuiz?.available)
+    .map(post => String(post.PostID || '').trim()).filter(Boolean))].slice(0, 10);
   const request = (async () => {
-    const data = await apiCall('getMeetingQuizStatus', { meetingDates }, { priority: 'low', quiet: true });
+    const data = await apiCall('getMeetingQuizStatus', { meetingDates, trainingPostIds }, { priority: 'low', quiet: true });
     const summaries = data.summariesByDate || {};
+    const trainingSummaries = data.summariesByPostId || {};
     let changed = false;
     posts.forEach(post => {
-      const date = String(post.MeetingDate || '').slice(0, 10);
-      const next = summaries[date];
-      if (!next) return;
-      if (JSON.stringify(post.MeetingQuiz || {}) !== JSON.stringify(next)) {
-        post.MeetingQuiz = next;
-        changed = true;
+      if (String(post.ContentType || '').toLowerCase() === 'training') {
+        const next = trainingSummaries[post.PostID];
+        if (next && JSON.stringify(post.TrainingQuiz || {}) !== JSON.stringify(next)) {
+          post.TrainingQuiz = next;
+          changed = true;
+        }
+      } else {
+        const date = String(post.MeetingDate || '').slice(0, 10);
+        const next = summaries[date];
+        if (next && JSON.stringify(post.MeetingQuiz || {}) !== JSON.stringify(next)) {
+          post.MeetingQuiz = next;
+          changed = true;
+        }
       }
     });
     if (changed && $('#page-meeting')?.classList.contains('active-page')) {
@@ -3228,7 +3239,9 @@ function renderMeetingBoard() {
     : '';
   const shownQuizDates = new Set();
   const renderDailyPostCard = (row, isCarry) => {
-    const quiz = row.MeetingQuiz || {};
+    const isTraining = String(row.ContentType || '').toLowerCase() === 'training';
+    const quiz = isTraining ? (row.TrainingQuiz || {}) : (row.MeetingQuiz || {});
+    if (isTraining) return meetingPostCardHtml(row, isCarry, Boolean(quiz.available || quiz.canManage || quiz.hasDraft));
     const dateKey = String(row.MeetingDate || '').slice(0, 10);
     const hasDailyQuizAction = Boolean(quiz.available || quiz.canManage || quiz.hasDraft);
     const showQuizActions = hasDailyQuizAction && !shownQuizDates.has(dateKey);
@@ -3276,7 +3289,7 @@ function meetingPostCardHtml(row, isCarry, showQuizActions = true) {
   if (canTick && status === 'discussed') actions.push(`<button class="btn btn-outline" data-mtg-status="Closed" data-mtg-id="${escapeAttr(row.PostID)}">${isTraining ? 'ปิด Training' : 'จบเรื่อง'}</button>`);
   if (canTick && status !== 'open') actions.push(`<button class="btn btn-ghost" data-mtg-status="Open" data-mtg-id="${escapeAttr(row.PostID)}">↩ รอคุย</button>`);
   if (isTraining) actions.push(`<button class="btn btn-outline" data-training-form-print="${escapeAttr(row.PostID)}" title="พิมพ์แบบฟอร์มลงชื่อก่อนเริ่ม Training">🖨 พิมพ์แบบฟอร์มลงชื่อ</button>`);
-  const quiz = row.MeetingQuiz || {};
+  const quiz = isTraining ? (row.TrainingQuiz || {}) : (row.MeetingQuiz || {});
   if (showQuizActions) {
     if (quiz.allSubmitted) actions.push(`<button class="btn btn-primary" data-mtg-quiz-review="${escapeAttr(row.PostID)}">🔑 เฉลย</button>`);
     if (quiz.canManage) actions.push(`<button class="btn btn-outline" data-mtg-quiz-manage="${escapeAttr(row.PostID)}">${quiz.available ? '📱 QR / จัดการข้อสอบ' : (quiz.hasDraft ? '✏️ แก้ไขข้อสอบร่าง' : (quiz.canGenerate ? '✨ Gen ข้อสอบ 5 ข้อ' : '👷 รอ Admin/Engineer สร้าง'))}</button>`);
@@ -3313,7 +3326,7 @@ function meetingPostCardHtml(row, isCarry, showQuizActions = true) {
     })()}
     ${showQuizActions && quiz.available
       ? `<div class="mtg-quiz-summary">ข้อสอบ 5 ข้อ · ${(quiz.shiftSessions || []).map(session => `${escapeHtml(session.label || session.shift)} ${session.submittedCount || 0}/${session.participantCount || 0} คน${session.rosterStatus === 'Locked' ? ' · ปิดรับ' : ' · เปิดรับ'}`).join(' · ')}</div>${(quiz.people || []).length ? `<div class="mtg-quiz-summary">✅ ตอบครบแล้ว: ${quiz.people.filter(p => p.submitted).map(p => `${escapeHtml(p.name)} (${escapeHtml(p.shift)})`).join(', ') || '-'}<br>⏳ ยังไม่ส่ง: ${quiz.people.filter(p => !p.submitted).map(p => `${escapeHtml(p.name)} (${escapeHtml(p.shift)})`).join(', ') || '-'}</div>` : ''}`
-      : (showQuizActions && quiz.canManage ? '<div class="mtg-quiz-summary">วันนี้ยังไม่มีข้อสอบ</div>' : '')}
+      : (showQuizActions && quiz.canManage ? `<div class="mtg-quiz-summary">${isTraining ? 'Training นี้' : 'วันนี้'}ยังไม่มีข้อสอบ</div>` : '')}
     ${meetingAckSectionHtml(row)}
     <div class="mtg-meta">${metaParts.join(' · ')}</div>
     ${actions.length ? `<div class="mtg-actions">${actions.join('')}</div>` : ''}

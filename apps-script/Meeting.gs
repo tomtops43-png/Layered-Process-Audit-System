@@ -123,7 +123,7 @@ function getMeetingPosts(payload, user) {
 
     ensureMeetingAcksSheet_();
     var ackByPost = getMeetingAcksByPost_();
-    var quizSummaryCache = { sheetsReady: false, byDate: {} };
+    var quizSummaryCache = { sheetsReady: false, byDate: {}, byTrainingPostId: {} };
     var decorate = function (row) {
       var copy = sanitizeForClient_(row);
       copy.CanEdit = canEditMeetingPost_(user, row);
@@ -131,6 +131,7 @@ function getMeetingPosts(payload, user) {
       // Keep the first board response lean. Detailed roster/progress state is
       // fetched asynchronously by getMeetingQuizStatus after the cards render.
       copy.MeetingQuiz = isTrainingMeetingPost_(row) ? {} : meetingQuizBoardPreviewForPost_(row, user, quizSummaryCache);
+      copy.TrainingQuiz = isTrainingMeetingPost_(row) ? meetingTrainingQuizBoardPreviewForPost_(row, user, quizSummaryCache) : {};
       return copy;
     };
     if (includeHistory) {

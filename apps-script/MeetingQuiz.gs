@@ -233,6 +233,35 @@ function meetingQuizBoardPreviewForPost_(post, user, summaryCache) {
   return Object.assign({}, summary);
 }
 
+/** Lightweight metadata for a single Training quiz; avoids loading roster details for every board card. */
+function meetingTrainingQuizBoardPreviewForPost_(post, user, summaryCache) {
+  var postId = cleanString_(post && post.PostID);
+  var cache = summaryCache && summaryCache.byTrainingPostId;
+  var canManage = hasPermission_(user, 'meeting.quiz.manage') && canSeeMeetingPost_(user, post);
+  var canGenerate = hasPermission_(user, 'meeting.quiz.generate') && canSeeMeetingPost_(user, post);
+  if (cache && Object.prototype.hasOwnProperty.call(cache, postId)) {
+    return Object.assign({}, cache[postId], { canManage: canManage, canGenerate: canGenerate });
+  }
+  if (!summaryCache || !summaryCache.sheetsReady) {
+    ensureMeetingQuizSheets_();
+    if (summaryCache) summaryCache.sheetsReady = true;
+  }
+  var quizzes = meetingQuizRowsForPost_(post);
+  var quiz = quizzes.filter(function (row) { return valuesEqual_(row.Status, 'Published'); })[0] || null;
+  var summary = {
+    available: Boolean(quiz), canManage: canManage, canGenerate: canGenerate,
+    hasDraft: !quiz && quizzes.some(function (row) { return valuesEqual_(row.Status, 'Draft'); }),
+    slideCount: meetingQuizSlideCount_([post]), sourcePostCount: 1,
+    quizId: quiz ? cleanString_(quiz.QuizID) : '', publicToken: quiz ? cleanString_(quiz.PublicToken) : '',
+    sourceTitle: quiz ? cleanString_(quiz.SourceTitle) : meetingQuizTitleForPost_(post, [post]),
+    versionNo: quiz ? toNumber_(quiz.VersionNo) : 0,
+    rosterLocked: false, participantCount: 0, submittedCount: 0,
+    allSubmitted: false, people: [], shiftSessions: []
+  };
+  if (cache) cache[postId] = summary;
+  return Object.assign({}, summary);
+}
+
 /** Lightweight polling endpoint: returns quiz progress only, without reloading slide/post bodies. */
 function getMeetingQuizStatus(payload, user) {
   try {
@@ -275,7 +304,37 @@ function getMeetingQuizStatus(payload, user) {
         })
       };
     });
-    return jsonResponse(true, 'สถานะข้อสอบพร้อมแล้ว', { summariesByDate: summariesByDate });
+    var summariesByPostId = {};
+    var trainingPostIds = Array.isArray(payload.trainingPostIds) ? payload.trainingPostIds : [];
+    var seenTrainingPostIds = {};
+    trainingPostIds.forEach(function (value) {
+      var postId = cleanString_(value);
+      if (!postId || seenTrainingPostIds[postId] || Object.keys(seenTrainingPostIds).length >= 10) return;
+      seenTrainingPostIds[postId] = true;
+      var post = findById_(SHEET_NAMES.MEETING_POSTS, 'PostID', postId);
+      if (!post || valuesEqual_(post.Status, 'Deleted') || !isTrainingMeetingPost_(post) || !canSeeMeetingPost_(user, post)) return;
+      var summary = meetingQuizSummaryForPost_(post, user, { sheetsReady: true, byDate: {} });
+      summariesByPostId[postId] = {
+        postId: postId, available: Boolean(summary.available), hasDraft: Boolean(summary.hasDraft),
+        canManage: Boolean(summary.canManage), canGenerate: Boolean(summary.canGenerate),
+        quizId: cleanString_(summary.quizId), publicToken: cleanString_(summary.publicToken),
+        sourceTitle: cleanString_(summary.sourceTitle), versionNo: toNumber_(summary.versionNo),
+        rosterLocked: Boolean(summary.rosterLocked), slideCount: toNumber_(summary.slideCount) || 1,
+        sourcePostCount: toNumber_(summary.sourcePostCount), allSubmitted: Boolean(summary.allSubmitted),
+        participantCount: toNumber_(summary.participantCount), submittedCount: toNumber_(summary.submittedCount),
+        people: summary.people || [], shiftSessions: (summary.shiftSessions || []).map(function (session) {
+          return {
+            shift: session.shift, label: session.label, rosterStatus: session.rosterStatus,
+            rosterClosed: session.rosterClosed, examStopped: session.examStopped,
+            participantCount: session.participantCount, submittedCount: session.submittedCount,
+            registeredCount: session.registeredCount, pendingCount: session.pendingCount,
+            excusedCount: session.excusedCount, absentCount: session.absentCount,
+            allSubmitted: session.allSubmitted
+          };
+        })
+      };
+    });
+    return jsonResponse(true, 'สถานะข้อสอบพร้อมแล้ว', { summariesByDate: summariesByDate, summariesByPostId: summariesByPostId });
   } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
 }
 
