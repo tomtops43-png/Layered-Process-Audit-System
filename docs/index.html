@@ -9,7 +9,7 @@
   <!-- The first API call happens seconds after load; warm the TLS connection now. -->
   <link rel="preconnect" href="https://script.google.com" crossorigin>
   <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
-  <link rel="stylesheet" href="style.css?v=20261020-inline-photo-training-pdf-v1">
+  <link rel="stylesheet" href="style.css?v=20261020-training-print-before-v2">
 </head>
 <body>
   <div id="publicQuizView" class="login-view public-quiz-view hidden">
@@ -502,7 +502,7 @@
           <label>ผู้ให้ Training<input id="meetingTrainerName" maxlength="120" placeholder="ชื่อผู้ให้ Training"></label>
           <label>เป็น Training ตามแผนหรือไม่<select id="meetingTrainingPlanned"><option value="Yes">ใช่</option><option value="No">ไม่ใช่</option></select></label>
           <label class="full-width">ผลการ Training / การนำไปปฏิบัติ<textarea id="meetingTrainingEffect" rows="3" placeholder="เช่น พนักงานเข้าใจขั้นตอนและสามารถปฏิบัติงานได้"></textarea></label>
-          <p class="field-help full-width">แบบพิมพ์จะมีหัวข้อ วันที่และเวลา สถานที่ หน่วยงาน ผู้ให้ Training ผลการฝึก และตารางให้พนักงานลงชื่อรับการ Training</p>
+          <p class="field-help full-width">พิมพ์แบบฟอร์มลงชื่อได้จากปุ่มด้านล่างทันที ไม่ต้องรอจบหรือเผยแพร่ Training · แบบฟอร์มมีหัวข้อ วันที่และเวลา สถานที่ หน่วยงาน ผู้ให้ Training ผลการฝึก และตารางให้พนักงานลงชื่อ</p>
         </div>
         <div class="form-field full-width" id="meetingAckField">
           <span class="data-label">🙋 ผู้ที่ต้องกดรับทราบ (เลือกได้หลายคน — ไม่บังคับ)</span>
@@ -518,7 +518,7 @@
         <label class="full-width">แนบไฟล์ PPT / PDF (ฝังตัวพรีวิวในจอ TV)<input id="meetingPostSlideFile" type="file" accept=".ppt,.pptx,.pdf,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"><small class="field-help">📊 รองรับ .pptx .ppt .pdf ไม่เกิน 10MB (1 ไฟล์ต่อหัวข้อ) — PPT จะถูกแปลงเป็นรูปทีละหน้าเข้าเด็ค TV เป็นสไลด์จริง (ตอนบันทึกจะใช้เวลาสักครู่) · PDF จะฝังตัวพรีวิว</small></label>
         <div id="meetingSlideFileCurrent" class="full-width hidden"></div>
       </div>
-      <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelMeetingPost">ยกเลิก</button><button type="button" class="btn btn-outline hidden" id="deleteMeetingPostButton">🗑 ลบหัวข้อ</button><button type="submit" class="btn btn-primary" id="saveMeetingPostButton">บันทึกหัวข้อ</button></div>
+      <div class="modal-actions"><button type="button" class="btn btn-outline" id="cancelMeetingPost">ยกเลิก</button><button type="button" class="btn btn-outline hidden" id="printTrainingDraftButton">🖨 พิมพ์แบบฟอร์มลงชื่อ Training</button><button type="button" class="btn btn-outline hidden" id="deleteMeetingPostButton">🗑 ลบหัวข้อ</button><button type="submit" class="btn btn-primary" id="saveMeetingPostButton">บันทึกหัวข้อ</button></div>
     </form>
   </dialog>
 
@@ -549,6 +549,6 @@
   <section id="trainingPrintRoot" class="hidden" aria-hidden="true"></section>
   <script src="config.js" defer></script>
   <script src="vendor/qrcode.js" defer></script>
-  <script src="app.js?v=20261020-inline-photo-training-pdf-v1" defer></script>
+  <script src="app.js?v=20261020-training-print-before-v2" defer></script>
 </body>
 </html>

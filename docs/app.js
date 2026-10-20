@@ -222,6 +222,7 @@ function bindEvents() {
   $('#trainingSearch').addEventListener('input', renderTrainingArchive);
   $('#trainingArchive').addEventListener('click', handleTrainingArchiveClick);
   $('#meetingPostType').addEventListener('change', syncMeetingEditorType);
+  $('#printTrainingDraftButton').addEventListener('click', printTrainingDraftFromEditor);
   $('#meetingTvButton').addEventListener('click', openMeetingTv);
   document.addEventListener('keydown', event => {
     if ($('#meetingTv').classList.contains('hidden') || document.querySelector('dialog[open]')) return;
@@ -3018,11 +3019,11 @@ function trainingAttendanceRows(count = 16) {
   return Array.from({ length: count }, (_, index) => `<tr><td>${index + 1}</td><td></td><td></td><td></td><td></td></tr>`).join('');
 }
 
-async function printTrainingRecord(postId, { includeSlides = true } = {}) {
-  const row = (state.trainingRecords || []).find(item => String(item.PostID) === String(postId)) || findMeetingPost(postId);
+async function printTrainingRecord(postId, { includeSlides = true, rowOverride = null } = {}) {
+  const row = rowOverride || (state.trainingRecords || []).find(item => String(item.PostID) === String(postId)) || findMeetingPost(postId);
   if (!row) return showToast('ไม่พบรายการ Training นี้', 'error');
   const dateAndTime = `${formatDate(row.MeetingDate)}${row.TrainingTime ? ' · ' + escapeHtml(row.TrainingTime) : ''}`;
-  const slides = meetingTvPostSlides([{ row, carry: false }]);
+  const slides = includeSlides ? meetingTvPostSlides([{ row, carry: false }]) : [];
   const printRoot = $('#trainingPrintRoot');
   printRoot.innerHTML = `<article class="training-print-form">
       <p class="training-print-eyebrow">TRAINING RECORD</p><h1>Training implementation effect record sheet</h1>
@@ -3055,6 +3056,27 @@ async function printTrainingRecord(postId, { includeSlides = true } = {}) {
   await Promise.race([Promise.all(imageLoads), new Promise(resolve => window.setTimeout(resolve, 5000))]);
   printRoot.style.cssText = '';
   window.print();
+}
+
+function printTrainingDraftFromEditor() {
+  if ($('#meetingPostType').value !== 'Training') return;
+  const topic = $('#meetingPostTopic').value.trim();
+  if (!topic) return showToast('กรอกหัวข้อ Training ก่อนพิมพ์แบบฟอร์มลงชื่อ', 'warning');
+  const row = {
+    PostID: $('#meetingPostId').value || 'TRAINING-DRAFT',
+    ContentType: 'Training',
+    MeetingDate: $('#meetingPostDate').value || localDateInput(new Date()),
+    Topic: topic,
+    Detail: $('#meetingPostDetail').value.trim(),
+    TrainingTime: $('#meetingTrainingTime').value,
+    TrainingPlace: $('#meetingTrainingPlace').value.trim(),
+    TrainingUnit: $('#meetingTrainingUnit').value.trim(),
+    TrainerName: $('#meetingTrainerName').value.trim(),
+    TrainingPlanned: $('#meetingTrainingPlanned').value,
+    TrainingEffect: $('#meetingTrainingEffect').value.trim(),
+    LineID: $('#meetingPostLine').value === 'ALL' ? '' : $('#meetingPostLine').value
+  };
+  return printTrainingRecord(row.PostID, { includeSlides: false, rowOverride: row });
 }
 
 function clearTrainingPrintView() {
@@ -4210,6 +4232,7 @@ function openMeetingEditor(postId = '', defaultContentType = 'Meeting') {
 function syncMeetingEditorType() {
   const isTraining = $('#meetingPostType').value === 'Training';
   $('#trainingFields').classList.toggle('hidden', !isTraining);
+  $('#printTrainingDraftButton').classList.toggle('hidden', !isTraining);
   $('#meetingAckField').classList.toggle('hidden', isTraining);
   $('#meetingPostPinnedField').classList.toggle('hidden', isTraining || !state.meetingCanManage);
   $('#meetingDialogEyebrow').textContent = isTraining ? 'TRAINING SLIDES · RECORD' : 'MORNING MEETING';
