@@ -169,6 +169,10 @@ function meetingQuizSummaryForPost_(post, user, summaryCache) {
     return summary;
   }
   var sessions = meetingQuizShiftSessions_(quiz, canManage);
+  var currentParticipants = [];
+  sessions.forEach(function (session) {
+    currentParticipants = currentParticipants.concat(meetingQuizParticipants_(quiz.QuizID, session.shift, session.attemptNo));
+  });
   var participantCount = sessions.reduce(function (sum, row) { return sum + row.participantCount; }, 0);
   var registeredCount = sessions.reduce(function (sum, row) { return sum + row.registeredCount; }, 0);
   var submittedCount = sessions.reduce(function (sum, row) { return sum + row.submittedCount; }, 0);
@@ -185,7 +189,7 @@ function meetingQuizSummaryForPost_(post, user, summaryCache) {
     registeredCount: registeredCount,
     submittedCount: submittedCount,
     shiftSessions: sessions,
-    people: meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(quiz.QuizID), []).filter(function (row) {
+    people: meetingQuizUniqueParticipantRows_(currentParticipants, []).filter(function (row) {
       return !valuesEqual_(row.ParticipantStatus, 'Excused');
     }).map(function (row) {
       var submitted = valuesEqual_(row.ParticipantStatus, 'Submitted');
@@ -302,13 +306,14 @@ function getMeetingQuizStatus(payload, user) {
         submittedCount: toNumber_(summary.submittedCount), people: summary.people || [],
         shiftSessions: (summary.shiftSessions || []).map(function (session) {
           return {
-            shift: session.shift, label: session.label, rosterStatus: session.rosterStatus,
+            shift: session.shift, label: session.label, rosterStatus: session.rosterStatus, attemptNo: session.attemptNo,
             rosterClosed: session.rosterClosed, examStopped: session.examStopped,
             participantCount: session.participantCount, startedCount: session.startedCount,
             submittedCount: session.submittedCount, rosterCount: session.rosterCount,
             registeredCount: session.registeredCount, pendingCount: session.pendingCount,
             excusedCount: session.excusedCount, absentCount: session.absentCount,
-            topThree: session.topThree || [],
+            topThree: session.topThree || [], previousAttemptNo: session.previousAttemptNo || 0,
+            previousTopThree: session.previousTopThree || [],
             allSubmitted: session.allSubmitted
           };
         })
@@ -335,13 +340,14 @@ function getMeetingQuizStatus(payload, user) {
         registeredCount: toNumber_(summary.registeredCount), submittedCount: toNumber_(summary.submittedCount),
         people: summary.people || [], shiftSessions: (summary.shiftSessions || []).map(function (session) {
           return {
-            shift: session.shift, label: session.label, rosterStatus: session.rosterStatus,
+            shift: session.shift, label: session.label, rosterStatus: session.rosterStatus, attemptNo: session.attemptNo,
             rosterClosed: session.rosterClosed, examStopped: session.examStopped,
             participantCount: session.participantCount, startedCount: session.startedCount,
             submittedCount: session.submittedCount, rosterCount: session.rosterCount,
             registeredCount: session.registeredCount, pendingCount: session.pendingCount,
             excusedCount: session.excusedCount, absentCount: session.absentCount,
-            topThree: session.topThree || [],
+            topThree: session.topThree || [], previousAttemptNo: session.previousAttemptNo || 0,
+            previousTopThree: session.previousTopThree || [],
             allSubmitted: session.allSubmitted
           };
         })
@@ -389,12 +395,31 @@ function meetingQuizShiftRosterMap_(quiz) {
   return map;
 }
 
+function meetingQuizShiftAttemptMap_(quiz) {
+  var map = {};
+  try { map = JSON.parse(cleanString_(quiz && quiz.ShiftAttemptJSON) || '{}') || {}; } catch (_) { map = {}; }
+  return map;
+}
+
+function meetingQuizParticipantAttemptNo_(participant) {
+  return Math.max(1, toNumber_(participant && participant.AttemptNo) || 1);
+}
+
+function meetingQuizCurrentAttemptNo_(quiz, shift) {
+  var map = meetingQuizShiftAttemptMap_(quiz);
+  return Math.max(1, toNumber_(map[cleanString_(shift)]) || 1);
+}
+
 function meetingQuizShiftOptions_(quiz) {
   var map = meetingQuizShiftRosterMap_(quiz);
+  var attempts = meetingQuizShiftAttemptMap_(quiz);
   var labels = {};
   meetingQuizActiveShifts_().forEach(function (shift) { labels[shift.value] = shift.label; });
   return Object.keys(map).map(function (shift) {
-    return { value: shift, label: labels[shift] || shift, rosterStatus: cleanString_(map[shift]) || 'Open' };
+    return {
+      value: shift, label: labels[shift] || shift, rosterStatus: cleanString_(map[shift]) || 'Open',
+      attemptNo: Math.max(1, toNumber_(attempts[shift]) || 1)
+    };
   });
 }
 
@@ -407,10 +432,10 @@ function meetingQuizNormalizeShift_(quiz, shift) {
 
 function meetingQuizShiftSessions_(quiz, includeTopThree) {
   return meetingQuizShiftOptions_(quiz).map(function (shift) {
-    var counts = meetingQuizRosterCounts_(quiz.QuizID, shift.value, quiz.MeetingDate);
+    var counts = meetingQuizRosterCounts_(quiz.QuizID, shift.value, shift.attemptNo);
     var rosterClosed = ['Locked', 'Stopped'].indexOf(cleanString_(shift.rosterStatus)) !== -1;
     var session = {
-      shift: shift.value, label: shift.label, rosterStatus: shift.rosterStatus,
+      shift: shift.value, label: shift.label, rosterStatus: shift.rosterStatus, attemptNo: shift.attemptNo,
       rosterClosed: rosterClosed, examStopped: valuesEqual_(shift.rosterStatus, 'Stopped'),
       participantCount: counts.participants, startedCount: counts.started,
       submittedCount: counts.submitted, registeredCount: counts.registered,
@@ -422,7 +447,11 @@ function meetingQuizShiftSessions_(quiz, includeTopThree) {
       allSubmitted: valuesEqual_(shift.rosterStatus, 'Stopped')
     };
     if (includeTopThree && session.examStopped) {
-      session.topThree = meetingQuizTopThree_(quiz.QuizID, shift.value, quiz.MeetingDate);
+      session.topThree = meetingQuizTopThree_(quiz.QuizID, shift.value, shift.attemptNo);
+    }
+    if (includeTopThree && session.attemptNo > 1) {
+      session.previousAttemptNo = session.attemptNo - 1;
+      session.previousTopThree = meetingQuizTopThree_(quiz.QuizID, shift.value, session.previousAttemptNo);
     }
     return session;
   });
@@ -448,12 +477,13 @@ function meetingQuizSetShiftRoster_(quiz, shift, status, user) {
   quiz.UpdatedBy = user.UserID;
 }
 
-function meetingQuizParticipants_(quizId, shift) {
+function meetingQuizParticipants_(quizId, shift, attemptNo) {
   var rows = getRowsAsObjects(SHEET_NAMES.MEETING_QUIZ_PARTICIPANTS).filter(function (row) {
     return valuesEqual_(row.QuizID, quizId);
   });
-  if (shift !== undefined && shift !== null && shift !== '') {
-    return rows.filter(function (row) { return valuesEqual_(row.Shift, shift); });
+  if (shift !== undefined && shift !== null && shift !== '') rows = rows.filter(function (row) { return valuesEqual_(row.Shift, shift); });
+  if (attemptNo !== undefined && attemptNo !== null && attemptNo !== '') {
+    rows = rows.filter(function (row) { return meetingQuizParticipantAttemptNo_(row) === Number(attemptNo); });
   }
   return rows;
 }
@@ -493,10 +523,10 @@ function meetingQuizFindParticipant_(quizId, token) {
   })[0] || null;
 }
 
-function meetingQuizParticipantForRegistration_(quizId, employeeId) {
+function meetingQuizParticipantForRegistration_(quizId, employeeId, shift, attemptNo) {
   var targetId = cleanString_(employeeId).toLowerCase();
   if (!targetId) return null;
-  return meetingQuizParticipants_(quizId).filter(function (row) {
+  return meetingQuizParticipants_(quizId, shift, attemptNo).filter(function (row) {
     return cleanString_(row.EmployeeID).toLowerCase() === targetId;
   })[0] || null;
 }
@@ -507,6 +537,7 @@ function meetingQuizRegistrationResult_(quiz, participant, token, language, empl
     participantId: cleanString_(participant.ParticipantID), participantToken: token,
     shift: cleanString_(participant.Shift), employeeId: cleanString_(participant.EmployeeID),
     displayName: cleanString_(participant.DisplayName), status: status,
+    attemptNo: meetingQuizParticipantAttemptNo_(participant),
     hasStarted: Boolean(toNumber_(participant.StartedAtMs)), startedAtMs: toNumber_(participant.StartedAtMs),
     durationMs: toNumber_(participant.DurationMs),
     employeeCreated: Boolean(employeeCreated),
@@ -517,9 +548,10 @@ function meetingQuizRegistrationResult_(quiz, participant, token, language, empl
     result.review = meetingQuizReview_(quiz.QuizID, participant.AnswersJSON, language || participant.Language);
     result.allSubmitted = meetingQuizAllSubmitted_(quiz);
     var shiftSession = meetingQuizShiftSessions_(quiz).filter(function (row) { return valuesEqual_(row.shift, participant.Shift); })[0];
-    result.leaderboardUnlocked = Boolean(shiftSession && shiftSession.examStopped);
+    result.leaderboardUnlocked = Boolean(shiftSession && (shiftSession.examStopped || meetingQuizParticipantAttemptNo_(participant) < shiftSession.attemptNo));
     result.leaderboard = result.leaderboardUnlocked
-      ? meetingQuizTopThree_(quiz.QuizID, participant.Shift, quiz.MeetingDate) : [];
+      ? meetingQuizTopThree_(quiz.QuizID, participant.Shift, meetingQuizParticipantAttemptNo_(participant)) : [];
+    result.retakeAvailable = Boolean(shiftSession && meetingQuizParticipantAttemptNo_(participant) < shiftSession.attemptNo && !shiftSession.examStopped && status !== 'Excused');
   }
   return result;
 }
@@ -733,11 +765,11 @@ function meetingQuizUniqueParticipantRows_(rows, rosterRows) {
   return Object.keys(selected).map(function (key) { return selected[key]; });
 }
 
-function meetingQuizTopThree_(quizId, shift) {
+function meetingQuizTopThree_(quizId, shift, attemptNo) {
   // Quiz participants are the source of truth for a particular attempt. Do not
   // filter rankings through the permanent employee roster, which may be stale.
   var rosterRows = [];
-  return meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(quizId, shift), rosterRows).filter(function (row) {
+  return meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(quizId, shift, attemptNo), rosterRows).filter(function (row) {
     return valuesEqual_(row.ParticipantStatus, 'Submitted');
   }).sort(function (a, b) {
     var aDuration = cleanString_(a.DurationMs) === '' ? null : toNumber_(a.DurationMs);
@@ -765,9 +797,9 @@ function meetingQuizDurationLabel_(durationMs) {
   return minutes ? minutes + ' นาที ' + remainingSeconds + ' วินาที' : seconds + ' วินาที';
 }
 
-function meetingQuizRosterCounts_(quizId, shift) {
+function meetingQuizRosterCounts_(quizId, shift, attemptNo) {
   // Count the registrations attached to this quiz, never the permanent roster.
-  var uniqueRows = meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(quizId, shift), []);
+  var uniqueRows = meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(quizId, shift, attemptNo), []);
   var eligible = uniqueRows.filter(function (row) { return !valuesEqual_(row.ParticipantStatus, 'Excused'); });
   var submitted = eligible.filter(function (row) { return valuesEqual_(row.ParticipantStatus, 'Submitted'); });
   var started = eligible.filter(function (row) {
@@ -1477,17 +1509,22 @@ function getMeetingQuizAdmin(payload, user) {
       selected.PublicToken = newMeetingQuizToken_();
       updateObjectById(SHEET_NAMES.MEETING_QUIZZES, 'QuizID', selected.QuizID, { PublicToken: selected.PublicToken });
     }
-    var participants = selected ? meetingQuizUniqueParticipantRows_(meetingQuizParticipants_(selected.QuizID), []).map(function (row) {
+    var shiftSessions = selected ? meetingQuizShiftSessions_(selected, true) : [];
+    var currentParticipantRows = [];
+    shiftSessions.forEach(function (session) {
+      currentParticipantRows = currentParticipantRows.concat(meetingQuizParticipants_(selected.QuizID, session.shift, session.attemptNo));
+    });
+    var participants = selected ? meetingQuizUniqueParticipantRows_(currentParticipantRows, []).map(function (row) {
       return {
         ParticipantID: row.ParticipantID, Shift: cleanString_(row.Shift), FirstName: row.FirstName, LastName: row.LastName,
         EmployeeID: cleanString_(row.EmployeeID),
         DisplayName: row.DisplayName, Language: row.Language, ParticipantStatus: row.ParticipantStatus,
+        AttemptNo: meetingQuizParticipantAttemptNo_(row),
         RegisteredAt: row.RegisteredAt, StartedAtMs: row.StartedAtMs, SubmittedAt: row.SubmittedAt,
         hasStarted: valuesEqual_(row.ParticipantStatus, 'Submitted') || toNumber_(row.StartedAtMs) > 0,
         Score: row.Score, TotalQuestions: row.TotalQuestions
       };
     }) : [];
-    var shiftSessions = selected ? meetingQuizShiftSessions_(selected, true) : [];
     return jsonResponse(true, 'ข้อมูลข้อสอบพร้อมแล้ว', {
       canGenerate: hasPermission_(user, 'meeting.quiz.generate'),
       canManage: hasPermission_(user, 'meeting.quiz.manage'),
@@ -1758,11 +1795,13 @@ function publishMeetingQuiz(payload, user) {
     var sourceChanged = !valuesEqual_(quiz.SourceType, 'Manual') && !meetingQuizSourceHashMatches_(quiz, sourcePosts, source);
     var now = formatDateTimeBangkok(new Date());
     var shiftRoster = {};
-    meetingQuizActiveShifts_().forEach(function (shift) { shiftRoster[shift.value] = 'Open'; });
+    var shiftAttempts = {};
+    meetingQuizActiveShifts_().forEach(function (shift) { shiftRoster[shift.value] = 'Open'; shiftAttempts[shift.value] = 1; });
     var publishUpdate = {
       Status: 'Published', RosterStatus: 'Open', PublishedAt: now, PublishedBy: user.UserID,
       PublicToken: cleanString_(quiz.PublicToken) || newMeetingQuizToken_(),
       RosterClosedAt: '', RosterClosedBy: '', ShiftRosterJSON: JSON.stringify(shiftRoster),
+      ShiftAttemptJSON: JSON.stringify(shiftAttempts),
       ShiftRosterClosedAtJSON: '{}', ShiftRosterClosedByJSON: '{}', UpdatedAt: now, UpdatedBy: user.UserID
     };
     // Quiz questions may intentionally include supplemental content beyond
@@ -1802,12 +1841,52 @@ function stopMeetingQuizShift(payload, user) {
     if (!quiz) throw new Error('ยังไม่มีข้อสอบที่เผยแพร่');
     var shift = meetingQuizNormalizeShift_(quiz, payload.shift);
     var session = meetingQuizShiftSessions_(quiz).filter(function (row) { return valuesEqual_(row.shift, shift); })[0];
-    if (session.examStopped) return jsonResponse(true, 'กะนี้หยุดสอบแล้ว', { quizId: quiz.QuizID, shift: shift, topThree: meetingQuizTopThree_(quiz.QuizID, shift, quiz.MeetingDate) });
+    if (session.examStopped) return jsonResponse(true, 'กะนี้หยุดสอบแล้ว', { quizId: quiz.QuizID, shift: shift, attemptNo: session.attemptNo, topThree: meetingQuizTopThree_(quiz.QuizID, shift, session.attemptNo) });
     meetingQuizSetShiftRoster_(quiz, shift, 'Stopped', user);
     return jsonResponse(true, 'หยุดสอบกะนี้แล้ว ผู้ที่ยังไม่ส่งจะไม่ถูกนำมาจัดอันดับ', {
       quizId: quiz.QuizID, shift: shift,
-      topThree: meetingQuizTopThree_(quiz.QuizID, shift),
+      attemptNo: session.attemptNo, topThree: meetingQuizTopThree_(quiz.QuizID, shift, session.attemptNo),
       submittedCount: session.submittedCount, excludedCount: session.pendingCount + session.registeredCount - session.startedCount
+    });
+  } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
+  finally { try { lock.releaseLock(); } catch (_) {} }
+}
+
+function startNewMeetingQuizShiftRound(payload, user) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(15000);
+    var post = meetingQuizPost_(payload.postId, user);
+    requireMeetingQuizManager_(user, post);
+    var quiz = meetingQuizForPost_(post);
+    if (!quiz) throw new Error('ยังไม่มีข้อสอบที่เผยแพร่');
+    var shift = meetingQuizNormalizeShift_(quiz, payload.shift);
+    var session = meetingQuizShiftSessions_(quiz).filter(function (row) { return valuesEqual_(row.shift, shift); })[0];
+    if (!session || !session.examStopped) throw new Error('เริ่มรอบใหม่ได้หลังหยุดสอบกะนี้แล้วเท่านั้น');
+
+    var roster = meetingQuizShiftRosterMap_(quiz);
+    var attempts = meetingQuizShiftAttemptMap_(quiz);
+    var closedAt = {};
+    var closedBy = {};
+    try { closedAt = JSON.parse(cleanString_(quiz.ShiftRosterClosedAtJSON) || '{}') || {}; } catch (_) { closedAt = {}; }
+    try { closedBy = JSON.parse(cleanString_(quiz.ShiftRosterClosedByJSON) || '{}') || {}; } catch (_) { closedBy = {}; }
+    var nextAttemptNo = Number(session.attemptNo || 1) + 1;
+    roster[shift] = 'Open';
+    attempts[shift] = nextAttemptNo;
+    closedAt[shift] = '';
+    closedBy[shift] = '';
+    var now = formatDateTimeBangkok(new Date());
+    updateObjectById(SHEET_NAMES.MEETING_QUIZZES, 'QuizID', quiz.QuizID, {
+      ShiftRosterJSON: JSON.stringify(roster), ShiftAttemptJSON: JSON.stringify(attempts),
+      ShiftRosterClosedAtJSON: JSON.stringify(closedAt), ShiftRosterClosedByJSON: JSON.stringify(closedBy),
+      UpdatedAt: now, UpdatedBy: user.UserID
+    });
+    quiz.ShiftRosterJSON = JSON.stringify(roster);
+    quiz.ShiftAttemptJSON = JSON.stringify(attempts);
+    quiz.ShiftRosterClosedAtJSON = JSON.stringify(closedAt);
+    quiz.ShiftRosterClosedByJSON = JSON.stringify(closedBy);
+    return jsonResponse(true, 'เปิดข้อสอบรอบใหม่แล้ว', {
+      quizId: quiz.QuizID, shift: shift, previousAttemptNo: session.attemptNo, attemptNo: nextAttemptNo
     });
   } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
   finally { try { lock.releaseLock(); } catch (_) {} }
@@ -1845,12 +1924,13 @@ function getMeetingQuiz(payload, user) {
     var selectedShift = participant ? cleanString_(participant.Shift) : cleanString_(payload.shift);
     if (!selectedShift && shiftOptions.length) selectedShift = shiftOptions[0].value;
     selectedShift = meetingQuizNormalizeShift_(quiz, selectedShift);
-    var counts = meetingQuizRosterCounts_(quiz.QuizID, selectedShift, quiz.MeetingDate);
     var shiftSession = meetingQuizShiftSessions_(quiz).filter(function (row) { return valuesEqual_(row.shift, selectedShift); })[0];
+    var participantAttemptNo = participant ? meetingQuizParticipantAttemptNo_(participant) : 0;
+    var counts = meetingQuizRosterCounts_(quiz.QuizID, selectedShift, shiftSession && shiftSession.attemptNo);
     var result = {
       published: true, quizId: quiz.QuizID, topic: cleanString_(quiz.SourceTitle || meetingQuizDailyTitle_(meetingQuizPostsForDate_(post.MeetingDate))), meetingDate: dateOnly_(post.MeetingDate),
-      shift: selectedShift,
-      shiftOptions: shiftOptions.map(function (row) { return { value: row.value, label: row.label, rosterStatus: row.rosterStatus }; }),
+      shift: selectedShift, attemptNo: shiftSession ? shiftSession.attemptNo : 1,
+      shiftOptions: shiftOptions.map(function (row) { return { value: row.value, label: row.label, rosterStatus: row.rosterStatus, attemptNo: row.attemptNo }; }),
       rosterLocked: shiftSession.rosterClosed, examStopped: shiftSession.examStopped,
       participantCount: counts.participants, startedCount: counts.started,
       registeredCount: counts.registered, rosterCount: counts.rosterCount,
@@ -1860,6 +1940,7 @@ function getMeetingQuiz(payload, user) {
       participant: participant ? {
         participantId: participant.ParticipantID, displayName: participant.DisplayName,
         employeeId: cleanString_(participant.EmployeeID), language: participant.Language,
+        attemptNo: participantAttemptNo,
         status: participant.ParticipantStatus, shift: selectedShift,
         hasStarted: Boolean(toNumber_(participant.StartedAtMs)), startedAtMs: toNumber_(participant.StartedAtMs),
         durationMs: toNumber_(participant.DurationMs)
@@ -1870,12 +1951,14 @@ function getMeetingQuiz(payload, user) {
       questions: participant && !valuesEqual_(participant.ParticipantStatus, 'Excused')
         ? meetingQuizQuestions_(quiz.QuizID).map(meetingQuizQuestionForClient_) : []
     };
+    result.retakeAvailable = Boolean(participant && shiftSession && participantAttemptNo < shiftSession.attemptNo && !shiftSession.examStopped && !valuesEqual_(participant.ParticipantStatus, 'Excused'));
+    result.attemptExpired = Boolean(participant && shiftSession && participantAttemptNo < shiftSession.attemptNo);
     if (participant && valuesEqual_(participant.ParticipantStatus, 'Submitted')) {
       var reviewLanguage = valuesEqual_(payload.language, 'MY') ? 'MY' :
         (valuesEqual_(payload.language, 'TH') ? 'TH' : participant.Language);
       result.review = meetingQuizReview_(quiz.QuizID, participant.AnswersJSON, reviewLanguage);
-      result.leaderboardUnlocked = shiftSession.examStopped;
-      result.leaderboard = shiftSession.examStopped ? meetingQuizTopThree_(quiz.QuizID, selectedShift, quiz.MeetingDate) : [];
+      result.leaderboardUnlocked = Boolean(shiftSession.examStopped || participantAttemptNo < shiftSession.attemptNo);
+      result.leaderboard = result.leaderboardUnlocked ? meetingQuizTopThree_(quiz.QuizID, selectedShift, participantAttemptNo) : [];
     }
     return jsonResponse(true, 'ข้อสอบพร้อมแล้ว', result);
   } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
@@ -1892,7 +1975,7 @@ function registerMeetingQuizParticipant(payload, user) {
     var language = valuesEqual_(payload.language, 'MY') ? 'MY' : 'TH';
     var token = cleanString_(payload.participantToken);
     var existingTokenParticipant = meetingQuizFindParticipant_(quiz.QuizID, token);
-    if (existingTokenParticipant) {
+    if (existingTokenParticipant && meetingQuizParticipantAttemptNo_(existingTokenParticipant) >= meetingQuizCurrentAttemptNo_(quiz, existingTokenParticipant.Shift)) {
       return jsonResponse(true, 'เปิดข้อสอบต่อจากเดิม', meetingQuizRegistrationResult_(
         quiz, existingTokenParticipant, token, language, false
       ));
@@ -1910,7 +1993,7 @@ function registerMeetingQuizParticipant(payload, user) {
         ? 'กะนี้หยุดสอบแล้ว กรุณาติดต่อ Leader'
         : 'กะนี้ปิดรับรายชื่อใหม่แล้ว กรุณาติดต่อ Leader');
     }
-    var existingDailyAttempt = meetingQuizParticipantForRegistration_(quiz.QuizID, employeeId);
+    var existingDailyAttempt = meetingQuizParticipantForRegistration_(quiz.QuizID, employeeId, shift, shiftOption.attemptNo);
     if (existingDailyAttempt) {
       if (valuesEqual_(existingDailyAttempt.ParticipantStatus, 'Excused')) {
         throw new Error('รหัสพนักงานนี้ถูกยกเว้นจากข้อสอบรอบนี้แล้ว กรุณาติดต่อ Leader');
@@ -1927,11 +2010,11 @@ function registerMeetingQuizParticipant(payload, user) {
       ParticipantStatus: 'Registered', RegisteredAt: now, RegisteredByUserID: user && user.UserID ? user.UserID : 'QR Guest',
       SubmittedAt: '', AnswersJSON: '', Score: '', TotalQuestions: 5,
       TokenHash: hashMeetingQuizToken_(newToken), ExcusedAt: '', ExcusedBy: '', ExcuseReason: '', UpdatedAt: now,
-      EmployeeID: employeeId, StartedAt: '', StartedAtMs: '', DurationMs: ''
+      EmployeeID: employeeId, StartedAt: '', StartedAtMs: '', DurationMs: '', AttemptNo: shiftOption.attemptNo
     });
     return jsonResponse(true, 'ลงชื่อแล้ว เริ่มทำข้อสอบได้', {
       participantId: participantId, participantToken: newToken, shift: shift, employeeId: employeeId, displayName: displayName,
-      employeeCreated: false, hasStarted: false, startedAtMs: 0, durationMs: 0,
+      employeeCreated: false, hasStarted: false, startedAtMs: 0, durationMs: 0, attemptNo: shiftOption.attemptNo,
       questions: meetingQuizQuestions_(quiz.QuizID).map(meetingQuizQuestionForClient_)
     });
   } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
@@ -1952,6 +2035,7 @@ function startMeetingQuizAttempt(payload, user) {
     }
     if (!valuesEqual_(participant.ParticipantStatus, 'Registered')) throw new Error('ผู้เข้าสอบรายนี้ไม่ได้อยู่ในรอบสอบ');
     var shiftState = meetingQuizShiftOptions_(quiz).filter(function (row) { return valuesEqual_(row.value, participant.Shift); })[0];
+    if (!shiftState || meetingQuizParticipantAttemptNo_(participant) !== shiftState.attemptNo) throw new Error('รอบสอบเดิมสิ้นสุดแล้ว กรุณาลงทะเบียนสอบรอบใหม่');
     if (!shiftState || valuesEqual_(shiftState.rosterStatus, 'Stopped')) throw new Error('กะนี้หยุดสอบแล้ว กรุณาติดต่อ Leader');
     var startedAtMs = toNumber_(participant.StartedAtMs);
     if (!startedAtMs) {
@@ -1991,6 +2075,7 @@ function submitMeetingQuiz(payload, user) {
     var startedAtMs = toNumber_(participant.StartedAtMs);
     if (!startedAtMs) throw new Error('กรุณากด “เริ่มทำข้อสอบ” ก่อนส่งคำตอบ');
     var shiftState = meetingQuizShiftOptions_(quiz).filter(function (row) { return valuesEqual_(row.value, participant.Shift); })[0];
+    if (!shiftState || meetingQuizParticipantAttemptNo_(participant) !== shiftState.attemptNo) throw new Error('รอบสอบเดิมสิ้นสุดแล้ว กรุณาลงทะเบียนสอบรอบใหม่');
     if (shiftState && valuesEqual_(shiftState.rosterStatus, 'Stopped')) throw new Error('กะนี้หยุดสอบแล้ว ไม่สามารถส่งคำตอบเพิ่มเติมได้');
     var questions = meetingQuizQuestions_(quiz.QuizID);
     if (!Array.isArray(payload.answers) || payload.answers.length !== questions.length) throw new Error('กรุณาตอบข้อสอบให้ครบทุกข้อ');

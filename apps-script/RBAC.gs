@@ -179,6 +179,7 @@ function hasApiAccess_(user, action) {
     publishMeetingQuiz: ['meeting.quiz.manage'],
     lockMeetingQuizRoster: ['meeting.quiz.manage'],
     stopMeetingQuizShift: ['meeting.quiz.manage'],
+    startNewMeetingQuizShiftRound: ['meeting.quiz.manage'],
     excuseMeetingQuizParticipant: ['meeting.quiz.manage'],
     acknowledgeMeetingPost: ['meeting.view'],
     getMyPendingMeetingAcks: ['meeting.view'],

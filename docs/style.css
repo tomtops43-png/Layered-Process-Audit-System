@@ -1020,12 +1020,13 @@ body.mtg-tv-open{overflow:hidden}
 .mtg-tv-quiz-shift>span{display:flex;flex-direction:column;gap:4px;min-width:0;overflow-wrap:normal}
 .mtg-tv-quiz-shift strong{color:#fff;font-size:1.25em;white-space:nowrap}
 .mtg-tv-quiz-shift small{color:#b9d3e9;font-size:.65em}
-.mtg-tv-quiz-stop,.mtg-tv-quiz-stopped{grid-column:1/-1;justify-self:start;padding:8px 13px;border:1px solid rgba(255,255,255,.28);border-radius:9px;background:rgba(34,163,114,.28);color:#fff;font:inherit;font-size:.78em;font-weight:800}
-.mtg-tv-quiz-stop{cursor:pointer}
-.mtg-tv-quiz-stop:hover:not(:disabled){background:rgba(34,163,114,.5)}
-.mtg-tv-quiz-stop:disabled{opacity:.52;cursor:not-allowed}
+.mtg-tv-quiz-shift-actions{grid-column:1/-1;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mtg-tv-quiz-stop,.mtg-tv-quiz-retake,.mtg-tv-quiz-stopped{justify-self:start;padding:8px 13px;border:1px solid rgba(255,255,255,.28);border-radius:9px;background:rgba(34,163,114,.28);color:#fff;font:inherit;font-size:.78em;font-weight:800}
+.mtg-tv-quiz-stop,.mtg-tv-quiz-retake{cursor:pointer}
+.mtg-tv-quiz-stop:hover:not(:disabled),.mtg-tv-quiz-retake:hover:not(:disabled){background:rgba(34,163,114,.5)}
+.mtg-tv-quiz-stop:disabled,.mtg-tv-quiz-retake:disabled{opacity:.52;cursor:not-allowed}
 .mtg-tv-quiz-stopped{background:rgba(34,163,114,.22);color:#b8f2d3}
-.mtg-tv-quiz-not-started{grid-column:1/-1;justify-self:start;color:#b9d3e9;font-size:.78em;font-weight:700}
+.mtg-tv-quiz-not-started{justify-self:start;color:#b9d3e9;font-size:.78em;font-weight:700}
 .mtg-tv-quiz-updated{display:block;margin-top:16px;color:#9fc3e2;text-align:right;font-size:.9rem}
 .mtg-tv-quiz-status-empty{padding:24px;border:1px solid rgba(255,255,255,.2);border-radius:16px;background:rgba(255,255,255,.08);color:#dbe7f3;font-size:1.25rem;font-weight:800}
 .mtg-tv-quiz-podium-list{display:grid;gap:10px;margin-top:18px}

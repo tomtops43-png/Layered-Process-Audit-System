@@ -120,6 +120,7 @@ function buildApiHandlers_(payload) {
     publishMeetingQuiz: function (user) { return publishMeetingQuiz(payload, user); },
     lockMeetingQuizRoster: function (user) { return lockMeetingQuizRoster(payload, user); },
     stopMeetingQuizShift: function (user) { return stopMeetingQuizShift(payload, user); },
+    startNewMeetingQuizShiftRound: function (user) { return startNewMeetingQuizShiftRound(payload, user); },
     excuseMeetingQuizParticipant: function (user) { return excuseMeetingQuizParticipant(payload, user); },
     registerMeetingQuizParticipant: function (user) { return registerMeetingQuizParticipant(payload, user); },
     startMeetingQuizAttempt: function (user) { return startMeetingQuizAttempt(payload, user); },

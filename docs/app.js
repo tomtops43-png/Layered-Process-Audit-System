@@ -3583,14 +3583,20 @@ function renderMeetingQuizAdmin() {
       : (session.rosterStatus === 'Locked'
         ? '<span class="status-badge status-ok">ปิดรับรายชื่อแล้ว</span>'
         : `<button type="button" class="btn btn-outline" data-quiz-lock="${escapeAttr(session.shift)}">ปิดรับรายชื่อ</button>`);
+    const retakeButton = session.examStopped && model.canManage
+      ? `<button type="button" class="btn btn-outline" data-quiz-retake="${escapeAttr(session.shift)}">↻ สอบใหม่ · รอบ ${Number(session.attemptNo || 1) + 1}</button>` : '';
     const stopButton = session.examStopped
       ? ''
       : `<button type="button" class="btn btn-primary" data-quiz-stop="${escapeAttr(session.shift)}" title="หยุดได้ทันที ผู้ที่ยังไม่ส่งจะไม่ถูกนำมาจัดอันดับ">หยุดสอบและประกาศอันดับ</button>`;
     const stats = `ลงชื่อ ${session.registeredCount || 0} คน · เริ่มแล้ว ${session.startedCount ?? session.participantCount ?? 0} · ส่ง ${session.submittedCount || 0} · ค้าง ${session.pendingCount || 0}`;
-    const podium = session.examStopped && (session.topThree || []).length
-      ? `<div class="quiz-podium"><strong>🏆 3 อันดับของ${escapeHtml(session.label || session.shift)}</strong><ol>${session.topThree.map(person => `<li><span>${person.rank === 1 ? '🥇' : (person.rank === 2 ? '🥈' : '🥉')} ${escapeHtml(person.displayName)}${person.durationLabel ? `<small>${escapeHtml(person.durationLabel)}</small>` : ''}</span><b>${person.score}/${person.total}</b></li>`).join('')}</ol></div>`
-      : (session.examStopped ? '<div class="quiz-status-note">หยุดสอบแล้ว · ยังไม่มีผู้ส่งข้อสอบเพื่อจัดอันดับ</div>' : '');
-    return `<section class="quiz-shift-roster"><div class="quiz-roster-summary"><strong>${escapeHtml(session.label || session.shift)}</strong><span>${stats}</span><div class="quiz-roster-controls">${rosterButton}${stopButton}</div></div>${peopleHtml}${podium}</section>`;
+    const podiumHtml = rows => rows?.length
+      ? `<ol>${rows.map(person => `<li><span>${person.rank === 1 ? '🥇' : (person.rank === 2 ? '🥈' : '🥉')} ${escapeHtml(person.displayName)}${person.durationLabel ? `<small>${escapeHtml(person.durationLabel)}</small>` : ''}</span><b>${person.score}/${person.total}</b></li>`).join('')}</ol>`
+      : '<p>ยังไม่มีผู้ส่งข้อสอบเพื่อจัดอันดับ</p>';
+    const previousPodium = session.previousAttemptNo
+      ? `<div class="quiz-podium"><strong>🏆 ${escapeHtml(session.label || session.shift)} · อันดับรอบ ${Number(session.previousAttemptNo)}</strong>${podiumHtml(session.previousTopThree || [])}</div>` : '';
+    const podium = session.examStopped
+      ? `<div class="quiz-podium"><strong>🏆 ${escapeHtml(session.label || session.shift)} · อันดับรอบ ${Number(session.attemptNo || 1)}</strong>${podiumHtml(session.topThree || [])}</div>` : '';
+    return `<section class="quiz-shift-roster"><div class="quiz-roster-summary"><strong>${escapeHtml(session.label || session.shift)} · รอบ ${Number(session.attemptNo || 1)}</strong><span>${stats}</span><div class="quiz-roster-controls">${rosterButton}${stopButton}${retakeButton}</div></div>${peopleHtml}${previousPodium}${podium}</section>`;
   }).join('');
   const sourceTopics = (model.post?.SourceTopics || []).map(topic => topic.Topic).filter(Boolean);
   const quizVersions = model.quizVersions || [];
@@ -3795,7 +3801,7 @@ async function handleMeetingQuizAdminClick(event) {
     });
     return;
   }
-  const button = event.target.closest('[data-quiz-copy-link],[data-quiz-generate],[data-quiz-regenerate],[data-quiz-manual],[data-quiz-attach-training-images],[data-quiz-remove-image],[data-quiz-translate-myanmar],[data-quiz-save-api-key],[data-quiz-save],[data-quiz-publish],[data-quiz-lock],[data-quiz-stop],[data-quiz-excuse],[data-quiz-refresh]');
+  const button = event.target.closest('[data-quiz-copy-link],[data-quiz-generate],[data-quiz-regenerate],[data-quiz-manual],[data-quiz-attach-training-images],[data-quiz-remove-image],[data-quiz-translate-myanmar],[data-quiz-save-api-key],[data-quiz-save],[data-quiz-publish],[data-quiz-lock],[data-quiz-stop],[data-quiz-retake],[data-quiz-excuse],[data-quiz-refresh]');
   if (!button) return;
   const originalButtonText = button.textContent;
   let savingDraft = false;
@@ -3926,6 +3932,21 @@ async function handleMeetingQuizAdminClick(event) {
       await refreshMeetingQuizAdmin();
       await loadMeetingBoard();
       showToast('หยุดสอบแล้ว · แสดง 3 อันดับแรกของกะนี้', 'success');
+    } else if (button.hasAttribute('data-quiz-retake')) {
+      const shift = button.dataset.quizRetake;
+      const session = model.shiftSessions?.find(item => String(item.shift) === String(shift));
+      const shiftLabel = session?.label || shift;
+      const nextAttemptNo = Number(session?.attemptNo || 1) + 1;
+      const confirmed = await showConfirm({
+        title: `เปิดสอบ${shiftLabel}รอบใหม่?`,
+        message: `เปิดให้ลงชื่อและทำข้อสอบ ${shiftLabel} รอบ ${nextAttemptNo} · คะแนนและอันดับรอบ ${session?.attemptNo || 1} จะเก็บไว้แยกเหมือนเดิม`,
+        confirmText: 'เปิดสอบรอบใหม่', tone: 'primary'
+      });
+      if (!confirmed) return;
+      await apiCall('startNewMeetingQuizShiftRound', { postId: model.postId, shift });
+      await refreshMeetingQuizAdmin(model.quiz?.QuizID || '');
+      await loadMeetingBoard();
+      showToast(`เปิดสอบ${shiftLabel}รอบ ${nextAttemptNo} แล้ว`, 'success');
     } else if (button.hasAttribute('data-quiz-excuse')) {
       const reason = window.prompt('เหตุผลที่ยกเว้นผู้เข้าสอบรายนี้');
       if (!reason || !reason.trim()) return;
@@ -4045,6 +4066,8 @@ async function refreshMeetingQuizResultStatus() {
     model.examStopped = Boolean(data.examStopped);
     model.participant = data.participant || model.participant;
     model.review = data.review || model.review;
+    model.retakeAvailable = Boolean(data.retakeAvailable);
+    model.attemptExpired = Boolean(data.attemptExpired);
     model.leaderboardUnlocked = Boolean(data.leaderboardUnlocked);
     model.leaderboard = data.leaderboard || [];
     if (wasUnlocked !== model.leaderboardUnlocked || wasAllSubmitted !== model.allSubmitted) {
@@ -4106,6 +4129,11 @@ function renderMeetingQuizExam() {
     content.innerHTML = '<div class="quiz-status-note">รายชื่อนี้ถูกยกเว้นจากรอบสอบแล้ว หากต้องการสอบ กรุณาติดต่อ Leader หรือผู้ดูแล</div>';
     return;
   }
+  if (model.attemptExpired && !model.review) {
+    title.textContent = lang === 'MY' ? 'ဤအဆိုင်း၏ အဟောင်းစာမေးပွဲ' : 'รอบสอบเดิมสิ้นสุดแล้ว';
+    content.innerHTML = `<div class="quiz-status-note">${lang === 'MY' ? 'ခေါင်းဆောင်က စာမေးပွဲအသစ်ကို ဖွင့်ထားပါက ပြန်လည်စာရင်းသွင်းပြီး ဖြေဆိုနိုင်ပါသည်။' : 'รอบเดิมสิ้นสุดแล้ว คะแนนเดิมยังอยู่ในระบบ หากหัวหน้าเปิดรอบใหม่แล้วให้ลงชื่อเข้าสอบอีกครั้ง'}</div><div class="modal-actions">${model.retakeAvailable ? '<button type="button" class="btn btn-primary" data-quiz-retake>ลงทะเบียนสอบรอบใหม่</button>' : ''}<button type="button" class="btn btn-outline" data-quiz-check-key>ตรวจสอบสถานะรอบใหม่</button></div>`;
+    return;
+  }
   if (model.review) {
     if (model.publicMode) startMeetingQuizResultPolling();
     title.textContent = lang === 'MY' ? 'စာမေးပွဲရလဒ်နှင့် ပြန်လည်သုံးသပ်ချက်' : 'ผลสอบและเฉลยของฉัน';
@@ -4117,9 +4145,13 @@ function renderMeetingQuizExam() {
     const personalPodium = model.publicMode && model.leaderboardUnlocked
       ? `<div id="quizPersonalPodium">${meetingQuizPodiumHtml(model.leaderboard || [], model.shift, lang)}</div>`
       : (model.publicMode ? `<div class="quiz-status-note">${lang === 'MY' ? `သင့်အဆိုင်းရပ်ပြီးနောက် အဆင့် ၁–၃ ကို အလိုအလျောက်ပြပါမည် · စက္ကန့် ၅ တိုင်း အခြေအနေစစ်ဆေးနေသည်` : `ส่งข้อสอบแล้ว · รอหัวหน้าหยุดสอบกะ${escapeHtml((model.shiftOptions || []).find(shift => shift.value === model.shift)?.label || model.shift || 'นี้')} แล้วระบบจะแสดงอันดับ 1–3 อัตโนมัติ · ตรวจสถานะทุก 5 วินาที`}</div>` : '');
-    const publicKeyActions = model.publicMode ? (model.allSubmitted
-      ? `<div class="quiz-status-note">${lang === 'MY' ? 'အဆိုင်းအားလုံးကို ရပ်နားပြီးပါပြီ · အဖြေစုစုပေါင်းကို ဖွင့်ထားပါသည်' : 'หัวหน้าหยุดสอบครบทุกกะแล้ว · เปิดเฉลยรวมได้'}</div><div class="modal-actions"><button type="button" class="btn btn-primary" data-quiz-global-key>${lang === 'MY' ? 'အဖြေများကို ကြည့်ရန်' : 'ดูเฉลยรวม'}</button><button type="button" class="btn btn-outline" data-quiz-finish>${lang === 'MY' ? 'ပိတ်ရန်' : 'ปิดผลสอบ'}</button></div>`
-      : `<div class="quiz-status-note">${lang === 'MY' ? 'အဆိုင်းတစ်ခုချင်းစီ ရပ်ပြီးသည်နှင့် အဆင့်စာရင်းကို ပြပါမည်။ အဆိုင်းအားလုံးရပ်ပြီးနောက် အဖြေစုစုပေါင်းကို ဖွင့်ပါမည်။' : 'อันดับของแต่ละกะจะแสดงทันทีเมื่อหัวหน้าหยุดกะนั้น · เฉลยรวมเปิดเมื่อหยุดครบทุกกะ'}<div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-check-key>${lang === 'MY' ? 'အဖြေအခြေအနေကို စစ်ဆေးရန်' : 'อัปเดตสถานะเฉลย/อันดับ'}</button><button type="button" class="btn btn-primary" data-quiz-finish>${lang === 'MY' ? 'ပိတ်ရန်' : 'ปิดผลสอบ'}</button></div></div>`)
+    const retakeAction = model.publicMode && model.retakeAvailable
+      ? `<div class="quiz-status-note">หัวหน้าเปิดรอบสอบใหม่แล้ว · คะแนนและอันดับรอบเดิมยังเก็บไว้</div><div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-retake>ลงทะเบียนสอบรอบใหม่</button></div>` : '';
+    const publicKeyActions = model.publicMode ? (model.retakeAvailable
+      ? retakeAction
+      : (model.allSubmitted
+        ? `<div class="quiz-status-note">${lang === 'MY' ? 'အဆိုင်းအားလုံးကို ရပ်နားပြီးပါပြီ · အဖြေစုစုပေါင်းကို ဖွင့်ထားပါသည်' : 'หัวหน้าหยุดสอบครบทุกกะแล้ว · เปิดเฉลยรวมได้'}</div><div class="modal-actions"><button type="button" class="btn btn-primary" data-quiz-global-key>${lang === 'MY' ? 'အဖြေများကို ကြည့်ရန်' : 'ดูเฉลยรวม'}</button><button type="button" class="btn btn-outline" data-quiz-check-key>ตรวจสอบสถานะรอบใหม่</button><button type="button" class="btn btn-outline" data-quiz-finish>${lang === 'MY' ? 'ပိတ်ရန်' : 'ปิดผลสอบ'}</button></div>`
+        : `<div class="quiz-status-note">${lang === 'MY' ? 'အဆိုင်းတစ်ခုချင်းစီ ရပ်ပြီးသည်နှင့် အဆင့်စာရင်းကို ပြပါမည်။ အဆိုင်းအားလုံးရပ်ပြီးနောက် အဖြေစုစုပေါင်းကို ဖွင့်ပါမည်။' : 'อันดับของแต่ละกะจะแสดงทันทีเมื่อหัวหน้าหยุดกะนั้น · เฉลยรวมเปิดเมื่อหยุดครบทุกกะ'}<div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-check-key>${lang === 'MY' ? 'အဖြေအခြေအနေကို စစ်ဆေးရန်' : 'อัปเดตสถานะเฉลย/อันดับ'}</button><button type="button" class="btn btn-primary" data-quiz-finish>${lang === 'MY' ? 'ပိတ်ရန်' : 'ปิดผลสอบ'}</button></div></div>`))
       : `<div class="modal-actions"><button type="button" class="btn btn-primary" data-quiz-finish>${lang === 'MY' ? 'ပြီးပါပြီ / နောက်လူအတွက် ပိတ်ရန်' : 'เสร็จแล้ว / ให้คนถัดไปทำ'}</button></div>`;
     const ownShift = (model.shiftOptions || []).find(shift => shift.value === model.shift)?.label || model.shift || '';
     const durationNote = model.durationMs ? `<div class="quiz-status-note">${lang === 'MY' ? 'ကြာချိန်' : 'เวลาที่ใช้'} · ${meetingQuizDurationText(model.durationMs, lang)}</div>` : '';
@@ -4302,6 +4334,39 @@ async function openMeetingQuizAnswerKey(postId) {
 async function handleMeetingQuizExamClick(event) {
   const model = state.meetingQuizExam;
   if (!model) return;
+  const retake = event.target.closest('[data-quiz-retake]');
+  if (retake) {
+    if (!model.publicMode || !model.retakeAvailable || retake.disabled) return;
+    retake.disabled = true;
+    try {
+      stopMeetingQuizResultPolling();
+      if (model.tokenKey) sessionStorage.removeItem(model.tokenKey);
+      model.participantToken = '';
+      model.participant = null;
+      model.participantId = '';
+      model.review = null;
+      model.answers = {};
+      model.examStarted = false;
+      model.startedAtMs = 0;
+      model.durationMs = 0;
+      model.leaderboard = [];
+      model.leaderboardUnlocked = false;
+      model.retakeAvailable = false;
+      model.attemptExpired = false;
+      const data = await apiCall('getMeetingQuiz', { ...meetingQuizScope(model), participantToken: '' });
+      Object.assign(model, data);
+      model.participantToken = '';
+      model.participant = null;
+      model.answers = {};
+      model.examStarted = false;
+      model.mode = 'exam';
+      renderMeetingQuizExam();
+    } catch (error) {
+      retake.disabled = false;
+      showToast(error.message, 'error');
+    }
+    return;
+  }
   const start = event.target.closest('[data-quiz-start]');
   if (start) {
     if (start.disabled) return;
@@ -4341,6 +4406,11 @@ async function handleMeetingQuizExamClick(event) {
       model.participant = data.participant || model.participant;
       model.review = data.review || model.review;
       model.examStopped = Boolean(data.examStopped);
+      model.retakeAvailable = Boolean(data.retakeAvailable);
+      model.attemptExpired = Boolean(data.attemptExpired);
+      model.shiftOptions = data.shiftOptions || model.shiftOptions;
+      model.examStarted = Boolean(data.examStarted);
+      model.startedAtMs = Number(data.startedAtMs || 0);
       model.leaderboardUnlocked = Boolean(data.leaderboardUnlocked);
       model.leaderboard = data.leaderboard || [];
       renderMeetingQuizExam();
@@ -5096,14 +5166,21 @@ function meetingTvQuizStatusContentHtml(dailyQuiz) {
           ? `<button type="button" class="mtg-tv-quiz-stop" data-tv-quiz-post="${escapeAttr(dailyQuiz?.post?.PostID || '')}" data-tv-quiz-stop="${escapeAttr(session.shift)}" title="หยุดได้ทันที อันดับคิดจากผู้ที่ส่งแล้ว">หยุดสอบและประกาศอันดับ</button>`
           : '<span class="mtg-tv-quiz-not-started">ยังไม่มีผู้เริ่มสอบ</span>')
         : (session.examStopped ? '<span class="mtg-tv-quiz-stopped">หยุดแล้ว</span>' : '');
-      return `<div class="mtg-tv-quiz-shift"><span>${escapeHtml(session.label || session.shift || 'กะ')}<small>ลงชื่อ ${Number(session.registeredCount || 0)} · เริ่ม ${started} · ส่ง ${submitted}</small></span><strong>ส่ง ${submitted} <small>/ เริ่ม ${started} คน</small></strong>${stopControl}</div>`;
+      const retakeControl = quiz.canManage && session.examStopped
+        ? `<button type="button" class="mtg-tv-quiz-retake" data-tv-quiz-post="${escapeAttr(dailyQuiz?.post?.PostID || '')}" data-tv-quiz-retake="${escapeAttr(session.shift)}">↻ สอบใหม่ · รอบ ${Number(session.attemptNo || 1) + 1}</button>` : '';
+      const shiftActions = stopControl || retakeControl
+        ? `<div class="mtg-tv-quiz-shift-actions">${stopControl}${retakeControl}</div>` : '';
+      return `<div class="mtg-tv-quiz-shift"><span>${escapeHtml(session.label || session.shift || 'กะ')}<small>รอบ ${Number(session.attemptNo || 1)} · ลงชื่อ ${Number(session.registeredCount || 0)} · เริ่ม ${started} · ส่ง ${submitted}</small></span><strong>ส่ง ${submitted} <small>/ เริ่ม ${started} คน</small></strong>${shiftActions}</div>`;
     }).join('')
     : '<div class="mtg-tv-quiz-status-empty">กำลังโหลดข้อมูลผู้เข้าสอบแยกตามกะ…</div>';
-  const podium = sessions.filter(session => session.examStopped).map(session =>
-    `<div class="mtg-tv-quiz-podium"><strong>🏆 ${escapeHtml(session.label || session.shift)} · 3 อันดับแรก</strong>${(session.topThree || []).length
-      ? `<ol>${session.topThree.map(person => `<li><span>${person.rank === 1 ? '🥇' : (person.rank === 2 ? '🥈' : '🥉')} ${escapeHtml(person.displayName || '')}${person.durationLabel ? `<small>${escapeHtml(person.durationLabel)}</small>` : ''}</span><b>${Number(person.score || 0)}/${Number(person.total || 5)}</b></li>`).join('')}</ol>`
-      : '<p>ยังไม่มีผู้ส่งข้อสอบเพื่อจัดอันดับ</p>'}</div>`
-  ).join('');
+  const podiumHtml = (session, attemptNo, rows) =>
+    `<div class="mtg-tv-quiz-podium"><strong>🏆 ${escapeHtml(session.label || session.shift)} · อันดับรอบ ${Number(attemptNo || 1)}</strong>${(rows || []).length
+      ? `<ol>${rows.map(person => `<li><span>${person.rank === 1 ? '🥇' : (person.rank === 2 ? '🥈' : '🥉')} ${escapeHtml(person.displayName || '')}${person.durationLabel ? `<small>${escapeHtml(person.durationLabel)}</small>` : ''}</span><b>${Number(person.score || 0)}/${Number(person.total || 5)}</b></li>`).join('')}</ol>`
+      : '<p>ยังไม่มีผู้ส่งข้อสอบเพื่อจัดอันดับ</p>'}</div>`;
+  const podium = sessions.filter(session => session.examStopped)
+    .map(session => podiumHtml(session, session.attemptNo, session.topThree)).join('');
+  const previousPodium = sessions.filter(session => Number(session.previousAttemptNo || 0) > 0)
+    .map(session => podiumHtml(session, session.previousAttemptNo, session.previousTopThree)).join('');
   const status = quiz.allSubmitted
     ? 'หัวหน้าหยุดสอบครบทุกกะแล้ว · จัดอันดับแยกตามกะ'
     : stoppedShifts
@@ -5114,7 +5191,7 @@ function meetingTvQuizStatusContentHtml(dailyQuiz) {
     <div class="mtg-tv-quiz-status-total"><span>ข้อสอบชุดเดียว · แสดงผลแยกตามกะ</span><strong>${sessions.length || '—'}<small>${sessions.length ? ' กะ' : ' รอข้อมูล'}</small></strong></div>
     <p class="mtg-tv-quiz-status-message">${escapeHtml(status)}</p>
     <div class="mtg-tv-quiz-shifts">${shifts}</div>
-    ${podium ? `<div class="mtg-tv-quiz-podium-list">${podium}</div>` : ''}
+    ${previousPodium || podium ? `<div class="mtg-tv-quiz-podium-list">${previousPodium}${podium}</div>` : ''}
     <small class="mtg-tv-quiz-updated">อัปเดตอัตโนมัติ · ${refreshedAt}</small>
   </div>`;
 }
@@ -5299,8 +5376,10 @@ function renderMeetingTv() {
     btn.addEventListener('click', () => openMeetingQuizDraftFromTv(btn)));
   if (!container.dataset.tvQuizStopBound) {
     container.addEventListener('click', event => {
-      const btn = event.target?.closest?.('[data-tv-quiz-stop]');
-      if (btn && container.contains(btn)) stopMeetingQuizFromTv(btn);
+      const stopButton = event.target?.closest?.('[data-tv-quiz-stop]');
+      const retakeButton = event.target?.closest?.('[data-tv-quiz-retake]');
+      if (stopButton && container.contains(stopButton)) stopMeetingQuizFromTv(stopButton);
+      else if (retakeButton && container.contains(retakeButton)) startNewMeetingQuizRoundFromTv(retakeButton);
     });
     container.dataset.tvQuizStopBound = 'true';
   }
@@ -5329,6 +5408,34 @@ async function stopMeetingQuizFromTv(button) {
     await showMeetingQuizWinners(label, stopped.topThree || []);
     await loadMeetingBoard();
     showToast(`หยุดสอบ${label}แล้ว · แสดงอันดับ 1–3`, 'success');
+  } catch (error) {
+    button.disabled = false;
+    showToast(error.message, 'error');
+  }
+}
+
+async function startNewMeetingQuizRoundFromTv(button) {
+  if (!button || button.disabled) return;
+  const postId = button.dataset.tvQuizPost;
+  const shift = button.dataset.tvQuizRetake;
+  const dailyQuiz = meetingTvDailyQuizzes().find(item => String(item.post?.PostID || '') === String(postId || ''));
+  const session = dailyQuiz?.quiz?.shiftSessions?.find(item => String(item.shift) === String(shift));
+  if (!postId || !shift || !session?.examStopped) return;
+  const label = session.label || shift;
+  const nextAttemptNo = Number(session.attemptNo || 1) + 1;
+  const confirmed = await showConfirm({
+    title: `เปิดสอบ${label}รอบใหม่?`,
+    message: `เปิดให้ลงชื่อและทำข้อสอบ ${label} รอบ ${nextAttemptNo} · คะแนนและอันดับรอบ ${session.attemptNo || 1} จะเก็บไว้แยกเหมือนเดิม`,
+    confirmText: 'เปิดสอบรอบใหม่', tone: 'primary'
+  });
+  if (!confirmed) return;
+  button.disabled = true;
+  try {
+    await apiCall('startNewMeetingQuizShiftRound', { postId, shift });
+    await loadMeetingBoard();
+    await refreshMeetingQuizBoardStatus();
+    refreshMeetingTvQuizStatus();
+    showToast(`เปิดสอบ${label}รอบ ${nextAttemptNo} แล้ว`, 'success');
   } catch (error) {
     button.disabled = false;
     showToast(error.message, 'error');
