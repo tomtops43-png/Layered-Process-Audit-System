@@ -264,18 +264,37 @@ function bindEvents() {
     // Collect every photo in the same gallery so the lightbox can page through them
     const siblings = trigger.parentElement ? $$('[data-photo-url]', trigger.parentElement) : [];
     const triggers = siblings.length ? siblings : [trigger];
-    openPhotoLightbox(triggers.map(t => t.dataset.photoUrl), Math.max(0, triggers.indexOf(trigger)));
+    openPhotoLightbox(triggers.map(t => t.dataset.photoUrl), Math.max(0, triggers.indexOf(trigger)), {
+      enableZoom: Boolean(trigger.closest('#meetingTv'))
+    });
   });
   $('#closePhotoLightbox').addEventListener('click', closePhotoLightbox);
   $('#photoLightboxPrev').addEventListener('click', () => stepPhotoLightbox(-1));
   $('#photoLightboxNext').addEventListener('click', () => stepPhotoLightbox(1));
+  $('#photoLightboxZoomIn').addEventListener('click', () => setPhotoLightboxZoom(photoLightboxZoom + .25));
+  $('#photoLightboxZoomOut').addEventListener('click', () => setPhotoLightboxZoom(photoLightboxZoom - .25));
+  $('#photoLightboxZoomReset').addEventListener('click', resetPhotoLightboxZoom);
+  const lightboxImage = $('#photoLightboxImage');
+  lightboxImage.addEventListener('pointerdown', startPhotoLightboxPan);
+  lightboxImage.addEventListener('pointermove', movePhotoLightboxPan);
+  lightboxImage.addEventListener('pointerup', endPhotoLightboxPan);
+  lightboxImage.addEventListener('pointercancel', endPhotoLightboxPan);
   document.addEventListener('keydown', event => {
     if (!$('#photoLightbox').open) return;
     if (event.key === 'ArrowRight') { event.preventDefault(); stepPhotoLightbox(1); }
     else if (event.key === 'ArrowLeft') { event.preventDefault(); stepPhotoLightbox(-1); }
+    else if (photoLightboxTvZoom && ['+', '='].includes(event.key)) { event.preventDefault(); setPhotoLightboxZoom(photoLightboxZoom + .25); }
+    else if (photoLightboxTvZoom && event.key === '-') { event.preventDefault(); setPhotoLightboxZoom(photoLightboxZoom - .25); }
+    else if (photoLightboxTvZoom && event.key === '0') { event.preventDefault(); resetPhotoLightboxZoom(); }
   });
   $('#photoLightbox').addEventListener('click', event => { if (event.target === event.currentTarget) closePhotoLightbox(); });
-  $('#photoLightbox').addEventListener('close', () => { $('#photoLightboxImage').src = ''; });
+  $('#photoLightbox').addEventListener('close', () => {
+    $('#photoLightboxImage').src = '';
+    $('#photoLightbox').classList.remove('is-tv-zoomable', 'is-zoomed', 'is-dragging');
+    $('#photoLightboxZoomControls').classList.add('hidden');
+    photoLightboxTvZoom = false;
+    photoLightboxPointer = null;
+  });
   $('#confirmDialogOk').addEventListener('click', () => settleConfirmDialog(true));
   $('#confirmDialogCancel').addEventListener('click', () => settleConfirmDialog(false));
   // Escape and backdrop clicks both mean "no" — they funnel through the same
@@ -4526,7 +4545,7 @@ function meetingTvPostSlideHtml(slide) {
   if (isLast && state.meetingCanCreate && st === 'discussed') actions.push(`<button class="mtg-tv-action" data-mtg-status="Closed" data-mtg-id="${escapeAttr(row.PostID)}">จบเรื่อง</button>`);
   let mid;
   if (slide.isPpt) {
-    mid = `<div class="mtg-tv-ppt"><img src="${escapeAttr(driveThumbnailUrl_(slide.pptUrl, 1600))}" data-photo-url="${escapeAttr(slide.pptUrl)}" alt="สไลด์ PPT ${slide.pptPage}" loading="lazy"></div>`;
+    mid = `<div class="mtg-tv-photo-hint">🔍 คลิกรูปเพื่อขยาย แล้วใช้ + / − เพื่อซูม</div><div class="mtg-tv-ppt"><img src="${escapeAttr(driveThumbnailUrl_(slide.pptUrl, 1600))}" data-photo-url="${escapeAttr(slide.pptUrl)}" alt="สไลด์ PPT ${slide.pptPage}" loading="lazy"></div>`;
   } else if (slide.isDoc) {
     const fileId = meetingDriveFileId(slide.docUrl);
     const previewUrl = fileId ? `https://drive.google.com/file/d/${fileId}/preview` : slide.docUrl;
@@ -4534,7 +4553,7 @@ function meetingTvPostSlideHtml(slide) {
       <div class="mtg-tv-embed-hint">📊 ${escapeHtml(slide.docName)} · เลื่อนสไลด์ในตัวพรีวิว · <a href="${escapeAttr(slide.docUrl)}" target="_blank" rel="noopener">เปิดเต็มจอ ↗</a></div>`;
   } else {
     mid = `${sectionText ? `<div class="mtg-tv-detail">${escapeHtml(sectionText)}</div>` : ''}
-      ${photos.length ? `<div class="mtg-tv-photos">${photos.map((u, i) => `<img src="${escapeAttr(driveThumbnailUrl_(u, 1000))}" data-photo-url="${escapeAttr(u)}" alt="รูปที่ ${i + 1}" loading="lazy">`).join('')}</div>` : ''}`;
+      ${photos.length ? `<div class="mtg-tv-photo-hint">🔍 คลิกรูปเพื่อขยาย แล้วใช้ + / − เพื่อซูม</div><div class="mtg-tv-photos">${photos.map((u, i) => `<img src="${escapeAttr(driveThumbnailUrl_(u, 1000))}" data-photo-url="${escapeAttr(u)}" alt="รูปที่ ${i + 1}" loading="lazy">`).join('')}</div>` : ''}`;
   }
   return `<div class="mtg-tv-slide tv-anim-${meetingTvDir}">
       <div class="mtg-tv-chips">
@@ -6647,28 +6666,100 @@ function findingPhotoGallery(row) {
 // page through without closing and reopening the dialog.
 let photoLightboxUrls = [];
 let photoLightboxIndex = 0;
+let photoLightboxTvZoom = false;
+let photoLightboxZoom = 1;
+let photoLightboxPan = { x: 0, y: 0 };
+let photoLightboxPointer = null;
 
-function openPhotoLightbox(urls, index = 0) {
+function openPhotoLightbox(urls, index = 0, options = {}) {
   photoLightboxUrls = (Array.isArray(urls) ? urls : [urls]).filter(Boolean);
   if (!photoLightboxUrls.length) return;
   photoLightboxIndex = Math.min(Math.max(index, 0), photoLightboxUrls.length - 1);
+  photoLightboxTvZoom = Boolean(options.enableZoom);
+  photoLightboxZoom = 1;
+  photoLightboxPan = { x: 0, y: 0 };
+  $('#photoLightbox').classList.toggle('is-tv-zoomable', photoLightboxTvZoom);
+  $('#photoLightboxZoomControls').classList.toggle('hidden', !photoLightboxTvZoom);
   renderPhotoLightbox();
   $('#photoLightbox').showModal();
 }
 
 function renderPhotoLightbox() {
   const multi = photoLightboxUrls.length > 1;
-  $('#photoLightboxImage').src = driveThumbnailUrl_(photoLightboxUrls[photoLightboxIndex], 1920);
+  const image = $('#photoLightboxImage');
+  image.src = driveThumbnailUrl_(photoLightboxUrls[photoLightboxIndex], photoLightboxTvZoom ? 2560 : 1920);
+  image.alt = `รูปภาพ ${photoLightboxIndex + 1} จาก ${photoLightboxUrls.length}`;
   $('#photoLightboxPrev').classList.toggle('hidden', !multi);
   $('#photoLightboxNext').classList.toggle('hidden', !multi);
   const counter = $('#photoLightboxCounter');
   counter.classList.toggle('hidden', !multi);
   counter.textContent = `${photoLightboxIndex + 1} / ${photoLightboxUrls.length}`;
+  updatePhotoLightboxZoom();
+}
+
+function updatePhotoLightboxZoom() {
+  const image = $('#photoLightboxImage');
+  if (!image) return;
+  image.style.transform = photoLightboxTvZoom
+    ? `translate(${photoLightboxPan.x}px, ${photoLightboxPan.y}px) scale(${photoLightboxZoom})`
+    : '';
+  $('#photoLightbox').classList.toggle('is-zoomed', photoLightboxTvZoom && photoLightboxZoom > 1);
+  $('#photoLightboxZoomReset').textContent = `${Math.round(photoLightboxZoom * 100)}%`;
+  $('#photoLightboxZoomOut').disabled = photoLightboxZoom <= 1;
+  $('#photoLightboxZoomIn').disabled = photoLightboxZoom >= 3;
+}
+
+function clampPhotoLightboxPan() {
+  const image = $('#photoLightboxImage');
+  const maxX = Math.max(0, image.offsetWidth * (photoLightboxZoom - 1) / 2);
+  const maxY = Math.max(0, image.offsetHeight * (photoLightboxZoom - 1) / 2);
+  photoLightboxPan.x = Math.max(-maxX, Math.min(maxX, photoLightboxPan.x));
+  photoLightboxPan.y = Math.max(-maxY, Math.min(maxY, photoLightboxPan.y));
+}
+
+function setPhotoLightboxZoom(value) {
+  if (!photoLightboxTvZoom) return;
+  photoLightboxZoom = Math.min(3, Math.max(1, Math.round(value * 100) / 100));
+  if (photoLightboxZoom === 1) photoLightboxPan = { x: 0, y: 0 };
+  clampPhotoLightboxPan();
+  updatePhotoLightboxZoom();
+}
+
+function resetPhotoLightboxZoom() {
+  photoLightboxZoom = 1;
+  photoLightboxPan = { x: 0, y: 0 };
+  updatePhotoLightboxZoom();
+}
+
+function startPhotoLightboxPan(event) {
+  if (!photoLightboxTvZoom || photoLightboxZoom <= 1 || event.button !== 0) return;
+  event.preventDefault();
+  photoLightboxPointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  event.currentTarget.setPointerCapture(event.pointerId);
+  $('#photoLightbox').classList.add('is-dragging');
+}
+
+function movePhotoLightboxPan(event) {
+  if (!photoLightboxPointer || photoLightboxPointer.id !== event.pointerId) return;
+  photoLightboxPan.x += event.clientX - photoLightboxPointer.x;
+  photoLightboxPan.y += event.clientY - photoLightboxPointer.y;
+  photoLightboxPointer.x = event.clientX;
+  photoLightboxPointer.y = event.clientY;
+  clampPhotoLightboxPan();
+  updatePhotoLightboxZoom();
+}
+
+function endPhotoLightboxPan(event) {
+  if (!photoLightboxPointer || photoLightboxPointer.id !== event.pointerId) return;
+  photoLightboxPointer = null;
+  $('#photoLightbox').classList.remove('is-dragging');
 }
 
 function stepPhotoLightbox(delta) {
   if (photoLightboxUrls.length < 2) return;
   photoLightboxIndex = (photoLightboxIndex + delta + photoLightboxUrls.length) % photoLightboxUrls.length;
+  photoLightboxZoom = 1;
+  photoLightboxPan = { x: 0, y: 0 };
   renderPhotoLightbox();
 }
 

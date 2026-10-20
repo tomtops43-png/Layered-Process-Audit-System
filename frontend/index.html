@@ -401,6 +401,12 @@
   <dialog id="photoLightbox" class="photo-lightbox">
     <div class="photo-lightbox-inner">
       <button type="button" class="icon-button photo-lightbox-close" id="closePhotoLightbox">×</button>
+      <div class="photo-lightbox-zoom hidden" id="photoLightboxZoomControls" role="group" aria-label="ควบคุมการซูมรูป">
+        <button type="button" id="photoLightboxZoomOut" aria-label="ย่อรูป">−</button>
+        <button type="button" id="photoLightboxZoomReset" aria-label="คืนขนาดรูป">100%</button>
+        <button type="button" id="photoLightboxZoomIn" aria-label="ขยายรูป">+</button>
+        <span>ลากรูปเพื่อเลื่อนดูจุดสำคัญ</span>
+      </div>
       <button type="button" class="photo-lightbox-nav photo-lightbox-prev hidden" id="photoLightboxPrev" aria-label="รูปก่อนหน้า">‹</button>
       <img id="photoLightboxImage" src="" alt="รูปภาพ">
       <button type="button" class="photo-lightbox-nav photo-lightbox-next hidden" id="photoLightboxNext" aria-label="รูปถัดไป">›</button>
@@ -514,6 +520,6 @@
 
   <script src="config.js" defer></script>
   <script src="vendor/qrcode.js" defer></script>
-  <script src="app.js?v=20261020-quiz-draft-save" defer></script>
+  <script src="app.js?v=20261020-tv-photo-zoom" defer></script>
 </body>
 </html>

@@ -253,7 +253,17 @@ label{display:flex;flex-direction:column;gap:7px;font-size:.88rem;font-weight:70
 .photo-lightbox{width:min(1200px,calc(100% - 24px));max-height:92vh;border:0;border-radius:14px;padding:0;background:#0b0f14;box-shadow:0 24px 80px rgba(0,0,0,.4)}
 .photo-lightbox::backdrop{background:rgba(4,18,30,.82)}
 .photo-lightbox-inner{position:relative}
-.photo-lightbox img{display:block;max-width:100%;max-height:88vh;margin:0 auto;object-fit:contain}
+.photo-lightbox img{display:block;max-width:100%;max-height:88vh;margin:0 auto;object-fit:contain;transform:translate(0,0) scale(1);transform-origin:center;transition:transform .16s ease}
+.photo-lightbox.is-tv-zoomable .photo-lightbox-inner{overflow:hidden;touch-action:none}
+.photo-lightbox.is-tv-zoomable #photoLightboxImage{user-select:none;-webkit-user-drag:none}
+.photo-lightbox.is-tv-zoomable.is-zoomed #photoLightboxImage{cursor:grab;transition:none}
+.photo-lightbox.is-tv-zoomable.is-dragging #photoLightboxImage{cursor:grabbing}
+.photo-lightbox-zoom{position:absolute;top:12px;left:12px;z-index:3;display:flex;align-items:center;gap:4px;padding:5px;border:1px solid rgba(255,255,255,.22);border-radius:12px;background:rgba(0,0,0,.68);color:#fff;box-shadow:0 4px 18px rgba(0,0,0,.25)}
+.photo-lightbox-zoom button{min-width:38px;height:36px;border:0;border-radius:8px;background:rgba(255,255,255,.12);color:#fff;font:inherit;font-weight:800;cursor:pointer}
+.photo-lightbox-zoom button:hover{background:rgba(255,255,255,.25)}
+.photo-lightbox-zoom button:disabled{opacity:.4;cursor:default}
+.photo-lightbox-zoom span{padding:0 8px;font-size:.78rem;color:#dbe7f3;white-space:nowrap}
+.photo-lightbox.is-tv-zoomable .photo-lightbox-close{z-index:4}
 .photo-lightbox-close{position:absolute;top:8px;right:8px;background:rgba(0,0,0,.55);color:#fff;border-radius:50%;z-index:1}
 .photo-link-trigger{cursor:pointer;background:none;border:0;padding:0;font:inherit}
 .form-error{margin-bottom:14px;padding:11px 13px;border:1px solid #e7a8a8;border-radius:8px;background:var(--red-bg);color:var(--red-dark);font-weight:700}
@@ -844,6 +854,7 @@ body.mtg-tv-open{overflow:hidden}
 .mtg-tv-donechip{background:var(--green)}
 .mtg-tv-topic{font-size:clamp(1.9rem,4.6vw,3.8rem);font-weight:900;line-height:1.25}
 .mtg-tv-detail{font-size:clamp(1.15rem,2.3vw,1.8rem);line-height:1.6;color:#dbe7f3;white-space:pre-line}
+.mtg-tv-photo-hint{font-size:clamp(.78rem,1.2vw,.98rem);font-weight:700;color:#b5d1e8}
 .mtg-tv-photos{display:flex;gap:14px;flex-wrap:wrap}
 .mtg-tv-photos img{height:26vh;max-width:44vw;object-fit:cover;border-radius:12px;border:2px solid rgba(255,255,255,.25);cursor:zoom-in}
 .mtg-tv-slide-meta{font-size:clamp(.85rem,1.6vw,1.05rem);color:#9fc3e2;font-weight:600}
@@ -1036,6 +1047,9 @@ body.mtg-tv-open{overflow:hidden}
   .photo-lightbox-nav{width:44px;height:44px;font-size:1.6rem}
   .photo-lightbox-prev{left:8px}
   .photo-lightbox-next{right:8px}
+  .photo-lightbox-zoom{top:10px;left:10px;gap:3px;padding:4px}
+  .photo-lightbox-zoom button{min-width:34px;height:34px}
+  .photo-lightbox-zoom span{display:none}
 }
 
 /* ===== Multi-slide posts (--- separators) ===== */
