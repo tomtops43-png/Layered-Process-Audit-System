@@ -3221,8 +3221,11 @@ async function refreshMeetingQuizBoardStatus() {
         }
       }
     });
-    if (changed && $('#page-meeting')?.classList.contains('active-page')) {
-      renderMeetingBoard();
+    if (changed) {
+      if ($('#page-meeting')?.classList.contains('active-page')) renderMeetingBoard();
+      // The TV uses its own overlay and can remain visible while another app
+      // page is active. Always refresh its live status when the quiz summary
+      // arrives, otherwise the initial empty preview (0 shifts) stays on TV.
       refreshMeetingTvQuizStatus();
     }
   })();
@@ -5095,7 +5098,7 @@ function meetingTvQuizStatusContentHtml(dailyQuiz) {
         : (session.examStopped ? '<span class="mtg-tv-quiz-stopped">หยุดแล้ว</span>' : '');
       return `<div class="mtg-tv-quiz-shift"><span>${escapeHtml(session.label || session.shift || 'กะ')}<small>ลงชื่อ ${Number(session.registeredCount || 0)} · เริ่ม ${started} · ส่ง ${submitted}</small></span><strong>ส่ง ${submitted} <small>/ เริ่ม ${started} คน</small></strong>${stopControl}</div>`;
     }).join('')
-    : '<div class="mtg-tv-quiz-shift"><span>ยังไม่มีข้อมูลแยกตามกะ</span></div>';
+    : '<div class="mtg-tv-quiz-status-empty">กำลังโหลดข้อมูลผู้เข้าสอบแยกตามกะ…</div>';
   const podium = sessions.filter(session => session.examStopped).map(session =>
     `<div class="mtg-tv-quiz-podium"><strong>🏆 ${escapeHtml(session.label || session.shift)} · 3 อันดับแรก</strong>${(session.topThree || []).length
       ? `<ol>${session.topThree.map(person => `<li><span>${person.rank === 1 ? '🥇' : (person.rank === 2 ? '🥈' : '🥉')} ${escapeHtml(person.displayName || '')}${person.durationLabel ? `<small>${escapeHtml(person.durationLabel)}</small>` : ''}</span><b>${Number(person.score || 0)}/${Number(person.total || 5)}</b></li>`).join('')}</ol>`
@@ -5108,7 +5111,7 @@ function meetingTvQuizStatusContentHtml(dailyQuiz) {
       : 'ข้อสอบชุดเดียวและ QR เดียวใช้ได้ทั้ง 2 กะ · Leader หยุดแต่ละกะเพื่อประกาศอันดับได้ทันที';
   const refreshedAt = new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   return `<div class="mtg-tv-quiz-status-card">
-    <div class="mtg-tv-quiz-status-total"><span>ข้อสอบชุดเดียว · แสดงผลแยกตามกะ</span><strong>${sessions.length}<small> กะ</small></strong></div>
+    <div class="mtg-tv-quiz-status-total"><span>ข้อสอบชุดเดียว · แสดงผลแยกตามกะ</span><strong>${sessions.length || '—'}<small>${sessions.length ? ' กะ' : ' รอข้อมูล'}</small></strong></div>
     <p class="mtg-tv-quiz-status-message">${escapeHtml(status)}</p>
     <div class="mtg-tv-quiz-shifts">${shifts}</div>
     ${podium ? `<div class="mtg-tv-quiz-podium-list">${podium}</div>` : ''}
