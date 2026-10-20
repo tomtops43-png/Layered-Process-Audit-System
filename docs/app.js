@@ -3159,6 +3159,7 @@ async function loadMeetingBoard(prefetched = null) {
     $('#addMeetingPostButton').classList.toggle('hidden', !state.meetingCanCreate);
     renderMeetingBoard();
     refreshMeetingTvQuizStatus();
+    if ($('#page-meeting')?.classList.contains('active-page')) refreshMeetingQuizBoardStatus();
   } catch (error) {
     container.innerHTML = emptyHtml(error.message);
     showToast(error.message, 'error');
@@ -3168,6 +3169,9 @@ async function loadMeetingBoard(prefetched = null) {
 async function refreshMeetingQuizBoardStatus() {
   if (state.meetingQuizBoardStatusRefreshPromise) return state.meetingQuizBoardStatusRefreshPromise;
   const posts = [...(state.meetingPosts || []), ...(state.meetingCarryOver || [])];
+  // The board response already contains the lightweight create/draft flags.
+  // Only fetch full roster and submission progress when a quiz is published.
+  if (!posts.some(post => post.MeetingQuiz?.available)) return;
   const meetingDates = [...new Set(posts.map(post => String(post.MeetingDate || '').slice(0, 10)).filter(Boolean))];
   if (!meetingDates.length) return;
   const request = (async () => {

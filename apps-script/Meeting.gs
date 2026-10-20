@@ -128,7 +128,9 @@ function getMeetingPosts(payload, user) {
       var copy = sanitizeForClient_(row);
       copy.CanEdit = canEditMeetingPost_(user, row);
       decorateMeetingAckSummary_(copy, row, ackByPost, user);
-      copy.MeetingQuiz = isTrainingMeetingPost_(row) ? {} : meetingQuizSummaryForPost_(row, user, quizSummaryCache);
+      // Keep the first board response lean. Detailed roster/progress state is
+      // fetched asynchronously by getMeetingQuizStatus after the cards render.
+      copy.MeetingQuiz = isTrainingMeetingPost_(row) ? {} : meetingQuizBoardPreviewForPost_(row, user, quizSummaryCache);
       return copy;
     };
     if (includeHistory) {

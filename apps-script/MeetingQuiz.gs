@@ -164,6 +164,41 @@ function meetingQuizSummaryForPost_(post, user, summaryCache) {
   return summary;
 }
 
+/** Cheap quiz metadata for the first Meeting board response; roster progress is lazy-loaded. */
+function meetingQuizBoardPreviewForPost_(post, user, summaryCache) {
+  var meetingDate = dateOnly_(post && post.MeetingDate);
+  var canManage = hasPermission_(user, 'meeting.quiz.manage') && canSeeMeetingPost_(user, post);
+  var canGenerate = hasPermission_(user, 'meeting.quiz.generate') && canSeeMeetingPost_(user, post);
+  if (!meetingDate) return { available: false, canManage: canManage, canGenerate: canGenerate };
+  if (summaryCache && Object.prototype.hasOwnProperty.call(summaryCache.byDate, meetingDate)) {
+    return Object.assign({}, summaryCache.byDate[meetingDate], { canManage: canManage, canGenerate: canGenerate });
+  }
+  if (!summaryCache || !summaryCache.sheetsReady) {
+    ensureMeetingQuizSheets_();
+    if (summaryCache) summaryCache.sheetsReady = true;
+  }
+  var quizzes = meetingQuizRowsForDate_(meetingDate);
+  var quiz = quizzes.filter(function (row) { return valuesEqual_(row.Status, 'Published'); })[0] || null;
+  var dayPosts = meetingQuizPostsForDate_(meetingDate);
+  var summary = {
+    available: Boolean(quiz), canManage: canManage, canGenerate: canGenerate,
+    hasDraft: !quiz && quizzes.some(function (row) { return valuesEqual_(row.Status, 'Draft'); }),
+    slideCount: meetingQuizSlideCount_(dayPosts), sourcePostCount: dayPosts.length,
+    quizId: quiz ? cleanString_(quiz.QuizID) : '',
+    publicToken: quiz ? cleanString_(quiz.PublicToken) : '',
+    sourceTitle: quiz ? cleanString_(quiz.SourceTitle) : '',
+    versionNo: quiz ? toNumber_(quiz.VersionNo) : 0,
+    // The detailed status endpoint fills these values after the board is visible.
+    rosterLocked: false, participantCount: 0, submittedCount: 0,
+    allSubmitted: false, people: [], shiftSessions: []
+  };
+  if (quiz) {
+    try { summary.sourcePostCount = JSON.parse(cleanString_(quiz.SourcePostIDs) || '[]').length || 1; } catch (_) { summary.sourcePostCount = 1; }
+  }
+  if (summaryCache) summaryCache.byDate[meetingDate] = summary;
+  return Object.assign({}, summary);
+}
+
 /** Lightweight polling endpoint: returns quiz progress only, without reloading slide/post bodies. */
 function getMeetingQuizStatus(payload, user) {
   try {
