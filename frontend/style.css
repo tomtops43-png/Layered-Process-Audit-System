@@ -803,6 +803,7 @@ textarea{line-height:1.45}
 #meetingQuizExamDialog .quiz-exam-choice:has(input:checked),#publicQuizView .quiz-exam-choice:has(input:checked){border-color:#5b9bc9;background:#eef7fd}
 #meetingQuizExamDialog .quiz-exam-choice:hover,#publicQuizView .quiz-exam-choice:hover{border-color:#bad4e6;background:#f3f9fd}
 .quiz-score{padding:12px 14px;border-radius:10px;background:#eef6ff;color:var(--navy);font-size:1.05rem;font-weight:800}
+.quiz-submission-success{margin:12px 0;padding:13px 16px;border:1px solid #b7e2c6;border-radius:11px;background:#eaf8ef;color:#17623a;font-weight:900;line-height:1.5}
 @media (max-width:640px){
   .mtg-head,.mtg-topic,.mtg-detail,.mtg-meta{padding-left:16px;padding-right:16px}
   .mtg-quiz-summary{padding-left:16px;padding-right:16px}

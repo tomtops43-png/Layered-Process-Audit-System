@@ -66,6 +66,7 @@ const state = {
   meetingCanManage: false,
   meetingCanManageQuiz: false,
   meetingQuizBoardStatusRefreshPromise: null,
+  meetingTvQuizStatusTimer: null,
   meetingTvIndex: 0,
   meetingPendingAcks: [],
   meetingFindingDigest: null,
@@ -4054,7 +4055,8 @@ function renderMeetingQuizExam() {
       : `<div class="modal-actions"><button type="button" class="btn btn-primary" data-quiz-finish>${lang === 'MY' ? 'ပြီးပါပြီ / နောက်လူအတွက် ပိတ်ရန်' : 'เสร็จแล้ว / ให้คนถัดไปทำ'}</button></div>`;
     const ownShift = (model.shiftOptions || []).find(shift => shift.value === model.shift)?.label || model.shift || '';
     const durationNote = model.durationMs ? `<div class="quiz-status-note">${lang === 'MY' ? 'ကြာချိန်' : 'เวลาที่ใช้'} · ${meetingQuizDurationText(model.durationMs, lang)}</div>` : '';
-    content.innerHTML = `<div class="quiz-status-note">${escapeHtml(model.participant?.displayName || '')}${ownShift ? ` · ${lang === 'MY' ? 'အဆိုင်း' : 'กะ'} ${escapeHtml(ownShift)}` : ''}</div>${durationNote}<div class="quiz-score">${lang === 'MY' ? 'ရမှတ်' : 'คะแนน'} ${model.review.score}/${model.review.total}</div>${meetingQuizPersonalReviewHtml(rows, lang)}${personalPodium}${publicKeyActions}`;
+    const submittedNotice = lang === 'MY' ? '✅ စာမေးပွဲတင်သွင်းပြီးပါပြီ' : '✅ ส่งข้อสอบสำเร็จแล้ว';
+    content.innerHTML = `<div class="quiz-submission-success" role="status" aria-live="polite">${submittedNotice}</div><div class="quiz-status-note">${escapeHtml(model.participant?.displayName || '')}${ownShift ? ` · ${lang === 'MY' ? 'အဆိုင်း' : 'กะ'} ${escapeHtml(ownShift)}` : ''}</div>${durationNote}<div class="quiz-score">${lang === 'MY' ? 'ရမှတ်' : 'คะแนน'} ${model.review.score}/${model.review.total}</div>${meetingQuizPersonalReviewHtml(rows, lang)}${personalPodium}${publicKeyActions}`;
     return;
   }
   const ownShift = (model.shiftOptions || []).find(shift => shift.value === model.shift)?.label || model.shift || '';
@@ -4874,13 +4876,32 @@ function openMeetingTv() {
   $('#meetingTv').classList.remove('hidden');
   document.body.classList.add('mtg-tv-open');
   renderMeetingTv();
+  startMeetingTvQuizStatusPolling();
   if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
 }
 
 function closeMeetingTv() {
+  stopMeetingTvQuizStatusPolling();
   $('#meetingTv').classList.add('hidden');
   document.body.classList.remove('mtg-tv-open');
   if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+}
+
+function startMeetingTvQuizStatusPolling() {
+  stopMeetingTvQuizStatusPolling();
+  // Refresh immediately on entry, then keep the visible TV status slide current
+  // while employees are submitting their answers from other devices.
+  refreshMeetingQuizBoardStatus();
+  state.meetingTvQuizStatusTimer = setInterval(() => {
+    const tv = $('#meetingTv');
+    if (!tv || tv.classList.contains('hidden') || document.visibilityState !== 'visible') return;
+    refreshMeetingQuizBoardStatus();
+  }, 10000);
+}
+
+function stopMeetingTvQuizStatusPolling() {
+  if (state.meetingTvQuizStatusTimer) clearInterval(state.meetingTvQuizStatusTimer);
+  state.meetingTvQuizStatusTimer = null;
 }
 
 function meetingTvStep(delta) {
