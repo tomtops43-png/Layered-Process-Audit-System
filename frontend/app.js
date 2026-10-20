@@ -3260,20 +3260,20 @@ function renderMeetingQuizAdmin() {
   const questionEditor = isDraft ? (model.questions || []).map((raw, index) => {
     const q = meetingQuizUiQuestion(raw);
     const choices = ['A', 'B', 'C', 'D'];
-    const choiceFields = (lang, values) => `<div class="quiz-choice-grid">${choices.map((key, i) => `<label class="quiz-choice-row"><strong>${key}</strong><textarea data-quiz-field="choice${key}${lang}" aria-label="ตัวเลือก ${key} ${lang}" required>${escapeHtml(values[i] || '')}</textarea></label>`).join('')}</div>`;
+    const choiceFields = (lang, values) => `<div class="quiz-choice-grid">${choices.map((key, i) => `<label class="quiz-choice-row"><strong>${key}</strong><textarea data-quiz-field="choice${key}${lang}" aria-label="ตัวเลือก ${key} ${lang}" data-required-for-publish>${escapeHtml(values[i] || '')}</textarea></label>`).join('')}</div>`;
     return `<section class="quiz-editor-question" data-quiz-q="${index}">
       <h4>ข้อ ${index + 1}</h4>
       <div class="quiz-question-image-field"><label>รูปประกอบ (ไม่บังคับ)<input type="file" accept="image/jpeg,image/png,image/webp" data-quiz-image="${index}"></label><input type="hidden" data-quiz-field="questionImageURL" value="${escapeAttr(q.questionImageURL)}"><div class="quiz-question-image-preview" data-quiz-image-preview>${q.questionImageURL ? `<img src="${escapeAttr(driveThumbnailUrl_(q.questionImageURL, 360))}" alt="รูปประกอบข้อ ${index + 1}" loading="lazy"><button type="button" class="btn btn-ghost btn-compact" data-quiz-remove-image>นำรูปออก</button>` : '<span class="field-help">เพิ่มรูปเพื่อใช้ประกอบคำถามหรือเกมได้</span>'}</div><span class="field-help">รูปจะเก็บใน Google Drive และเชื่อมกับข้อสอบนี้</span></div>
       <div class="quiz-editor-language-panel" data-quiz-language-panel="TH">
-        <label class="quiz-editor-full-field">คำถามภาษาไทย<textarea data-quiz-field="questionTH" required>${escapeHtml(q.questionTH)}</textarea></label>
+        <label class="quiz-editor-full-field">คำถามภาษาไทย<textarea data-quiz-field="questionTH" data-required-for-publish>${escapeHtml(q.questionTH)}</textarea></label>
         <strong class="quiz-editor-section-label">ตัวเลือกภาษาไทย</strong>${choiceFields('TH', q.choicesTH)}
-        <label class="quiz-editor-full-field">คำอธิบายภาษาไทย<textarea data-quiz-field="explanationTH" required>${escapeHtml(q.explanationTH)}</textarea></label>
+        <label class="quiz-editor-full-field">คำอธิบายภาษาไทย<textarea data-quiz-field="explanationTH" data-required-for-publish>${escapeHtml(q.explanationTH)}</textarea></label>
       </div>
       <div class="quiz-editor-language-panel" data-quiz-language-panel="MY" hidden>
         <button type="button" class="btn btn-outline btn-compact quiz-translate-myanmar" data-quiz-translate-myanmar>แปลภาษาพม่าข้อนี้ใหม่จากภาษาไทย</button>
-        <label class="quiz-editor-full-field">မေးခွန်း (မြန်မာ)<textarea data-quiz-field="questionMY" required>${escapeHtml(q.questionMY)}</textarea></label>
+        <label class="quiz-editor-full-field">မေးခွန်း (မြန်မာ)<textarea data-quiz-field="questionMY" data-required-for-publish>${escapeHtml(q.questionMY)}</textarea></label>
         <strong class="quiz-editor-section-label">ရွေးချယ်စရာများ (မြန်မာ)</strong>${choiceFields('MY', q.choicesMY)}
-        <label class="quiz-editor-full-field">ရှင်းလင်းချက် (မြန်မာ)<textarea data-quiz-field="explanationMY" required>${escapeHtml(q.explanationMY)}</textarea></label>
+        <label class="quiz-editor-full-field">ရှင်းလင်းချက် (မြန်မာ)<textarea data-quiz-field="explanationMY" data-required-for-publish>${escapeHtml(q.explanationMY)}</textarea></label>
       </div>
       <label class="quiz-editor-correct-answer">คำตอบที่ถูก<select data-quiz-field="correctOption">${choices.map(key => `<option value="${key}" ${q.correctOption === key ? 'selected' : ''}>${key}</option>`).join('')}</select></label>
     </section>`;
@@ -3327,7 +3327,7 @@ function renderMeetingQuizAdmin() {
     ${generationFeedback}
     ${quiz && !isDraft ? `<div class="quiz-status-note">ใช้ QR และข้อสอบชุดเดียวกันทุกกะ · ผู้เข้าสอบทุกคนเลือกกะปัจจุบันตอนลงชื่อ ระบบอัปเดตกะในทะเบียนและป้องกันชื่อซ้ำ · สถานะอัปเดตอัตโนมัติทุก 3 วินาที</div>${!model.employeeRosterConfigured || !Number(model.employeeRosterCount || 0) ? `<div class="quiz-status-note">ยังไม่มีรายชื่อประจำในชีต ${escapeHtml(model.rosterSheetName || 'MeetingQuizEmployees')} ผู้สอบที่ไม่มีชื่อในทะเบียนจะถูกเพิ่มโดยอัตโนมัติเมื่อพิมพ์ชื่อและนามสกุลพร้อมเลือกกะ · หากมีรายชื่อประจำให้ใส่ EmployeeID, FirstName, LastName, Shift, ActiveStatus=Active เพื่อใช้คำนวณยอดที่ต้องสอบ · วันที่ลา/ป่วยเพิ่มในชีต ${escapeHtml(model.attendanceSheetName || 'MeetingQuizAttendance')} โดยใส่ MeetingDate, EmployeeID และ Status=Leave หรือ Sick</div>` : ''}<h4>ผลสอบและรายชื่อผู้เข้าสอบ แยกตามกะ</h4>${roster}` : ''}
     ${publicUrl ? `<section class="quiz-qr-panel"><div><h4>QR สำหรับพนักงานเข้าสอบ</h4><p class="field-help">สแกน QR แล้วพิมพ์ชื่อ–นามสกุล เลือกกะปัจจุบันและภาษา · ระบบตรวจทะเบียนและอัปเดตกะให้โดยไม่สร้างชื่อซ้ำ</p><div class="quiz-qr-link">${escapeHtml(publicUrl)}</div><button type="button" class="btn btn-outline" data-quiz-copy-link="${escapeAttr(publicUrl)}">คัดลอกลิงก์ข้อสอบ</button></div>${qrSvg ? `<div class="quiz-qr-image" aria-label="QR Code สำหรับเข้าสอบ">${qrSvg}</div>` : '<div class="quiz-qr-image quiz-qr-error">ยังสร้าง QR ไม่ได้ กรุณาคัดลอกลิงก์</div>'}</section>` : ''}
-    ${isDraft ? `<div class="quiz-status-note">${isManualDraft ? 'ข้อสอบสร้างเอง/เกม · กรอกคำถาม ตัวเลือก เฉลย และคำอธิบายภาษาไทยกับพม่าให้ครบ 5 ข้อ · แนบรูปได้ · เมื่อเผยแพร่จะใช้ QR และขั้นตอนเช็กชื่อเดิม' : 'สร้างข้อสอบชุดเดียวของวันนี้แล้ว · แก้ไขและบันทึกได้ แต่ระบบจะไม่ Gen ชุดซ้ำ · เปิดรับรายชื่อหลังเผยแพร่'}</div><div id="meetingQuizEditor" data-quiz-editor-language="TH"><div class="quiz-editor-language-switch" role="group" aria-label="เลือกภาษาที่ต้องการแก้ไข"><span>ภาษา</span><button type="button" class="is-active" data-quiz-editor-language="TH" aria-pressed="true">ไทย <small>หลัก</small></button><button type="button" data-quiz-editor-language="MY" aria-pressed="false">မြန်မာ</button></div>${questionEditor}</div><div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-save>บันทึกฉบับร่าง</button><button type="button" class="btn btn-primary" data-quiz-publish>เผยแพร่และเปิดรับสอบ</button></div>` : ''}
+    ${isDraft ? `<div class="quiz-status-note">${isManualDraft ? 'ข้อสอบสร้างเอง/เกม · บันทึกฉบับร่างได้ระหว่างกรอก · ก่อนเผยแพร่กรอกคำถาม ตัวเลือก เฉลย และคำอธิบายทั้งภาษาไทยกับพม่าให้ครบ 5 ข้อ · แนบรูปได้' : 'สร้างข้อสอบชุดเดียวของวันนี้แล้ว · บันทึกฉบับร่างระหว่างแก้ไขได้ · ก่อนเผยแพร่ตรวจให้ครบทั้ง 5 ข้อและสองภาษา · ระบบจะไม่ Gen ชุดซ้ำ'}</div><div id="meetingQuizEditor" data-quiz-editor-language="TH"><div class="quiz-editor-language-switch" role="group" aria-label="เลือกภาษาที่ต้องการแก้ไข"><span>ภาษา</span><button type="button" class="is-active" data-quiz-editor-language="TH" aria-pressed="true">ไทย <small>หลัก</small></button><button type="button" data-quiz-editor-language="MY" aria-pressed="false">မြန်မာ</button></div>${questionEditor}</div><div class="modal-actions"><button type="button" class="btn btn-outline" data-quiz-save>บันทึกฉบับร่าง</button><button type="button" class="btn btn-primary" data-quiz-publish>เผยแพร่และเปิดรับสอบ</button></div>` : ''}
     ${quiz && !isDraft && !participants.length ? '<div class="quiz-status-note">ยังไม่มีผู้ลงชื่อสอบในรอบนี้</div>' : ''}
     ${quiz && !isDraft && summary.allSubmitted ? '<div class="quiz-status-note">ทุกกะปิดรับรายชื่อและส่งครบแล้ว ปุ่มเฉลยรวมเปิดให้ทุกคนดูบนบอร์ด</div>' : ''}
     ${model.canManage && !model.canGenerate && (!quiz || isDraft) ? '<div class="quiz-status-note">บัญชีนี้สร้างข้อสอบเองได้ แต่ยังไม่มีสิทธิ์ Gen ข้อสอบด้วย AI</div>' : ''}
@@ -3480,7 +3480,14 @@ async function handleMeetingQuizAdminClick(event) {
       const confirmed = await showConfirm({ title: 'เผยแพร่ข้อสอบ?', message: 'ผู้เข้าสอบจะเริ่มลงชื่อและทำข้อสอบชุดนี้ได้', confirmText: 'เผยแพร่', tone: 'primary' });
       if (!confirmed) return;
       await apiCall('saveMeetingQuizDraft', { postId: model.postId, quizId: model.quiz.QuizID, questions: readMeetingQuizAdminQuestions() });
-      await apiCall('publishMeetingQuiz', { postId: model.postId, quizId: model.quiz.QuizID });
+      try {
+        await apiCall('publishMeetingQuiz', { postId: model.postId, quizId: model.quiz.QuizID });
+      } catch (publishError) {
+        // Keep the editor in sync with the server when validation prevents
+        // publishing; the just-saved draft must remain available for editing.
+        await refreshMeetingQuizAdmin(model.quiz.QuizID);
+        throw publishError;
+      }
       await refreshMeetingQuizAdmin(model.quiz.QuizID);
       await loadMeetingBoard();
       showToast('เผยแพร่แล้ว สแกน QR นี้ให้พนักงานเข้าสอบได้เลย', 'success');

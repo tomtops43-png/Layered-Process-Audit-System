@@ -881,15 +881,22 @@ function saveMeetingQuizApiKey(payload, user) {
   } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
 }
 
-function normalizeMeetingQuizQuestions_(questions) {
+function normalizeMeetingQuizQuestions_(questions, allowIncomplete) {
   if (!Array.isArray(questions) || questions.length !== 5) throw new Error('ข้อสอบต้องมีทั้งหมด 5 ข้อ');
   return questions.map(function (question, index) {
+    question = question || {};
     var th = question.choicesTH || [question.choiceATH, question.choiceBTH, question.choiceCTH, question.choiceDTH];
     var my = question.choicesMY || [question.choiceAMY, question.choiceBMY, question.choiceCMY, question.choiceDMY];
-    if (!Array.isArray(th) || th.length !== 4 || !Array.isArray(my) || my.length !== 4) {
+    if (allowIncomplete) {
+      th = Array.isArray(th) ? th.slice(0, 4) : [];
+      my = Array.isArray(my) ? my.slice(0, 4) : [];
+      while (th.length < 4) th.push('');
+      while (my.length < 4) my.push('');
+    } else if (!Array.isArray(th) || th.length !== 4 || !Array.isArray(my) || my.length !== 4) {
       throw new Error('ข้อ ' + (index + 1) + ' ต้องมีตัวเลือกภาษาไทยและพม่าอย่างละ 4 ตัวเลือก');
     }
     var correct = cleanString_(question.correctOption || question.CorrectOption).toUpperCase();
+    if (!correct && allowIncomplete) correct = 'A';
     if (['A', 'B', 'C', 'D'].indexOf(correct) === -1) throw new Error('ข้อ ' + (index + 1) + ' มีเฉลยไม่ถูกต้อง');
     var normalized = {
       QuestionNo: index + 1,
@@ -904,9 +911,9 @@ function normalizeMeetingQuizQuestions_(questions) {
     if (normalized.QuestionImageURL && (!/^https:\/\//i.test(normalized.QuestionImageURL) || normalized.QuestionImageURL.length > 2048)) {
       throw new Error('ข้อ ' + (index + 1) + ' มี URL รูปภาพไม่ถูกต้อง');
     }
-    if (!normalized.QuestionTH || !normalized.QuestionMY || !normalized.ExplanationTH || !normalized.ExplanationMY ||
-        normalized.ChoicesTH.some(function (choice) { return !choice; }) || normalized.ChoicesMY.some(function (choice) { return !choice; })) {
-      throw new Error('ข้อ ' + (index + 1) + ' ต้องกรอกคำถาม ตัวเลือก และคำอธิบายทั้งสองภาษาให้ครบ');
+    if (!allowIncomplete && (!normalized.QuestionTH || !normalized.QuestionMY || !normalized.ExplanationTH || !normalized.ExplanationMY ||
+        normalized.ChoicesTH.some(function (choice) { return !choice; }) || normalized.ChoicesMY.some(function (choice) { return !choice; }))) {
+      throw new Error('ข้อ ' + (index + 1) + ' ต้องกรอกคำถาม ตัวเลือก และคำอธิบายภาษาไทยกับพม่าให้ครบก่อนเผยแพร่');
     }
     return normalized;
   });
@@ -927,16 +934,29 @@ function meetingQuizQuestionRow_(quiz, question, questionId, user, timestamp) {
 }
 
 function saveMeetingQuizQuestionRows_(quiz, questions, user) {
-  var sheet = getSheet(SHEET_NAMES.MEETING_QUIZ_QUESTIONS);
-  var existing = meetingQuizQuestions_(quiz.QuizID).map(function (row) { return toNumber_(row._rowNumber); })
-    .filter(function (rowNumber) { return rowNumber >= 2; }).sort(function (a, b) { return b - a; });
-  existing.forEach(function (rowNumber) { sheet.deleteRow(rowNumber); });
-  invalidateSheetMatrixCache_(SHEET_NAMES.MEETING_QUIZ_QUESTIONS);
+  // Update existing question rows in place. Deleting all old rows before writing
+  // replacements meant a transient Sheets/API failure could erase a saved draft.
+  var existingByNumber = {};
+  meetingQuizQuestions_(quiz.QuizID).forEach(function (row) {
+    var number = toNumber_(row.QuestionNo);
+    if (number >= 1 && number <= 5 && !existingByNumber[number]) existingByNumber[number] = row;
+  });
   var timestamp = formatDateTimeBangkok(new Date());
-  appendBatch_(SHEET_NAMES.MEETING_QUIZ_QUESTIONS, questions.map(function (question) {
+  var missingRows = [];
+  questions.forEach(function (question) {
+    var existing = existingByNumber[question.QuestionNo];
+    if (existing && cleanString_(existing.QuestionID)) {
+      var updated = meetingQuizQuestionRow_(quiz, question, existing.QuestionID, user, timestamp);
+      updated.CreatedAt = existing.CreatedAt || timestamp;
+      updated.CreatedBy = existing.CreatedBy || user.UserID;
+      updateObjectById(SHEET_NAMES.MEETING_QUIZ_QUESTIONS, 'QuestionID', existing.QuestionID, updated);
+      return;
+    }
     var id = generateId('MQQ', SHEET_NAMES.MEETING_QUIZ_QUESTIONS, 'QuestionID', getPeriodMonth(new Date()));
-    return meetingQuizQuestionRow_(quiz, question, id, user, timestamp);
-  }));
+    missingRows.push(meetingQuizQuestionRow_(quiz, question, id, user, timestamp));
+  });
+  if (missingRows.length) appendBatch_(SHEET_NAMES.MEETING_QUIZ_QUESTIONS, missingRows);
+  invalidateSheetMatrixCache_(SHEET_NAMES.MEETING_QUIZ_QUESTIONS);
 }
 
 function generateMeetingQuiz(payload, user) {
@@ -1123,7 +1143,10 @@ function saveMeetingQuizDraft(payload, user) {
     if (!quiz || !valuesEqual_(dateOnly_(quiz.MeetingDate), dateOnly_(post.MeetingDate)) || !valuesEqual_(quiz.Status, 'Draft')) {
       throw new Error('แก้ไขได้เฉพาะข้อสอบฉบับร่าง');
     }
-    var questions = normalizeMeetingQuizQuestions_(payload.questions);
+    // Drafts are checkpoints: persist incomplete bilingual answers so admins can
+    // safely save their work while translating or editing. Publish still runs
+    // the strict validator below before opening the quiz to employees.
+    var questions = normalizeMeetingQuizQuestions_(payload.questions, true);
     saveMeetingQuizQuestionRows_(quiz, questions, user);
     updateObjectById(SHEET_NAMES.MEETING_QUIZZES, 'QuizID', quiz.QuizID, {
       UpdatedAt: formatDateTimeBangkok(new Date()), UpdatedBy: user.UserID
