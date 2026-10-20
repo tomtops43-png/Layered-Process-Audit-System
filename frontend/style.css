@@ -1210,7 +1210,7 @@ body.mtg-tv-open{overflow:hidden}
   .training-record-table th,.training-record-table td{padding:2.5mm 2.7mm;border:1px solid #888;vertical-align:top;text-align:left;overflow-wrap:anywhere}
   .training-record-table th{font-size:10.5pt;font-weight:400}
   .training-record-table td{white-space:normal}
-  .training-record-table tr:nth-child(5) th{height:35mm;vertical-align:top;font-weight:400}
+  .training-record-table tr:nth-child(5) th{height:18mm;padding:1.5mm 2.7mm;vertical-align:top;font-weight:400}
   .training-record-table tr:nth-child(6) th{height:12mm;vertical-align:middle;font-weight:400}
   .training-record-table tr:nth-child(7) th{height:29mm;vertical-align:top;font-weight:400}
   .training-record-checks{margin-left:4mm;font-weight:400}
