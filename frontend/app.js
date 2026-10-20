@@ -5086,11 +5086,14 @@ function meetingTvQuizStatusContentHtml(dailyQuiz) {
   const stoppedShifts = sessions.filter(session => session.examStopped).length;
   const shifts = sessions.length
     ? sessions.map(session => {
-      const stopControl = quiz.canManage && !session.examStopped
-        ? `<button type="button" class="mtg-tv-quiz-stop" data-tv-quiz-post="${escapeAttr(dailyQuiz?.post?.PostID || '')}" data-tv-quiz-stop="${escapeAttr(session.shift)}" title="หยุดได้ทันที อันดับคิดจากผู้ที่ส่งแล้ว">หยุดสอบและประกาศอันดับ</button>`
-        : (session.examStopped ? '<span class="mtg-tv-quiz-stopped">หยุดแล้ว</span>' : '');
       const started = Number(session.startedCount ?? session.participantCount ?? 0);
-      return `<div class="mtg-tv-quiz-shift"><span>${escapeHtml(session.label || session.shift || 'กะ')}<small>ลงชื่อ ${Number(session.registeredCount || 0)} · เริ่ม ${started} · ส่ง ${Number(session.submittedCount || 0)}</small></span><strong>ส่ง ${Number(session.submittedCount || 0)} <small>/ เริ่ม ${started} คน</small></strong>${stopControl}</div>`;
+      const submitted = Number(session.submittedCount || 0);
+      const stopControl = quiz.canManage && !session.examStopped
+        ? (started > 0 || submitted > 0
+          ? `<button type="button" class="mtg-tv-quiz-stop" data-tv-quiz-post="${escapeAttr(dailyQuiz?.post?.PostID || '')}" data-tv-quiz-stop="${escapeAttr(session.shift)}" title="หยุดได้ทันที อันดับคิดจากผู้ที่ส่งแล้ว">หยุดสอบและประกาศอันดับ</button>`
+          : '<span class="mtg-tv-quiz-not-started">ยังไม่มีผู้เริ่มสอบ</span>')
+        : (session.examStopped ? '<span class="mtg-tv-quiz-stopped">หยุดแล้ว</span>' : '');
+      return `<div class="mtg-tv-quiz-shift"><span>${escapeHtml(session.label || session.shift || 'กะ')}<small>ลงชื่อ ${Number(session.registeredCount || 0)} · เริ่ม ${started} · ส่ง ${submitted}</small></span><strong>ส่ง ${submitted} <small>/ เริ่ม ${started} คน</small></strong>${stopControl}</div>`;
     }).join('')
     : '<div class="mtg-tv-quiz-shift"><span>ยังไม่มีข้อมูลแยกตามกะ</span></div>';
   const podium = sessions.filter(session => session.examStopped).map(session =>
@@ -5291,8 +5294,13 @@ function renderMeetingTv() {
     btn.addEventListener('click', () => generateMeetingQuizFromTv(btn)));
   $$('[data-tv-quiz-draft]', container).forEach(btn =>
     btn.addEventListener('click', () => openMeetingQuizDraftFromTv(btn)));
-  $$('[data-tv-quiz-stop]', container).forEach(btn =>
-    btn.addEventListener('click', () => stopMeetingQuizFromTv(btn)));
+  if (!container.dataset.tvQuizStopBound) {
+    container.addEventListener('click', event => {
+      const btn = event.target?.closest?.('[data-tv-quiz-stop]');
+      if (btn && container.contains(btn)) stopMeetingQuizFromTv(btn);
+    });
+    container.dataset.tvQuizStopBound = 'true';
+  }
   $$('[data-mtg-status]', container).forEach(btn =>
     btn.addEventListener('click', () => setMeetingPostStatus(btn, btn.dataset.mtgId, btn.dataset.mtgStatus, true)));
 }
