@@ -1215,7 +1215,8 @@ body.mtg-tv-open{overflow:hidden}
   .training-record-table tr:nth-child(7) th{height:29mm;vertical-align:top;font-weight:400}
   .training-record-checks{margin-left:4mm;font-weight:400}
   .training-record-effect{display:inline-block;min-height:20mm;margin-top:2mm;font-weight:400}
-  .training-print-detail-section{break-inside:avoid;break-inside:avoid-page;page-break-inside:avoid}
+  .training-record-table tr:nth-child(2){break-inside:auto;page-break-inside:auto}
+  .training-print-detail-section{break-inside:auto;page-break-inside:auto}
   .training-print-detail-section+.training-print-detail-section{margin-top:2mm;padding-top:2mm;border-top:1px solid #bbb}
   .training-print-detail-text{white-space:normal;overflow-wrap:anywhere;orphans:3;widows:3}
   .training-print-detail-label{margin:0 0 1.5mm;font-size:8pt;font-weight:700;break-after:avoid;break-after:avoid-page;page-break-after:avoid}
