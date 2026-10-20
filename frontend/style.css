@@ -859,6 +859,10 @@ body.mtg-tv-open{overflow:hidden}
 .mtg-tv-donechip{background:var(--green)}
 .mtg-tv-topic{font-size:clamp(1.9rem,4.6vw,3.8rem);font-weight:900;line-height:1.25}
 .mtg-tv-detail{font-size:clamp(1.15rem,2.3vw,1.8rem);line-height:1.6;color:#dbe7f3;white-space:pre-line}
+.mtg-tv-inline-photo{display:inline-flex;max-width:min(68vw,900px);vertical-align:middle;flex-direction:column;align-items:center;gap:5px;margin:10px 12px}
+.mtg-tv-inline-photo img{display:block;max-width:100%;max-height:34vh;object-fit:contain;border-radius:12px;border:2px solid rgba(255,255,255,.25);cursor:zoom-in}
+.mtg-tv-inline-photo figcaption{color:#d7e8f6;font-size:clamp(.75rem,1.1vw,.95rem);font-weight:800;line-height:1.2}
+.mtg-tv-inline-content{overflow-wrap:anywhere}
 .mtg-tv-photo-hint{font-size:clamp(.78rem,1.2vw,.98rem);font-weight:700;color:#b5d1e8}
 .mtg-tv-photos{display:flex;gap:14px;flex-wrap:wrap}
 .mtg-tv-photos img{height:26vh;max-width:44vw;object-fit:cover;border-radius:12px;border:2px solid rgba(255,255,255,.25);cursor:zoom-in}
@@ -879,6 +883,8 @@ body.mtg-tv-open{overflow:hidden}
   .mtg-tv-top,.mtg-tv-nav{padding:12px 16px}
   .mtg-tv-body{padding:2vh 5vw}
   .mtg-tv-photos img{height:20vh;max-width:80vw}
+  .mtg-tv-inline-photo{max-width:80vw;margin:8px 4px}
+  .mtg-tv-inline-photo img{max-height:28vh}
 }
 
 /* ===== Meeting acknowledgement ===== */
@@ -1065,6 +1071,11 @@ body.mtg-tv-open{overflow:hidden}
 .mtg-detail-slide{position:relative;padding:8px 0 8px 0;border-top:1px dashed var(--border)}
 .mtg-detail-slide:first-child{border-top:none;padding-top:0}
 .mtg-detail-slide-tag{display:inline-block;font-size:.68rem;font-weight:800;color:var(--muted);background:var(--gray-bg);border-radius:99px;padding:2px 10px;margin-bottom:5px}
+.mtg-detail-slide-content{white-space:pre-line;overflow-wrap:anywhere}
+.mtg-detail-inline-photo{display:inline-flex;max-width:min(44vw,360px);vertical-align:middle;flex-direction:column;align-items:center;gap:3px;margin:5px 8px;text-decoration:none}
+.mtg-detail-inline-photo img{display:block;max-width:100%;max-height:220px;object-fit:contain;border:1px solid var(--border);border-radius:8px;background:#f4f7f9}
+.mtg-detail-inline-photo span{color:var(--muted);font-size:.72rem;font-weight:750;line-height:1.2}
+@media(max-width:640px){.mtg-detail-inline-photo{max-width:72vw;margin:5px 3px}.mtg-detail-inline-photo img{max-height:180px}}
 
 /* ===== Per-slide photo pin tag ===== */
 .mtg-detail-pin{display:inline-block;font-size:.7rem;font-weight:800;color:var(--blue);background:var(--cyan);border-radius:99px;padding:2px 10px;margin:0 6px 5px 0}
@@ -1213,7 +1224,12 @@ body.mtg-tv-open{overflow:hidden}
   .training-print-slide-label{margin:0;color:#555!important;font-size:9pt;font-weight:800}
   .training-print-slide-text{font-size:13pt;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}
   .training-print-slide>img{display:block;max-width:100%;max-height:220mm;margin:0 auto;object-fit:contain;page-break-inside:avoid}
+  .training-print-inline-photo{display:inline-flex;max-width:72mm;vertical-align:middle;flex-direction:column;align-items:center;margin:2mm 3mm}
+  .training-print-inline-photo img,.training-print-photo img{display:block;max-width:100%;max-height:75mm;object-fit:contain}
+  .training-print-inline-photo figcaption,.training-print-photo figcaption{margin-top:1mm;color:#555!important;font-size:8pt;text-align:center}
+  .training-print-photo{display:flex;flex-direction:column;align-items:center;margin:3mm 0;page-break-inside:avoid}
   .training-print-slide iframe{width:100%;height:240mm;border:0}
   .training-print-slide a{color:#145a8b!important;overflow-wrap:anywhere}
   .training-print-slide:last-child{page-break-after:auto;break-after:auto}
+  body.training-print-form-only .training-print-form{page-break-after:auto;break-after:auto}
 }

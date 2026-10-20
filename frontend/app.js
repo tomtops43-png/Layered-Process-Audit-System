@@ -2948,7 +2948,7 @@ function trainingRecordSlidesHtml(row) {
   const filePreview = row.SlideFileURL
     ? `<div class="training-slide-file"><a href="${escapeAttr(row.SlideFileURL)}" target="_blank" rel="noopener">📊 เปิดไฟล์สไลด์ต้นฉบับ${row.SlideFileName ? ' · ' + escapeHtml(row.SlideFileName) : ''}</a>${!images.length && fileId ? `<iframe title="พรีวิวสไลด์ Training" src="https://drive.google.com/file/d/${escapeAttr(fileId)}/preview" loading="lazy" allowfullscreen></iframe>` : ''}</div>`
     : '';
-  return `${meetingDetailHtml(row.Detail, meetingPhotoList(row).length)}${meetingPhotoGallery(row.PhotoURL)}${imageSlides}${filePreview}`;
+  return `${meetingDetailHtml(row.Detail, meetingPhotoList(row))}${meetingUnassignedPhotoGallery(row)}${imageSlides}${filePreview}`;
 }
 
 function trainingRecordCardHtml(row) {
@@ -2960,7 +2960,8 @@ function trainingRecordCardHtml(row) {
   const trainer = row.TrainerName || row.CreatedByName || '';
   const summaryText = row.TrainingEffect ? `<div class="training-effect"><strong>ผลการ Training</strong><p>${escapeHtml(row.TrainingEffect)}</p></div>` : '';
   const actions = [
-    `<button type="button" class="btn btn-outline" data-training-print="${escapeAttr(row.PostID)}">🖨 พิมพ์แบบบันทึกและสไลด์</button>`,
+    `<button type="button" class="btn btn-primary" data-training-pdf="${escapeAttr(row.PostID)}">⬇ PDF แบบฟอร์มลงชื่อ</button>`,
+    `<button type="button" class="btn btn-outline" data-training-print="${escapeAttr(row.PostID)}">🖨 พิมพ์แบบบันทึก + สไลด์</button>`,
     row.CanEdit ? `<button type="button" class="btn btn-outline" data-training-edit="${escapeAttr(row.PostID)}">แก้ไข</button>` : ''
   ].filter(Boolean).join('');
   return `<article class="training-record-card">
@@ -2987,6 +2988,8 @@ function renderTrainingArchive() {
 }
 
 function handleTrainingArchiveClick(event) {
+  const pdf = event.target.closest('[data-training-pdf]');
+  if (pdf) return printTrainingRecord(pdf.dataset.trainingPdf, { includeSlides: false });
   const print = event.target.closest('[data-training-print]');
   if (print) return printTrainingRecord(print.dataset.trainingPrint);
   const edit = event.target.closest('[data-training-edit]');
@@ -3002,15 +3005,20 @@ function trainingPrintSlideHtml(slide, index, row) {
     const previewUrl = fileId ? `https://drive.google.com/file/d/${fileId}/preview` : slide.docUrl;
     return `<article class="training-print-slide"><p class="training-print-slide-label">ไฟล์สไลด์แนบ · ${escapeHtml(slide.docName || row.SlideFileName || 'เอกสารประกอบ')}</p><iframe title="ไฟล์สไลด์ Training" src="${escapeAttr(previewUrl)}"></iframe><a href="${escapeAttr(slide.docUrl)}" target="_blank" rel="noopener">เปิดไฟล์ต้นฉบับ</a></article>`;
   }
-  const photos = (slide.photos || []).map((url, i) => `<img src="${escapeAttr(driveThumbnailUrl_(url, 1200))}" alt="รูปประกอบ ${i + 1}">`).join('');
-  return `<article class="training-print-slide"><p class="training-print-slide-label">เนื้อหา Training · สไลด์ ${index + 1}</p>${slide.sectionText ? `<div class="training-print-slide-text">${escapeHtml(slide.sectionText)}</div>` : ''}${photos}</article>`;
+  const photoNumbers = slide.photoNumbers || (slide.photos || []).map((_, i) => i + 1);
+  const inlineContent = slide.hasPhotoMarkers
+    ? `<div class="training-print-slide-text">${(slide.contentParts || []).map(part => part.type === 'photo'
+      ? `<figure class="training-print-inline-photo"><img src="${escapeAttr(driveThumbnailUrl_(part.url, 1200))}" alt="รูปที่ ${part.number}"><figcaption>รูปที่ ${part.number}</figcaption></figure>`
+      : escapeHtml(part.text)).join('')}</div>`
+    : `${slide.sectionText ? `<div class="training-print-slide-text">${escapeHtml(slide.sectionText)}</div>` : ''}${(slide.photos || []).map((url, i) => `<figure class="training-print-photo"><img src="${escapeAttr(driveThumbnailUrl_(url, 1200))}" alt="รูปที่ ${photoNumbers[i]}"><figcaption>รูปที่ ${photoNumbers[i]}</figcaption></figure>`).join('')}`;
+  return `<article class="training-print-slide"><p class="training-print-slide-label">เนื้อหา Training · สไลด์ ${index + 1}</p>${inlineContent}</article>`;
 }
 
 function trainingAttendanceRows(count = 16) {
   return Array.from({ length: count }, (_, index) => `<tr><td>${index + 1}</td><td></td><td></td><td></td><td></td></tr>`).join('');
 }
 
-async function printTrainingRecord(postId) {
+async function printTrainingRecord(postId, { includeSlides = true } = {}) {
   const row = (state.trainingRecords || []).find(item => String(item.PostID) === String(postId)) || findMeetingPost(postId);
   if (!row) return showToast('ไม่พบรายการ Training นี้', 'error');
   const dateAndTime = `${formatDate(row.MeetingDate)}${row.TrainingTime ? ' · ' + escapeHtml(row.TrainingTime) : ''}`;
@@ -3033,10 +3041,11 @@ async function printTrainingRecord(postId) {
       <table class="training-sign-table"><thead><tr><th>No.</th><th>Employee name / ชื่อ-นามสกุล</th><th>Employee ID</th><th>Shift / Unit</th><th>Signature / ลายเซ็น</th></tr></thead><tbody>${trainingAttendanceRows()}</tbody></table>
       <p class="training-print-foot">เอกสารนี้ใช้บันทึกว่าพนักงานได้รับการ Training ตามหัวข้อและวันที่ข้างต้น</p>
     </article>
-    <section class="training-print-slides"><h2>Training slides / เนื้อหาที่ใช้ฝึกอบรม</h2>${slides.length ? slides.map((slide, index) => trainingPrintSlideHtml(slide, index, row)).join('') : '<p>ไม่มีรายละเอียด รูป หรือไฟล์สไลด์แนบ</p>'}</section>`;
+    ${includeSlides ? `<section class="training-print-slides"><h2>Training slides / เนื้อหาที่ใช้ฝึกอบรม</h2>${slides.length ? slides.map((slide, index) => trainingPrintSlideHtml(slide, index, row)).join('') : '<p>ไม่มีรายละเอียด รูป หรือไฟล์สไลด์แนบ</p>'}</section>` : ''}`;
   printRoot.classList.remove('hidden');
   printRoot.style.cssText = 'display:block;position:fixed;left:-10000px;top:0;width:210mm;visibility:hidden;';
   document.body.classList.add('training-printing');
+  document.body.classList.toggle('training-print-form-only', !includeSlides);
   const imageLoads = Array.from(printRoot.querySelectorAll('img')).map(image => image.complete
     ? Promise.resolve()
     : new Promise(resolve => {
@@ -3050,6 +3059,7 @@ async function printTrainingRecord(postId) {
 
 function clearTrainingPrintView() {
   document.body.classList.remove('training-printing');
+  document.body.classList.remove('training-print-form-only');
   const printRoot = $('#trainingPrintRoot');
   if (printRoot) {
     printRoot.classList.add('hidden');
@@ -3250,8 +3260,8 @@ function meetingPostCardHtml(row, isCarry, showQuizActions = true) {
       <span class="status-badge ${statusMeta.cls}">${statusMeta.label}</span>
     </div>
     <div class="mtg-topic">${escapeHtml(row.Topic || '-')}</div>
-    ${meetingDetailHtml(row.Detail, meetingPhotoList(row).length)}
-    ${meetingPhotoGallery(row.PhotoURL)}
+    ${meetingDetailHtml(row.Detail, meetingPhotoList(row))}
+    ${meetingUnassignedPhotoGallery(row)}
     ${(() => {
       const pptCount = String(row.SlideImageURLs || '').split(',').map(u => u.trim()).filter(Boolean).length;
       if (pptCount) return `<div class="mtg-doc"><span class="mtg-doc-badge">📊 สไลด์ PPT ${pptCount} หน้า · ฉายในโหมด TV</span>${row.SlideFileURL ? ` <a href="${escapeAttr(row.SlideFileURL)}" target="_blank" rel="noopener" class="btn btn-outline btn-compact">เปิดไฟล์ต้นฉบับ</a>` : ''}</div>`;
@@ -4121,15 +4131,16 @@ $('#meetingQuizExamContent').addEventListener('click', handleMeetingQuizExamClic
 // Board card detail: --- separators become slide dividers and [รูปN] markers
 // are stripped (shown instead as a "📷 รูปที่ N" tag) so the card mirrors how
 // the topic will page in TV mode.
-function meetingDetailHtml(detail, photoCount = 0) {
+function meetingDetailHtml(detail, photos = []) {
   const sections = meetingSlideSections(detail);
   const render = (s, i, multi) => {
-    const refs = meetingExtractPhotoRefs(s).filter(n => n >= 0 && n < photoCount).map(n => n + 1);
-    const text = escapeHtml(meetingStripPhotoRefs(s));
+    const parts = meetingPhotoContentParts(s, photos);
+    const text = parts.map(part => part.type === 'photo'
+      ? `<a href="${escapeAttr(part.url)}" data-photo-url="${escapeAttr(part.url)}" class="mtg-detail-inline-photo photo-link-trigger" rel="noopener"><img src="${escapeAttr(driveThumbnailUrl_(part.url, 480))}" alt="รูปที่ ${part.number}" loading="lazy"><span>รูปที่ ${part.number}</span></a>`
+      : escapeHtml(part.text)).join('');
     const tag = multi ? `<span class="mtg-detail-slide-tag">สไลด์ ${i + 1}</span>` : '';
-    const pin = refs.length ? `<span class="mtg-detail-pin">📷 รูปที่ ${refs.join(', ')}</span>` : '';
-    if (!text && !tag && !pin) return '';
-    return multi ? `<div class="mtg-detail-slide">${tag}${pin}${text}</div>` : `${pin}${text}`;
+    if (!text && !tag) return '';
+    return multi ? `<div class="mtg-detail-slide">${tag}<div class="mtg-detail-slide-content">${text}</div></div>` : `<div class="mtg-detail-slide-content">${text}</div>`;
   };
   if (sections.length === 1) {
     const inner = render(sections[0], 0, false);
@@ -4138,10 +4149,22 @@ function meetingDetailHtml(detail, photoCount = 0) {
   return `<div class="mtg-detail">${sections.map((s, i) => render(s, i, true)).join('')}</div>`;
 }
 
-function meetingPhotoGallery(urlCsv) {
-  const items = String(urlCsv || '').split(',').map(u => u.trim()).filter(Boolean).map((u, i) =>
-    `<a href="${escapeAttr(u)}" data-photo-url="${escapeAttr(u)}" class="finding-photo-thumb photo-link-trigger" rel="noopener"><img src="${escapeAttr(driveThumbnailUrl_(u, 300))}" alt="รูปที่ ${i + 1}" loading="lazy"><span>รูปที่ ${i + 1}</span></a>`);
+function meetingPhotoGallery(urlCsv, photoNumbers = []) {
+  const items = (Array.isArray(urlCsv) ? urlCsv : String(urlCsv || '').split(',').map(u => u.trim()).filter(Boolean)).map((u, i) => {
+    const number = photoNumbers[i] || i + 1;
+    return `<a href="${escapeAttr(u)}" data-photo-url="${escapeAttr(u)}" class="finding-photo-thumb photo-link-trigger" rel="noopener"><img src="${escapeAttr(driveThumbnailUrl_(u, 300))}" alt="รูปที่ ${number}" loading="lazy"><span>รูปที่ ${number}</span></a>`;
+  });
   return items.length ? `<div class="finding-photos">${items.join('')}</div>` : '';
+}
+
+function meetingUnassignedPhotoGallery(row) {
+  const photos = meetingPhotoList(row);
+  if (!photos.length) return '';
+  const referenced = new Set(meetingSlideSections(row.Detail).flatMap(section => meetingExtractPhotoRefs(section))
+    .filter(index => index >= 0 && index < photos.length));
+  const urls = photos.filter((_, index) => !referenced.has(index));
+  const numbers = photos.map((_, index) => index + 1).filter((_, index) => !referenced.has(index));
+  return meetingPhotoGallery(urls, numbers);
 }
 
 function findMeetingPost(postId) {
@@ -4522,6 +4545,23 @@ function meetingExtractPhotoRefs(text) {
   String(text || '').replace(MEETING_PHOTO_MARKER, (_, n) => { idxs.push(parseInt(n, 10) - 1); return ''; });
   return idxs;
 }
+function meetingPhotoContentParts(text, photos) {
+  const source = String(text || '');
+  const parts = [];
+  const marker = /\[\s*(?:รูปที่|รูป|ภาพ|pic|img|image)\s*(\d+)\s*\]/gi;
+  let cursor = 0;
+  let match;
+  while ((match = marker.exec(source))) {
+    if (match.index > cursor) parts.push({ type: 'text', text: source.slice(cursor, match.index) });
+    const number = Number(match[1]);
+    const url = photos[number - 1];
+    if (url) parts.push({ type: 'photo', url, number });
+    else parts.push({ type: 'text', text: match[0] });
+    cursor = match.index + match[0].length;
+  }
+  if (cursor < source.length) parts.push({ type: 'text', text: source.slice(cursor) });
+  return parts;
+}
 function meetingStripPhotoRefs(text) {
   return String(text || '').replace(MEETING_PHOTO_MARKER, '').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 }
@@ -4538,7 +4578,7 @@ function meetingTvPostSlides(deck = meetingTvDeck()) {
     const perSection = rawSections.map(text => {
       const refs = meetingExtractPhotoRefs(text).filter(i => i >= 0 && i < allPhotos.length);
       refs.forEach(i => used.add(i));
-      return { text: meetingStripPhotoRefs(text), photoIdx: refs };
+      return { text: meetingStripPhotoRefs(text), rawText: text, photoIdx: refs, hasPhotoMarkers: meetingExtractPhotoRefs(text).length > 0 };
     });
     const hasExplicitPhotoRefs = rawSections.some(text => meetingExtractPhotoRefs(text).length > 0);
     const unused = allPhotos.map((_, i) => i).filter(i => !used.has(i));
@@ -4550,13 +4590,15 @@ function meetingTvPostSlides(deck = meetingTvDeck()) {
       const last = perSection[perSection.length - 1];
       last.photoIdx = last.photoIdx.concat(unused);
     } else if (perSection.length && unused.length) {
-      perSection.push({ text: 'รูปที่ยังไม่ได้ระบุตำแหน่งในรายละเอียด', photoIdx: unused, isUnassignedPhotos: true });
+      perSection.push({ text: 'รูปที่ยังไม่ได้ระบุตำแหน่งในรายละเอียด', rawText: 'รูปที่ยังไม่ได้ระบุตำแหน่งในรายละเอียด', photoIdx: unused, isUnassignedPhotos: true });
     }
     const postSlides = perSection.map(sec => {
       const seen = new Set();
       const dedup = sec.photoIdx.filter(i => !seen.has(i) && seen.add(i));
       return {
         row: item.row, carry: item.carry, deckPos, sectionText: sec.text, isDoc: false,
+        hasPhotoMarkers: Boolean(sec.hasPhotoMarkers),
+        contentParts: sec.hasPhotoMarkers ? meetingPhotoContentParts(sec.rawText, allPhotos) : [],
         isUnassignedPhotos: Boolean(sec.isUnassignedPhotos),
         photos: dedup.map(i => allPhotos[i]), photoNumbers: dedup.map(i => i + 1)
       };
@@ -4818,8 +4860,16 @@ function meetingTvPostSlideHtml(slide) {
       <div class="mtg-tv-embed-hint">📊 ${escapeHtml(slide.docName)} · เลื่อนสไลด์ในตัวพรีวิว · <a href="${escapeAttr(slide.docUrl)}" target="_blank" rel="noopener">เปิดเต็มจอ ↗</a></div>`;
   } else {
     const photoNumbers = slide.photoNumbers || photos.map((_, i) => i + 1);
-    mid = `${sectionText ? `<div class="mtg-tv-detail">${escapeHtml(sectionText)}</div>` : ''}
-      ${photos.length ? `<div class="mtg-tv-photo-hint">🔍 คลิกรูปเพื่อขยาย แล้วใช้ + / − เพื่อซูม</div><div class="mtg-tv-photos">${photos.map((u, i) => `<figure class="mtg-tv-photo-item"><img src="${escapeAttr(driveThumbnailUrl_(u, 1000))}" data-photo-url="${escapeAttr(u)}" alt="รูปที่ ${photoNumbers[i]}" loading="lazy"><figcaption>รูปที่ ${photoNumbers[i]}</figcaption></figure>`).join('')}</div>` : ''}`;
+    if (slide.hasPhotoMarkers) {
+      const inlineParts = (slide.contentParts || []).map(part => part.type === 'photo'
+        ? `<figure class="mtg-tv-inline-photo"><img src="${escapeAttr(driveThumbnailUrl_(part.url, 1200))}" data-photo-url="${escapeAttr(part.url)}" alt="รูปที่ ${part.number}" loading="lazy"><figcaption>รูปที่ ${part.number}</figcaption></figure>`
+        : escapeHtml(part.text)).join('');
+      const hasInlinePhoto = (slide.contentParts || []).some(part => part.type === 'photo');
+      mid = `${hasInlinePhoto ? '<div class="mtg-tv-photo-hint">🔍 รูปอยู่ตามตำแหน่งในเนื้อหา · คลิกรูปเพื่อขยายและซูม</div>' : ''}<div class="mtg-tv-detail mtg-tv-inline-content">${inlineParts}</div>`;
+    } else {
+      mid = `${sectionText ? `<div class="mtg-tv-detail">${escapeHtml(sectionText)}</div>` : ''}
+        ${photos.length ? `<div class="mtg-tv-photo-hint">🔍 คลิกรูปเพื่อขยาย แล้วใช้ + / − เพื่อซูม</div><div class="mtg-tv-photos">${photos.map((u, i) => `<figure class="mtg-tv-photo-item"><img src="${escapeAttr(driveThumbnailUrl_(u, 1000))}" data-photo-url="${escapeAttr(u)}" alt="รูปที่ ${photoNumbers[i]}" loading="lazy"><figcaption>รูปที่ ${photoNumbers[i]}</figcaption></figure>`).join('')}</div>` : ''}`;
+    }
   }
   return `<div class="mtg-tv-slide tv-anim-${meetingTvDir}">
       <div class="mtg-tv-chips">
