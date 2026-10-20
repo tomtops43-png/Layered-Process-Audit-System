@@ -3887,8 +3887,8 @@ async function handleMeetingQuizAdminClick(event) {
       try {
         await apiCall('publishMeetingQuiz', { postId: model.postId, quizId: model.quiz.QuizID });
       } catch (publishError) {
-        const staleSourceMessage = 'เนื้อหาหัวข้อหรือสไลด์เปลี่ยนหลังสร้างข้อสอบ กรุณาสร้างข้อสอบใหม่จากเนื้อหาล่าสุด';
-        if (publishError.message !== staleSourceMessage) {
+        const staleSourceMessage = 'เนื้อหาหัวข้อหรือสไลด์เปลี่ยนหลังสร้างข้อสอบ';
+        if (!String(publishError?.message || '').includes(staleSourceMessage)) {
           // Keep the editor in sync with the server when other validation
           // prevents publishing; the just-saved draft remains available.
           await refreshMeetingQuizAdmin(model.quiz.QuizID);
