@@ -3026,22 +3026,23 @@ async function printTrainingRecord(postId, { includeSlides = true, rowOverride =
   const slides = includeSlides ? meetingTvPostSlides([{ row, carry: false }]) : [];
   const printRoot = $('#trainingPrintRoot');
   printRoot.innerHTML = `<article class="training-print-form">
-      <p class="training-print-eyebrow">TRAINING RECORD</p><h1>Training implementation effect record sheet</h1>
-      <div class="training-print-facts">
-        <div><span>Training program</span><strong>${escapeHtml(row.Topic || '-')}</strong></div>
-        <div><span>Training Date (date, hour)</span><strong>${dateAndTime}</strong></div>
-        <div><span>Training place</span><strong>${escapeHtml(row.TrainingPlace || '-')}</strong></div>
-        <div><span>Training and implementation unit</span><strong>${escapeHtml(row.TrainingUnit || row.LineName || row.LineID || '-')}</strong></div>
-        <div><span>Trainer</span><strong>${escapeHtml(row.TrainerName || row.CreatedByName || '-')}</strong></div>
-        <div><span>Training topic / brief introduction</span><strong>${escapeHtml(row.Detail || '-').replace(/\n/g, '<br>')}</strong></div>
-        <div><span>Planned training?</span><strong>${String(row.TrainingPlanned || 'Yes').toLowerCase() === 'no' ? '☐ Yes　 ☒ No' : '☒ Yes　 ☐ No'}</strong></div>
-        <div><span>Training implementation effect</span><strong>${escapeHtml(row.TrainingEffect || '________________________________________________________')}</strong></div>
-      </div>
-      <div class="training-print-signature"><span>Trainer signature: __________________________________</span><span>Date: ____________________</span></div>
-      <h2>Training attendance / พนักงานลงชื่อรับการ Training</h2>
+      <h1>Training implementation effect record sheet.</h1>
+      <table class="training-record-table"><colgroup><col><col><col><col></colgroup><tbody>
+        <tr><th>Training program</th><td colspan="3">${escapeHtml(row.Topic || '-')}</td></tr>
+        <tr><th>Brief introduction of training content</th><td colspan="3">${escapeHtml(row.Detail || '-').replace(/\n/g, '<br>')}</td></tr>
+        <tr><th>Training Date (date, hour)</th><td>${dateAndTime}</td><th>Training place</th><td>${escapeHtml(row.TrainingPlace || '') || '&nbsp;'}</td></tr>
+        <tr><th>Training and implementation unit</th><td>${escapeHtml(row.TrainingUnit || row.LineName || row.LineID || '') || '&nbsp;'}</td><th>Trainer</th><td>${escapeHtml(row.TrainerName || row.CreatedByName || '') || '&nbsp;'}</td></tr>
+        <tr><th colspan="4">Signed:</th></tr>
+        <tr><th colspan="4">Planned training?： <span class="training-record-checks">${String(row.TrainingPlanned || 'Yes').toLowerCase() === 'no' ? '☐ Yes　　 ☒ No，But recorded' : '☒ Yes　　 ☐ No，But recorded'}</span></th></tr>
+        <tr><th colspan="4">Training implementation effect:<br><span class="training-record-effect">${escapeHtml(row.TrainingEffect || '____________________________________________________________').replace(/\n/g, '<br>')}</span></th></tr>
+      </tbody></table>
+    </article>
+    <section class="training-print-attendance">
+      <h1>Training attendance / พนักงานลงชื่อรับการ Training</h1>
+      <div class="training-attendance-heading"><strong>${escapeHtml(row.Topic || '-')}</strong><span>${dateAndTime}</span></div>
       <table class="training-sign-table"><thead><tr><th>No.</th><th>Employee name / ชื่อ-นามสกุล</th><th>Employee ID</th><th>Shift / Unit</th><th>Signature / ลายเซ็น</th></tr></thead><tbody>${trainingAttendanceRows()}</tbody></table>
       <p class="training-print-foot">เอกสารนี้ใช้บันทึกว่าพนักงานได้รับการ Training ตามหัวข้อและวันที่ข้างต้น</p>
-    </article>
+    </section>
     ${includeSlides ? `<section class="training-print-slides"><h2>Training slides / เนื้อหาที่ใช้ฝึกอบรม</h2>${slides.length ? slides.map((slide, index) => trainingPrintSlideHtml(slide, index, row)).join('') : '<p>ไม่มีรายละเอียด รูป หรือไฟล์สไลด์แนบ</p>'}</section>` : ''}`;
   printRoot.classList.remove('hidden');
   printRoot.style.cssText = 'display:block;position:fixed;left:-10000px;top:0;width:210mm;visibility:hidden;';
