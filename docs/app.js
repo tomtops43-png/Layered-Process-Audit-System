@@ -3885,10 +3885,13 @@ async function handleMeetingQuizAdminClick(event) {
       if (!confirmed) return;
       await apiCall('saveMeetingQuizDraft', { postId: model.postId, quizId: model.quiz.QuizID, questions: readMeetingQuizAdminQuestions() });
       try {
-        await apiCall('publishMeetingQuiz', { postId: model.postId, quizId: model.quiz.QuizID });
+        // Quiz questions can include supplemental content beyond the slides.
+        // Keep the original source hash for traceability, but don't block the
+        // manager from publishing a reviewed draft when its source has changed.
+        await apiCall('publishMeetingQuiz', { postId: model.postId, quizId: model.quiz.QuizID, allowStaleSource: true });
       } catch (publishError) {
-        // Keep the editor in sync with the server when validation prevents
-        // publishing; the just-saved draft must remain available for editing.
+        // Keep the editor in sync with the server when other validation
+        // prevents publishing; the just-saved draft remains available.
         await refreshMeetingQuizAdmin(model.quiz.QuizID);
         throw publishError;
       }

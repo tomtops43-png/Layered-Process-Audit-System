@@ -3885,31 +3885,15 @@ async function handleMeetingQuizAdminClick(event) {
       if (!confirmed) return;
       await apiCall('saveMeetingQuizDraft', { postId: model.postId, quizId: model.quiz.QuizID, questions: readMeetingQuizAdminQuestions() });
       try {
-        await apiCall('publishMeetingQuiz', { postId: model.postId, quizId: model.quiz.QuizID });
+        // Quiz questions can include supplemental content beyond the slides.
+        // Keep the original source hash for traceability, but don't block the
+        // manager from publishing a reviewed draft when its source has changed.
+        await apiCall('publishMeetingQuiz', { postId: model.postId, quizId: model.quiz.QuizID, allowStaleSource: true });
       } catch (publishError) {
-        const staleSourceMessage = 'เนื้อหาหัวข้อหรือสไลด์เปลี่ยนหลังสร้างข้อสอบ';
-        if (!String(publishError?.message || '').includes(staleSourceMessage)) {
-          // Keep the editor in sync with the server when other validation
-          // prevents publishing; the just-saved draft remains available.
-          await refreshMeetingQuizAdmin(model.quiz.QuizID);
-          throw publishError;
-        }
-        const publishStaleDraft = await showConfirm({
-          title: 'สไลด์เปลี่ยนหลังสร้างข้อสอบ',
-          message: 'ข้อสอบฉบับนี้อาจไม่ตรงกับสไลด์ล่าสุด คุณตรวจสอบร่างแล้วและยืนยันให้เปิดรับสอบด้วยเนื้อหาปัจจุบันหรือไม่?',
-          confirmText: 'เผยแพร่ฉบับปัจจุบัน',
-          tone: 'warning'
-        });
-        if (!publishStaleDraft) {
-          await refreshMeetingQuizAdmin(model.quiz.QuizID);
-          return;
-        }
-        try {
-          await apiCall('publishMeetingQuiz', { postId: model.postId, quizId: model.quiz.QuizID, allowStaleSource: true });
-        } catch (overrideError) {
-          await refreshMeetingQuizAdmin(model.quiz.QuizID);
-          throw overrideError;
-        }
+        // Keep the editor in sync with the server when other validation
+        // prevents publishing; the just-saved draft remains available.
+        await refreshMeetingQuizAdmin(model.quiz.QuizID);
+        throw publishError;
       }
       await refreshMeetingQuizAdmin(model.quiz.QuizID);
       await loadMeetingBoard();
