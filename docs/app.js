@@ -4234,14 +4234,34 @@ function moveMeetingPhoto(idx, dir) {
   const items = state.meetingPhotoItems;
   const j = idx + dir;
   if (j < 0 || j >= items.length) return;
+  const previousItems = items.slice();
   [items[idx], items[j]] = [items[j], items[idx]];
+  remapMeetingPhotoReferences(previousItems, items);
   renderMeetingPhotoManager();
 }
 
+function remapMeetingPhotoReferences(previousItems, nextItems) {
+  const oldPhotoIdByNumber = new Map(previousItems.map((item, index) => [index + 1, item.id]));
+  const newNumberByPhotoId = new Map(nextItems.map((item, index) => [item.id, index + 1]));
+  const detail = $('#meetingPostDetail');
+  if (!detail) return;
+  detail.value = detail.value.replace(/\[\s*(?:รูปที่|รูป|ภาพ|pic|img|image)\s*(\d+)\s*\]/gi, (marker, rawNumber) => {
+    const photoId = oldPhotoIdByNumber.get(Number(rawNumber));
+    // Keep invalid/out-of-range markers visible for correction. If the
+    // referenced photo was deleted, remove only that marker to avoid silently
+    // pointing at the photo that shifted into its old number.
+    if (!photoId) return marker;
+    const nextNumber = newNumberByPhotoId.get(photoId);
+    return nextNumber ? marker.replace(/\d+(?=\s*\])/, String(nextNumber)) : '';
+  });
+}
+
 function removeMeetingPhoto(idx) {
+  const previousItems = state.meetingPhotoItems.slice();
   const it = state.meetingPhotoItems[idx];
   if (it && it.objectUrl) URL.revokeObjectURL(it.objectUrl);
   state.meetingPhotoItems.splice(idx, 1);
+  remapMeetingPhotoReferences(previousItems, state.meetingPhotoItems);
   renderMeetingPhotoManager();
 }
 
