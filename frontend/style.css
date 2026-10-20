@@ -766,7 +766,7 @@ textarea{line-height:1.45}
 #meetingQuizAdminDialog .quiz-question-image-preview img{display:block;width:auto;max-width:min(100%,300px);max-height:180px;object-fit:contain;border:1px solid #dce5ec;border-radius:9px;background:#fff}
 .quiz-question-exam-image,.quiz-question-review-image{display:block;width:auto;max-width:100%;max-height:360px;margin:10px auto 14px;object-fit:contain;border:1px solid #e0e8ee;border-radius:12px;background:#fff}
 .quiz-question-review-image{max-height:300px;margin-left:0}
-#meetingQuizAdminDialog .modal-actions{position:sticky;bottom:-20px;z-index:2;margin:18px -20px -20px;padding:13px 20px calc(13px + var(--safe-bottom));border-top:1px solid var(--border);background:rgba(255,255,255,.96);backdrop-filter:blur(8px)}
+#meetingQuizAdminDialog .modal-actions{position:sticky;bottom:0;z-index:2;margin:18px -20px 0;padding:13px 20px calc(13px + var(--safe-bottom));border-top:1px solid var(--border);background:rgba(255,255,255,.96);backdrop-filter:blur(8px)}
 #meetingQuizAdminDialog .modal-actions .btn{min-height:48px}
 #meetingQuizAdminDialog .quiz-draft-save-notice{display:flex;align-items:center;gap:8px;flex:1;min-width:180px;margin:0 auto 0 0;padding:9px 12px;border:1px solid transparent;border-radius:10px;font-size:.84rem;line-height:1.45;font-weight:800;overflow-wrap:anywhere}
 #meetingQuizAdminDialog .quiz-draft-save-notice.is-success{border-color:#b9e2c9;background:#edf9f1;color:#17623a}
@@ -820,7 +820,7 @@ textarea{line-height:1.45}
   #meetingQuizAdminDialog .quiz-editor-grid{grid-template-columns:minmax(0,1fr)}
   #meetingQuizAdminDialog .quiz-api-input-row{grid-template-columns:minmax(0,1fr)}
   #meetingQuizAdminDialog .quiz-api-input-row .btn{width:100%}
-  #meetingQuizAdminDialog .modal-actions{bottom:-16px;margin:16px -16px -16px;padding:12px 16px calc(12px + var(--safe-bottom))}
+  #meetingQuizAdminDialog .modal-actions{bottom:0;margin:16px -16px 0;padding:12px 16px calc(12px + var(--safe-bottom))}
 }
 @media(max-width:560px){
   .quiz-language-options,.quiz-language-picker-compact .quiz-language-options,.quiz-name-row{grid-template-columns:minmax(0,1fr)}
