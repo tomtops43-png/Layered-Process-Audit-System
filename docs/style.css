@@ -763,6 +763,11 @@ textarea{line-height:1.45}
 .quiz-question-review-image{max-height:300px;margin-left:0}
 #meetingQuizAdminDialog .modal-actions{position:sticky;bottom:-20px;z-index:2;margin:18px -20px -20px;padding:13px 20px calc(13px + var(--safe-bottom));border-top:1px solid var(--border);background:rgba(255,255,255,.96);backdrop-filter:blur(8px)}
 #meetingQuizAdminDialog .modal-actions .btn{min-height:48px}
+#meetingQuizAdminDialog .quiz-draft-save-notice{display:flex;align-items:center;gap:8px;flex:1;min-width:180px;margin:0 auto 0 0;padding:9px 12px;border:1px solid transparent;border-radius:10px;font-size:.84rem;line-height:1.45;font-weight:800;overflow-wrap:anywhere}
+#meetingQuizAdminDialog .quiz-draft-save-notice.is-success{border-color:#b9e2c9;background:#edf9f1;color:#17623a}
+#meetingQuizAdminDialog .quiz-draft-save-notice.is-pending{border-color:#b9d9ef;background:#eef7fd;color:#175a88}
+#meetingQuizAdminDialog .quiz-draft-save-notice.is-error{border-color:#edc2bd;background:#fff3f1;color:#9b2f27}
+@media(max-width:640px){#meetingQuizAdminDialog .quiz-draft-save-notice{width:100%;min-width:0;box-sizing:border-box}}
 .quiz-answer-line{min-width:0;padding:8px 10px;border-radius:8px;background:#eef6ff;margin:8px 0;overflow-wrap:anywhere}
 .quiz-answer-line.is-correct{background:#e9f8ef;color:#17623a}
 .quiz-answer-line.is-wrong{background:#fff1f0;color:#a32925}
