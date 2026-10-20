@@ -1016,11 +1016,11 @@ body.mtg-tv-open{overflow:hidden}
 .mtg-tv-quiz-progress-track span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#38c98c,#9be9bf);transition:width .35s ease}
 .mtg-tv-quiz-status-message{margin:0 0 16px;color:#fff;font-size:clamp(1.1rem,2.3vw,1.7rem);font-weight:800}
 .mtg-tv-quiz-shifts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.mtg-tv-quiz-shift{display:flex;align-items:center;justify-content:space-between;gap:12px;min-width:0;padding:15px 18px;border:1px solid rgba(255,255,255,.17);border-radius:13px;background:rgba(255,255,255,.08);color:#dbe7f3;font-size:clamp(1rem,1.8vw,1.35rem);font-weight:700}
-.mtg-tv-quiz-shift>span{min-width:0;overflow-wrap:anywhere}
+.mtg-tv-quiz-shift{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px 14px;min-width:0;padding:15px 18px;border:1px solid rgba(255,255,255,.17);border-radius:13px;background:rgba(255,255,255,.08);color:#dbe7f3;font-size:clamp(1rem,1.8vw,1.35rem);font-weight:700}
+.mtg-tv-quiz-shift>span{display:flex;flex-direction:column;gap:4px;min-width:0;overflow-wrap:normal}
 .mtg-tv-quiz-shift strong{color:#fff;font-size:1.25em;white-space:nowrap}
 .mtg-tv-quiz-shift small{color:#b9d3e9;font-size:.65em}
-.mtg-tv-quiz-stop,.mtg-tv-quiz-stopped{flex:0 0 auto;padding:8px 13px;border:1px solid rgba(255,255,255,.28);border-radius:9px;background:rgba(34,163,114,.28);color:#fff;font:inherit;font-size:.78em;font-weight:800}
+.mtg-tv-quiz-stop,.mtg-tv-quiz-stopped{grid-column:1/-1;justify-self:start;padding:8px 13px;border:1px solid rgba(255,255,255,.28);border-radius:9px;background:rgba(34,163,114,.28);color:#fff;font:inherit;font-size:.78em;font-weight:800}
 .mtg-tv-quiz-stop{cursor:pointer}
 .mtg-tv-quiz-stop:hover:not(:disabled){background:rgba(34,163,114,.5)}
 .mtg-tv-quiz-stop:disabled{opacity:.52;cursor:not-allowed}
@@ -1036,7 +1036,7 @@ body.mtg-tv-open{overflow:hidden}
 .mtg-tv-quiz-podium li span small{display:block;margin-top:2px;color:#dbe7f3;font-size:.8em}
 .mtg-tv-quiz-podium li b{white-space:nowrap}
 .mtg-tv-quiz-podium p{margin:0;color:#dbe7f3}
-@media (max-width:640px){.mtg-tv-quiz-qr{width:min(58vw,38vh,340px);height:min(58vw,38vh,340px)}.mtg-tv-quiz-shift{flex-wrap:wrap}.mtg-tv-quiz-shift>span{flex:1 1 55%}.mtg-tv-quiz-podium ol{grid-template-columns:1fr}}
+@media (max-width:640px){.mtg-tv-quiz-qr{width:min(58vw,38vh,340px);height:min(58vw,38vh,340px)}.mtg-tv-quiz-shift{grid-template-columns:minmax(0,1fr) auto}.mtg-tv-quiz-podium ol{grid-template-columns:1fr}}
 
 /* ===== Meeting board full-detail Finding cards ===== */
 .mtg-fd-card{background:#fff;border:1px solid var(--border);border-left:5px solid var(--gray);border-radius:12px;padding:14px 18px;display:flex;flex-direction:column;gap:8px;margin-top:8px;box-shadow:var(--shadow)}
