@@ -3887,10 +3887,29 @@ async function handleMeetingQuizAdminClick(event) {
       try {
         await apiCall('publishMeetingQuiz', { postId: model.postId, quizId: model.quiz.QuizID });
       } catch (publishError) {
-        // Keep the editor in sync with the server when validation prevents
-        // publishing; the just-saved draft must remain available for editing.
-        await refreshMeetingQuizAdmin(model.quiz.QuizID);
-        throw publishError;
+        const staleSourceMessage = 'เนื้อหาหัวข้อหรือสไลด์เปลี่ยนหลังสร้างข้อสอบ กรุณาสร้างข้อสอบใหม่จากเนื้อหาล่าสุด';
+        if (publishError.message !== staleSourceMessage) {
+          // Keep the editor in sync with the server when other validation
+          // prevents publishing; the just-saved draft remains available.
+          await refreshMeetingQuizAdmin(model.quiz.QuizID);
+          throw publishError;
+        }
+        const publishStaleDraft = await showConfirm({
+          title: 'สไลด์เปลี่ยนหลังสร้างข้อสอบ',
+          message: 'ข้อสอบฉบับนี้อาจไม่ตรงกับสไลด์ล่าสุด คุณตรวจสอบร่างแล้วและยืนยันให้เปิดรับสอบด้วยเนื้อหาปัจจุบันหรือไม่?',
+          confirmText: 'เผยแพร่ฉบับปัจจุบัน',
+          tone: 'warning'
+        });
+        if (!publishStaleDraft) {
+          await refreshMeetingQuizAdmin(model.quiz.QuizID);
+          return;
+        }
+        try {
+          await apiCall('publishMeetingQuiz', { postId: model.postId, quizId: model.quiz.QuizID, allowStaleSource: true });
+        } catch (overrideError) {
+          await refreshMeetingQuizAdmin(model.quiz.QuizID);
+          throw overrideError;
+        }
       }
       await refreshMeetingQuizAdmin(model.quiz.QuizID);
       await loadMeetingBoard();
