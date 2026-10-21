@@ -1115,13 +1115,14 @@ body.mtg-tv-open{overflow:hidden}
 @media (max-width:640px){.quiz-qr-panel{grid-template-columns:1fr}.quiz-qr-image{margin-inline:auto}.public-quiz-card{padding:24px 18px}}
 
 /* ===== Daily 5S checkpoint board ===== */
-.five-s-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:16px 0 22px}
+.five-s-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:16px 0 22px}
 .five-s-stat{min-width:0;padding:18px 20px;border:1px solid var(--border);border-radius:14px;background:#fff;box-shadow:var(--shadow);display:grid;grid-template-columns:1fr auto;align-items:center;gap:5px 12px}
 .five-s-stat>span{font-size:.86rem;font-weight:800;color:var(--muted)}
 .five-s-stat>strong{grid-column:2;grid-row:1/3;font-size:2rem;line-height:1;color:var(--navy)}
 .five-s-stat>small{font-size:.78rem;color:var(--muted);line-height:1.45}
 .five-s-stat.success>strong{color:#13865f}
 .five-s-stat.pending>strong{color:#b67513}
+.five-s-stat.review-pending>strong{color:#2468a2}
 .five-s-checkpoint-list{display:grid;gap:14px}
 .five-s-checkpoint-card{min-width:0;padding:18px;border:1px solid var(--border);border-radius:14px;background:#fff;box-shadow:var(--shadow);display:grid;gap:12px}
 .five-s-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;min-width:0}
@@ -1135,6 +1136,9 @@ body.mtg-tv-open{overflow:hidden}
 .five-s-status.inactive{background:#f1f2f4;color:#727985}
 .five-s-status.needs-action{background:#fff1e5;color:#a85810}
 .five-s-status.waiting{background:#fff6df;color:#936408}
+.five-s-status.approved{background:#e7f7ef;color:#14774f}
+.five-s-status.review-waiting{background:#eaf3ff;color:#1d5d96}
+.five-s-status.returned{background:#fff1e5;color:#a85810}
 .five-s-audit-form{padding-top:4px;border-top:1px solid var(--border)}
 .five-s-audit-form .form-grid{align-items:start}
 .five-s-audit-form input[type=file]{max-width:100%;padding:9px}
@@ -1154,6 +1158,12 @@ body.mtg-tv-open{overflow:hidden}
 .five-s-table .five-s-reference-link{display:flex;align-items:center;gap:8px;margin-top:8px}
 .five-s-table .five-s-reference-link img{width:62px;height:48px;flex:0 0 auto}
 .five-s-readonly-note{padding-top:3px}
+.five-s-review-summary,.five-s-review-note{padding:10px 12px;border-radius:9px;background:#f4f7fa;color:var(--muted);font-size:.84rem;line-height:1.55;overflow-wrap:anywhere}
+.five-s-review-note{border:1px solid #f0d1a3;background:#fff9ef;color:#85520e}
+.five-s-review-panel{display:grid;gap:10px;padding:14px;border:1px solid #cbdced;border-radius:11px;background:#f5faff}
+.five-s-review-panel>strong{color:var(--navy)}
+.five-s-review-panel label{display:grid;gap:5px;font-size:.82rem;font-weight:700}
+.five-s-review-panel textarea{width:100%;min-height:70px;padding:9px;border:1px solid var(--border);border-radius:8px;background:#fff;resize:vertical}
 .five-s-table{width:100%;border-collapse:collapse;font-size:.87rem}
 .five-s-table th,.five-s-table td{padding:11px 12px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
 .five-s-table th{background:var(--gray-bg);font-size:.75rem;color:var(--muted);white-space:nowrap}
@@ -1168,8 +1178,9 @@ body.mtg-tv-open{overflow:hidden}
 .five-s-assignment-summary{display:block;margin:2px 0;line-height:1.5}
 .five-s-assignment-summary strong{display:inline}
 .btn-compact{padding:6px 10px;font-size:.78rem;white-space:nowrap}
-@media (max-width:800px){.five-s-summary{grid-template-columns:1fr}.five-s-table{min-width:720px}}
-@media (max-width:560px){.five-s-checkpoint-card{padding:14px}.five-s-card-head{gap:8px}.five-s-card-head h4{font-size:1rem}.five-s-status{font-size:.7rem;padding:4px 8px}.five-s-stat{padding:15px}.five-s-audit-form .form-grid{grid-template-columns:1fr}.five-s-photo img{height:120px}}
+@media (max-width:1000px){.five-s-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:800px){.five-s-table{min-width:720px}}
+@media (max-width:560px){.five-s-summary{grid-template-columns:1fr}.five-s-checkpoint-card{padding:14px}.five-s-card-head{gap:8px}.five-s-card-head h4{font-size:1rem}.five-s-status{font-size:.7rem;padding:4px 8px}.five-s-stat{padding:15px}.five-s-audit-form .form-grid{grid-template-columns:1fr}.five-s-photo img{height:120px}}
 
 /* Training archive, review, and print record */
 .training-page-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}

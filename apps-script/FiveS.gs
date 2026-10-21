@@ -108,6 +108,11 @@ function fiveSCanViewAll_(user) {
   return isAdmin_(user) || hasPermission_(user, 'fiveS.view.all') || hasPermission_(user, 'fiveS.manage');
 }
 
+function fiveSCanReview_(user) {
+  return isAdmin_(user) || valuesEqual_(user && user.Role, 'Supervisor') ||
+    hasPermission_(user, 'fiveS.review') || hasPermission_(user, 'fiveS.manage');
+}
+
 function fiveSCanManageCheckpoints_(user) {
   return hasPermission_(user, 'fiveS.manage') || hasPermission_(user, 'fiveS.checkpoint.manage');
 }
@@ -156,7 +161,10 @@ function getFiveSBoard(payload, currentUser) {
         Inspection: inspection ? {
           InspectionDate: date, Result: cleanString_(inspection.Result), Remark: cleanString_(inspection.Remark),
           PhotoURL: cleanString_(inspection.PhotoURL), SubmittedAt: cleanString_(inspection.SubmittedAt),
-          InspectorName: cleanString_(inspection.LeaderName)
+          InspectorName: cleanString_(inspection.LeaderName),
+          ReviewStatus: cleanString_(inspection.ReviewStatus) || 'Pending',
+          ReviewedAt: cleanString_(inspection.ReviewedAt), ReviewerName: cleanString_(inspection.ReviewerName),
+          ReviewRemark: cleanString_(inspection.ReviewRemark)
         } : null
       };
     });
@@ -165,12 +173,17 @@ function getFiveSBoard(payload, currentUser) {
       var assigned = checkpoints.filter(function (row) { return valuesEqual_(row.Shift, item.value); });
       return {
         shift: item.value, label: item.label, total: assigned.length,
-        submitted: assigned.filter(function (row) { return Boolean(row.Inspection); }).length
+        submitted: assigned.filter(function (row) { return Boolean(row.Inspection); }).length,
+        approved: assigned.filter(function (row) { return row.Inspection && row.Inspection.ReviewStatus === 'Approved'; }).length,
+        pendingReview: assigned.filter(function (row) { return row.Inspection && row.Inspection.ReviewStatus === 'Pending'; }).length,
+        returned: assigned.filter(function (row) { return row.Inspection && row.Inspection.ReviewStatus === 'Returned'; }).length,
+        awaitingLeader: assigned.filter(function (row) { return !row.Inspection || row.Inspection.ReviewStatus === 'Returned'; }).length
       };
     }).filter(function (item) { return !shift || valuesEqual_(item.shift, shift); });
     return jsonResponse(true, 'โหลดรายการตรวจ 5.ส แล้ว', {
       inspectionDate: date, today: fiveSToday_(), shift: shift,
       canManage: fiveSCanManageCheckpoints_(currentUser), canViewAll: canViewAll,
+      canReview: fiveSCanReview_(currentUser),
       canInspect: hasPermission_(currentUser, 'fiveS.audit'), shifts: shifts,
       checkpoints: checkpoints, summary: summary
     });
@@ -300,6 +313,12 @@ function submitFiveSInspection(payload, currentUser) {
     if (result === 'NeedAction' && !remark) throw new Error('กรุณาระบุสิ่งที่ต้องแก้ไขเมื่อผลเป็นต้องปรับปรุง');
     if (remark.length > 1000) throw new Error('หมายเหตุต้องไม่เกิน 1,000 ตัวอักษร');
     var relatedId = fiveSInspectionId_(date, checkpoint.CheckpointID);
+    var priorInspection = getRowsAsObjects(SHEET_NAMES.FIVE_S_INSPECTIONS).filter(function (row) {
+      return valuesEqual_(row.InspectionID, relatedId);
+    })[0];
+    if (priorInspection && cleanString_(priorInspection.ReviewStatus) !== 'Returned') {
+      throw new Error('ส่งผลตรวจแล้ว กรุณารอ Supervisor ตรวจ หรือรอให้ Supervisor ส่งกลับแก้ไข');
+    }
     var photoUrl = cleanString_(payload.photoUrl);
     var attachment = getRowsAsObjects(SHEET_NAMES.ATTACHMENTS).filter(function (row) {
       return valuesEqual_(row.RelatedType, 'FiveSInspection') && valuesEqual_(row.RelatedID, relatedId) &&
@@ -315,12 +334,16 @@ function submitFiveSInspection(payload, currentUser) {
       var existing = getRowsAsObjects(SHEET_NAMES.FIVE_S_INSPECTIONS).filter(function (row) {
         return valuesEqual_(row.InspectionID, inspectionId);
       })[0];
+      if (existing && cleanString_(existing.ReviewStatus) !== 'Returned') {
+        throw new Error('ส่งผลตรวจแล้ว กรุณารอ Supervisor ตรวจ หรือรอให้ Supervisor ส่งกลับแก้ไข');
+      }
       var row = {
         InspectionID: inspectionId, InspectionDate: date, CheckpointID: checkpoint.CheckpointID,
         CheckpointName: checkpoint.CheckpointName, Category: checkpoint.Category, Area: checkpoint.Area,
         Shift: checkpoint.Shift, LeaderUserID: currentUser.UserID,
         LeaderName: cleanString_(currentUser.FullName) || cleanString_(checkpoint.LeaderName),
         Result: result, Remark: remark, PhotoURL: photoUrl, AttachmentID: attachment.AttachmentID,
+        ReviewStatus: 'Pending', ReviewedAt: '', ReviewerUserID: '', ReviewerName: '', ReviewRemark: '',
         SubmittedAt: timestamp, CreatedAt: existing ? existing.CreatedAt : timestamp,
         CreatedBy: existing ? existing.CreatedBy : currentUser.UserID,
         UpdatedAt: timestamp, UpdatedBy: currentUser.UserID
@@ -329,5 +352,44 @@ function submitFiveSInspection(payload, currentUser) {
       else appendObject(SHEET_NAMES.FIVE_S_INSPECTIONS, row);
     } finally { lock.releaseLock(); }
     return jsonResponse(true, 'บันทึกผลตรวจ 5.ส พร้อมรูปแล้ว', { inspectionId: relatedId, photoUrl: photoUrl, submittedAt: formatDateTimeBangkok(new Date()) });
+  } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
+}
+
+function reviewFiveSInspection(payload, currentUser) {
+  try {
+    if (!fiveSCanReview_(currentUser)) throw new Error('เฉพาะ Supervisor หรือ Admin เท่านั้นที่ตรวจรับผล 5.ส ได้');
+    ensureFiveSSheets_();
+    requireFields_(payload, ['checkpointId', 'decision']);
+    var date = fiveSDate_(payload.inspectionDate);
+    var checkpointId = cleanString_(payload.checkpointId);
+    var inspectionId = fiveSInspectionId_(date, checkpointId);
+    var decision = cleanString_(payload.decision).toLowerCase();
+    if (['approve', 'return'].indexOf(decision) === -1) throw new Error('กรุณาเลือกการรับรองหรือส่งกลับแก้ไข');
+    var reviewRemark = cleanString_(payload.reviewRemark);
+    if (decision === 'return' && !reviewRemark) throw new Error('กรุณาระบุเหตุผลก่อนส่งกลับให้ Leader แก้ไข');
+    if (reviewRemark.length > 1000) throw new Error('หมายเหตุผู้ตรวจต้องไม่เกิน 1,000 ตัวอักษร');
+    var lock = LockService.getScriptLock();
+    lock.waitLock(15000);
+    var timestamp;
+    var updates;
+    try {
+      var existing = getRowsAsObjects(SHEET_NAMES.FIVE_S_INSPECTIONS).filter(function (row) {
+        return valuesEqual_(row.InspectionID, inspectionId);
+      })[0];
+      if (!existing) throw new Error('ยังไม่มีผลตรวจจาก Leader ให้ตรวจรับ');
+      if (cleanString_(existing.ReviewStatus) === 'Approved') throw new Error('ผลตรวจนี้ Supervisor รับรองแล้ว');
+      if (cleanString_(existing.ReviewStatus) === 'Returned') throw new Error('รายการนี้ถูกส่งกลับแล้ว กรุณารอ Leader ส่งผลแก้ไข');
+      timestamp = formatDateTimeBangkok(new Date());
+      updates = {
+        ReviewStatus: decision === 'approve' ? 'Approved' : 'Returned',
+        ReviewedAt: timestamp, ReviewerUserID: cleanString_(currentUser.UserID),
+        ReviewerName: cleanString_(currentUser.FullName), ReviewRemark: reviewRemark,
+        UpdatedAt: timestamp, UpdatedBy: cleanString_(currentUser.UserID)
+      };
+      updateObjectById(SHEET_NAMES.FIVE_S_INSPECTIONS, 'InspectionID', inspectionId, updates);
+    } finally { lock.releaseLock(); }
+    return jsonResponse(true, decision === 'approve' ? 'Supervisor รับรองผลตรวจ 5.ส แล้ว' : 'ส่งผลตรวจกลับให้ Leader แก้ไขแล้ว', {
+      inspectionId: inspectionId, reviewStatus: updates.ReviewStatus, reviewedAt: timestamp
+    });
   } catch (error) { return jsonResponse(false, safeErrorMessage_(error), {}); }
 }

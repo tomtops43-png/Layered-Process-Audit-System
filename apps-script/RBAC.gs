@@ -169,6 +169,7 @@ function hasApiAccess_(user, action) {
     saveFiveSCheckpoint: ['fiveS.manage', 'fiveS.checkpoint.manage'],
     uploadFiveSCheckpointReferencePhoto: ['fiveS.manage', 'fiveS.checkpoint.manage'],
     submitFiveSInspection: ['fiveS.audit', 'fiveS.manage'],
+    reviewFiveSInspection: ['fiveS.review', 'fiveS.view.all', 'fiveS.manage'],
     getMeetingQuizAdmin: ['meeting.quiz.manage'],
     saveMeetingQuizApiKey: ['meeting.quiz.generate'],
     generateMeetingQuiz: ['meeting.quiz.generate'],

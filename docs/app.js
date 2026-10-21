@@ -202,6 +202,7 @@ function bindEvents() {
   $('#fiveSCheckpointTable').addEventListener('click', handleFiveSCheckpointTableClick);
   $('#fiveSInspectionList').addEventListener('submit', handleFiveSInspectionSubmit);
   $('#fiveSInspectionList').addEventListener('change', handleFiveSInspectionChange);
+  $('#fiveSInspectionList').addEventListener('click', handleFiveSReviewClick);
   $('#planLine').addEventListener('change', () => populateStationSelect('#planStation', $('#planLine').value, true));
   $('#loadAuditPlanButton').addEventListener('click', loadAuditPlan);
   $('#addAuditRuleButton').addEventListener('click', () => openAuditRuleEditor());
@@ -427,7 +428,7 @@ const WRITE_ACTIONS = [
   'saveProductionPlan', 'upsertAuditPlanRule', 'deleteAuditRule',
   'generateAuditPlan', 'refreshAuditPlanStatus', 'upsertMasterList', 'migrateRulesToLineLevel',
   'deduplicateLineRules', 'createUser', 'updateUser', 'deactivateUser', 'resetUserPassword',
-  'updateRolePermissions', 'updateUserPermissions', 'updateUserLineAccess'
+  'updateRolePermissions', 'updateUserPermissions', 'updateUserLineAccess', 'reviewFiveSInspection'
 ];
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -7075,12 +7076,14 @@ async function loadFiveSPage() {
 function renderFiveSSummary(board) {
   const shifts = board.summary || [];
   const total = shifts.reduce((sum, shift) => sum + Number(shift.total || 0), 0);
-  const submitted = shifts.reduce((sum, shift) => sum + Number(shift.submitted || 0), 0);
-  const pending = Math.max(0, total - submitted);
+  const approved = shifts.reduce((sum, shift) => sum + Number(shift.approved || 0), 0);
+  const pendingReview = shifts.reduce((sum, shift) => sum + Number(shift.pendingReview || 0), 0);
+  const awaitingLeader = shifts.reduce((sum, shift) => sum + Number(shift.awaitingLeader || 0), 0);
   $('#fiveSSummary').innerHTML = `
     <article class="five-s-stat"><span>จุดตรวจทั้งหมด</span><strong>${total}</strong><small>วันที่ ${escapeHtml(formatDate(board.inspectionDate))}</small></article>
-    <article class="five-s-stat success"><span>ตรวจพร้อมรูปแล้ว</span><strong>${submitted}</strong><small>${shifts.map(shift => `${escapeHtml(shift.label)} ${shift.submitted}/${shift.total}`).join(' · ') || 'ยังไม่มีจุดตรวจที่มอบหมาย'}</small></article>
-    <article class="five-s-stat pending"><span>รอตรวจ</span><strong>${pending}</strong><small>${board.canViewAll ? 'รอ Leader ผู้รับผิดชอบส่งผลตรวจ' : 'จุดตรวจที่ยังไม่ได้บันทึกผล'}</small></article>`;
+    <article class="five-s-stat success"><span>Supervisor รับรองแล้ว</span><strong>${approved}</strong><small>${shifts.map(shift => `${escapeHtml(shift.label)} ${shift.approved}/${shift.total}`).join(' · ') || 'ยังไม่มีจุดตรวจที่มอบหมาย'}</small></article>
+    <article class="five-s-stat review-pending"><span>รอ Supervisor ตรวจ</span><strong>${pendingReview}</strong><small>Leader ส่งผลพร้อมรูปแล้ว</small></article>
+    <article class="five-s-stat pending"><span>รอ Leader ส่ง/แก้ไข</span><strong>${awaitingLeader}</strong><small>${shifts.map(shift => `${escapeHtml(shift.label)} ${shift.awaitingLeader}`).join(' · ') || 'ยังไม่มีจุดตรวจที่มอบหมาย'}</small></article>`;
 }
 
 function renderFiveSSetup(setup) {
@@ -7220,24 +7223,39 @@ function renderFiveSInspectionList(board) {
   }
   container.innerHTML = rows.map(row => {
     const inspection = row.Inspection;
-    const resultLabel = inspection?.Result === 'Pass' ? 'ผ่าน' : inspection?.Result === 'NeedAction' ? 'ต้องปรับปรุง' : 'รอตรวจ';
-    const resultClass = inspection?.Result === 'Pass' ? 'pass' : inspection?.Result === 'NeedAction' ? 'needs-action' : 'waiting';
+    const reviewStatus = inspection?.ReviewStatus || 'Pending';
+    const resultLabel = !inspection ? 'รอ Leader ส่ง' : reviewStatus === 'Approved' ? 'Supervisor รับรองแล้ว' : reviewStatus === 'Returned' ? 'รอ Leader แก้ไข' : 'รอ Supervisor ตรวจ';
+    const resultClass = !inspection ? 'waiting' : reviewStatus === 'Approved' ? 'approved' : reviewStatus === 'Returned' ? 'returned' : 'review-waiting';
     const photo = inspection?.PhotoURL ? `<a class="five-s-photo" href="${escapeAttr(inspection.PhotoURL)}" target="_blank" rel="noopener"><img src="${escapeAttr(driveThumbnailUrl_(inspection.PhotoURL))}" alt="รูปจุดตรวจ ${escapeAttr(row.CheckpointName)}" loading="lazy"><span>ดูรูปที่ส่งแล้ว</span></a>` : '';
     const referencePhoto = row.ReferencePhotoURL ? `<a class="five-s-reference-photo" href="${escapeAttr(row.ReferencePhotoURL)}" target="_blank" rel="noopener"><span>📍 รูปอ้างอิงตำแหน่ง</span><img src="${escapeAttr(driveThumbnailUrl_(row.ReferencePhotoURL))}" alt="รูปอ้างอิงตำแหน่ง ${escapeAttr(row.CheckpointName)}" loading="lazy"></a>` : '';
-    const form = canSubmit && row.LeaderUserID === state.user?.UserID ? `
+    const isAssignedLeader = row.LeaderUserID === state.user?.UserID;
+    const canEdit = canSubmit && isAssignedLeader && (!inspection || reviewStatus === 'Returned');
+    const form = canEdit ? `
       <form class="five-s-audit-form" data-five-s-form data-checkpoint-id="${escapeAttr(row.CheckpointID)}">
         <div class="form-grid"><label>ผลตรวจ<select name="result" required><option value="">เลือกผลตรวจ</option><option value="Pass" ${inspection?.Result === 'Pass' ? 'selected' : ''}>ผ่านตามมาตรฐาน</option><option value="NeedAction" ${inspection?.Result === 'NeedAction' ? 'selected' : ''}>ต้องปรับปรุง</option></select></label>
-          <label class="five-s-photo-input">รูปถ่ายจุดตรวจ <span class="required-mark">บังคับ</span><input name="photo" type="file" accept="image/*" capture="environment" required><small>ต้องแนบรูปทุกจุดก่อนบันทึก${inspection ? ' · ถ่ายรูปใหม่เพื่ออัปเดตผล' : ''}</small></label>
+          <label class="five-s-photo-input">รูปถ่ายจุดตรวจ <span class="required-mark">บังคับ</span><input name="photo" type="file" accept="image/*" capture="environment" required><small>ต้องแนบรูปทุกจุดก่อนบันทึก${inspection ? ' · ถ่ายรูปใหม่เพื่อส่งผลแก้ไข' : ''}</small></label>
           <label class="full-width">หมายเหตุ${' '}<textarea name="remark" rows="2" maxlength="1000" placeholder="ระบุสิ่งที่ต้องปรับปรุง (บังคับเมื่อเลือกต้องปรับปรุง)">${escapeHtml(inspection?.Remark || '')}</textarea></label>
-        </div><div class="five-s-photo-upload-preview" aria-live="polite"></div><div class="button-row"><button type="submit" class="btn btn-primary">บันทึกผลพร้อมรูป</button></div>
+        </div><div class="five-s-photo-upload-preview" aria-live="polite"></div><div class="button-row"><button type="submit" class="btn btn-primary">${inspection ? 'ส่งผลแก้ไขให้ Supervisor ตรวจ' : 'บันทึกผลพร้อมรูป'}</button></div>
       </form>` : '';
-    const readOnly = canSubmit && row.LeaderUserID === state.user?.UserID ? '' : (inspection ? '' : '<p class="five-s-readonly-note">ยังไม่ส่งผลตรวจ</p>');
+    const reviewSummary = inspection ? `<div class="five-s-review-summary"><strong>ผลจาก Leader:</strong> ${inspection.Result === 'Pass' ? 'ผ่านตามมาตรฐาน' : 'ต้องปรับปรุง'}${inspection.InspectorName ? ` · ส่งโดย ${escapeHtml(inspection.InspectorName)}` : ''} · ส่งเมื่อ ${escapeHtml(inspection.SubmittedAt || '')}</div>` : '';
+    const returnedNote = inspection && reviewStatus === 'Returned' && inspection.ReviewRemark ? `<div class="five-s-review-note"><strong>เหตุผลที่ Supervisor ส่งกลับ:</strong> ${escapeHtml(inspection.ReviewRemark)}</div>` : '';
+    const reviewPanel = inspection && reviewStatus === 'Pending' && board.canReview ? `
+      <section class="five-s-review-panel" aria-label="ตรวจรับผลจาก Leader" data-five-s-review-card>
+        <strong>ตรวจผลที่ Leader ส่ง</strong><label>หมายเหตุผู้ตรวจ (ต้องระบุเมื่อส่งกลับแก้ไข)<textarea rows="2" maxlength="1000" data-five-s-review-remark placeholder="ระบุเหตุผลหรือสิ่งที่ต้องแก้ไข"></textarea></label>
+        <div class="button-row"><button type="button" class="btn btn-primary" data-five-s-review="approve" data-checkpoint-id="${escapeAttr(row.CheckpointID)}">รับรองผลตรวจ</button><button type="button" class="btn btn-secondary" data-five-s-review="return" data-checkpoint-id="${escapeAttr(row.CheckpointID)}">ส่งกลับให้ Leader แก้ไข</button></div>
+      </section>` : '';
+    let readOnly = '';
+    if (isAssignedLeader && inspection && !canEdit) {
+      readOnly = `<p class="five-s-readonly-note">${reviewStatus === 'Approved' ? `Supervisor รับรองแล้ว${inspection.ReviewerName ? ` โดย ${escapeHtml(inspection.ReviewerName)}` : ''}` : reviewStatus === 'Returned' ? 'รายการนี้ถูกส่งกลับแล้ว กรุณาเลือกวันที่วันนี้เพื่อแก้ไข' : 'ส่งผลตรวจแล้ว กำลังรอ Supervisor ตรวจรับ'}</p>`;
+    } else if (!inspection && !canEdit) {
+      readOnly = '<p class="five-s-readonly-note">ยังไม่ส่งผลตรวจ</p>';
+    }
     return `<article class="five-s-checkpoint-card">
       <div class="five-s-card-head"><div><span class="five-s-category">${escapeHtml(row.Category)}</span><h4>${escapeHtml(row.CheckpointName)}</h4><p>${escapeHtml(row.Area)} · กะ ${escapeHtml(row.Shift)} · Leader ${escapeHtml(row.LeaderName)}</p></div><span class="five-s-status ${resultClass}">${resultLabel}</span></div>
       ${referencePhoto}
       <p class="five-s-standard"><strong>มาตรฐาน:</strong> ${escapeHtml(row.StandardText)}</p>
-      ${inspection ? `<div class="five-s-saved-meta">ส่งเมื่อ ${escapeHtml(inspection.SubmittedAt || '')}${inspection.Remark ? ` · ${escapeHtml(inspection.Remark)}` : ''}</div>` : ''}
-      ${photo}${form}${readOnly}</article>`;
+      ${reviewSummary}${inspection?.Remark ? `<div class="five-s-saved-meta"><strong>หมายเหตุ Leader:</strong> ${escapeHtml(inspection.Remark)}</div>` : ''}${returnedNote}
+      ${photo}${form}${reviewPanel}${readOnly}</article>`;
   }).join('');
 }
 
@@ -7250,6 +7268,34 @@ function handleFiveSInspectionChange(event) {
   if (preview.dataset.previewUrl) URL.revokeObjectURL(preview.dataset.previewUrl);
   preview.dataset.previewUrl = file ? URL.createObjectURL(file) : '';
   preview.innerHTML = file ? `<img src="${escapeAttr(preview.dataset.previewUrl)}" alt="ตัวอย่างรูปที่จะส่ง"><span>${escapeHtml(file.name)}</span>` : '';
+}
+
+async function handleFiveSReviewClick(event) {
+  const button = event.target.closest('[data-five-s-review]');
+  if (!button) return;
+  const decision = button.dataset.fiveSReview;
+  const checkpointId = button.dataset.checkpointId;
+  const card = button.closest('[data-five-s-review-card]');
+  const reviewRemark = card?.querySelector('[data-five-s-review-remark]')?.value.trim() || '';
+  if (decision === 'return' && !reviewRemark) {
+    showToast('กรุณาระบุเหตุผลก่อนส่งกลับให้ Leader แก้ไข', 'warning');
+    card?.querySelector('[data-five-s-review-remark]')?.focus();
+    return;
+  }
+  const buttons = card?.querySelectorAll('[data-five-s-review]') || [];
+  buttons.forEach(item => { item.disabled = true; });
+  try {
+    showLoading(decision === 'approve' ? 'กำลังรับรองผลตรวจ...' : 'กำลังส่งผลตรวจกลับให้ Leader...');
+    await apiCall('reviewFiveSInspection', {
+      inspectionDate: state.fiveSBoard?.inspectionDate || localDateInput(new Date()),
+      checkpointId, decision, reviewRemark
+    });
+    showToast(decision === 'approve' ? 'รับรองผลตรวจแล้ว' : 'ส่งกลับให้ Leader แก้ไขแล้ว', 'success');
+    await loadFiveSPage();
+  } catch (error) {
+    showToast(error.message || 'ตรวจรับผลไม่สำเร็จ', 'error');
+    buttons.forEach(item => { item.disabled = false; });
+  } finally { hideLoading(); }
 }
 
 async function handleFiveSInspectionSubmit(event) {
