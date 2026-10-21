@@ -224,6 +224,7 @@ function bindEvents() {
   $('#trainingDateTo').addEventListener('change', loadTrainingPage);
   $('#trainingSearch').addEventListener('input', renderTrainingArchive);
   $('#trainingArchive').addEventListener('click', handleTrainingArchiveClick);
+  $('#trainingArchive').addEventListener('change', handleTrainingArchiveFileChange);
   $('#meetingPostType').addEventListener('change', syncMeetingEditorType);
   $('#printTrainingDraftButton').addEventListener('click', printTrainingDraftFromEditor);
   $('#meetingTvButton').addEventListener('click', openMeetingTv);
@@ -2970,6 +2971,8 @@ function trainingRecordCardHtml(row) {
   const actions = [
     hasPermission('meeting.quiz.manage') ? `<button type="button" class="btn btn-secondary" data-training-quiz-manage="${escapeAttr(row.PostID)}">✨ Gen / จัดการข้อสอบ</button>` : '',
     `<button type="button" class="btn btn-primary" data-training-pdf="${escapeAttr(row.PostID)}">⬇ PDF แบบฟอร์มลงชื่อ</button>`,
+    row.SignedTrainingPDFURL ? `<a class="btn btn-outline" href="${escapeAttr(row.SignedTrainingPDFURL)}" title="${escapeAttr(row.SignedTrainingPDFName || 'PDF ที่พนักงานเซ็นแล้ว')}" target="_blank" rel="noopener">📄 ดู PDF ที่เซ็นแล้ว</a>` : '',
+    row.CanEdit ? `<label class="btn btn-outline training-signed-pdf-upload">📎 ${row.SignedTrainingPDFURL ? 'เปลี่ยน PDF ที่เซ็นแล้ว' : 'แนบ PDF ที่เซ็นแล้ว'}<input type="file" accept="application/pdf,.pdf" data-training-signed-pdf="${escapeAttr(row.PostID)}" aria-label="แนบ PDF ที่พนักงานเซ็นแล้ว"></label>` : '',
     `<button type="button" class="btn btn-outline" data-training-print="${escapeAttr(row.PostID)}">🖨 พิมพ์แบบบันทึก + สไลด์</button>`,
     row.CanEdit ? `<button type="button" class="btn btn-outline" data-training-edit="${escapeAttr(row.PostID)}">แก้ไข</button>` : ''
   ].filter(Boolean).join('');
@@ -3005,6 +3008,34 @@ function handleTrainingArchiveClick(event) {
   if (print) return printTrainingRecord(print.dataset.trainingPrint);
   const edit = event.target.closest('[data-training-edit]');
   if (edit) return openMeetingEditor(edit.dataset.trainingEdit, 'Training');
+}
+
+async function handleTrainingArchiveFileChange(event) {
+  const input = event.target.closest('[data-training-signed-pdf]');
+  if (!input) return;
+  const file = input.files && input.files[0];
+  if (!file) return;
+  if (!/\.pdf$/i.test(file.name) || (file.type && file.type !== 'application/pdf')) {
+    input.value = '';
+    return showToast('กรุณาเลือกไฟล์ PDF เท่านั้น', 'warning');
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    input.value = '';
+    return showToast('ไฟล์ต้องมีขนาดไม่เกิน 10 MB', 'warning');
+  }
+  input.disabled = true;
+  showLoading('กำลังแนบ PDF ใบเซ็น Training...');
+  try {
+    await uploadSignedTrainingPDF(file, input.dataset.trainingSignedPdf);
+    showToast('แนบ PDF ใบเซ็น Training สำเร็จ', 'success');
+    await loadTrainingPage();
+  } catch (error) {
+    showToast(error.message || 'แนบ PDF ไม่สำเร็จ', 'error');
+  } finally {
+    hideLoading();
+    input.disabled = false;
+    input.value = '';
+  }
 }
 
 function trainingPrintSlideHtml(slide, index, row) {
@@ -4637,6 +4668,23 @@ async function uploadMeetingDoc(file, postId) {
   } catch (error) {
     // Fall back to the always-configured Before Photo folder when ATTACHMENT_FOLDER_ID is unset
     if (/FOLDER_ID/.test(error.message)) return apiCall('uploadFile', Object.assign({}, payload, { fileType: 'BeforePhoto' }));
+    throw error;
+  }
+}
+
+async function uploadSignedTrainingPDF(file, postId) {
+  const base64Data = await fileToBase64(file);
+  const payload = {
+    relatedType: 'TrainingSignedPDF', relatedId: postId, fileType: 'Attachment',
+    fileName: file.name, mimeType: file.type || 'application/pdf', base64Data,
+    remark: 'Signed Training attendance PDF'
+  };
+  try {
+    return await apiCall('uploadFile', payload);
+  } catch (error) {
+    if (/ATTACHMENT_FOLDER_ID/.test(error.message)) {
+      return apiCall('uploadFile', Object.assign({}, payload, { fileType: 'BeforePhoto' }));
+    }
     throw error;
   }
 }

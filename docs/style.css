@@ -1199,6 +1199,8 @@ body.mtg-tv-open{overflow:hidden}
 .training-slide-file a{color:var(--blue);font-weight:800;overflow-wrap:anywhere}
 .training-slide-file iframe{width:100%;height:min(72vh,700px);border:1px solid var(--border);border-radius:10px;background:#f3f6f8}
 .training-card-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.training-signed-pdf-upload{position:relative;overflow:hidden;cursor:pointer}
+.training-signed-pdf-upload input[type=file]{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
 .mtg-tv-training-chip{background:#8c5cce!important;color:#fff!important}
 @media(max-width:640px){.training-page-actions{width:100%}.training-page-actions .btn{flex:1}.training-record-card{padding:15px}.training-card-actions{display:grid;grid-template-columns:1fr}}
 

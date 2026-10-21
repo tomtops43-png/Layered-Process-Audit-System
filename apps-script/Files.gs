@@ -8,6 +8,20 @@ function uploadFile(payload, currentUser) {
     };
     var fileType = cleanString_(payload.fileType);
     if (!folderSettings[fileType]) throw new Error('Unsupported fileType: ' + fileType);
+    if (valuesEqual_(payload.relatedType, 'TrainingSignedPDF')) {
+      if (fileType !== 'Attachment' && fileType !== 'BeforePhoto') throw new Error('PDF ใบเซ็น Training ต้องจัดเก็บเป็นไฟล์แนบเท่านั้น');
+      var trainingPostId = cleanString_(payload.relatedId);
+      ensureMeetingPostsSheet_();
+      var trainingPost = findById_(SHEET_NAMES.MEETING_POSTS, 'PostID', trainingPostId);
+      if (!trainingPost || valuesEqual_(trainingPost.Status, 'Deleted') || !isTrainingMeetingPost_(trainingPost)) {
+        throw new Error('ไม่พบรายการ Training สำหรับแนบ PDF');
+      }
+      if (!canEditMeetingPost_(currentUser, trainingPost)) throw new Error('คุณไม่มีสิทธิ์แนบไฟล์ในรายการ Training นี้');
+      var mimeType = cleanString_(payload.mimeType).toLowerCase().split(';')[0];
+      if (!/\.pdf$/i.test(cleanString_(payload.fileName)) || (mimeType && mimeType !== 'application/pdf' && mimeType !== 'application/octet-stream')) {
+        throw new Error('กรุณาเลือกไฟล์ PDF เท่านั้น');
+      }
+    }
     if (valuesEqual_(payload.relatedType, 'Finding')) {
       var relatedFinding = findById_(SHEET_NAMES.FINDINGS, 'FindingID', payload.relatedId);
       if (!relatedFinding || (!canUpdateFinding_(currentUser, relatedFinding) && !canVerifyFinding_(currentUser, relatedFinding))) {
@@ -30,6 +44,13 @@ function uploadFile(payload, currentUser) {
     try { bytes = Utilities.base64Decode(String(payload.base64Data)); }
     catch (decodeError) { throw new Error('base64Data is invalid.'); }
     if (!bytes.length) throw new Error('Uploaded file is empty.');
+    if (valuesEqual_(payload.relatedType, 'TrainingSignedPDF')) {
+      var pdfSignature = '';
+      for (var signatureIndex = 0; signatureIndex < 5 && signatureIndex < bytes.length; signatureIndex++) {
+        pdfSignature += String.fromCharCode((bytes[signatureIndex] + 256) % 256);
+      }
+      if (pdfSignature !== '%PDF-') throw new Error('ไฟล์ที่เลือกไม่ใช่เอกสาร PDF ที่ถูกต้อง');
+    }
     var maximumBytes = 10 * 1024 * 1024;
     if (bytes.length > maximumBytes) throw new Error('File exceeds the 10 MB upload limit.');
 

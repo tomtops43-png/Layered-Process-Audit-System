@@ -123,10 +123,28 @@ function getMeetingPosts(payload, user) {
 
     ensureMeetingAcksSheet_();
     var ackByPost = getMeetingAcksByPost_();
+    var signedTrainingPdfByPost = {};
+    if (rows.some(isTrainingMeetingPost_)) {
+      getRowsAsObjects(SHEET_NAMES.ATTACHMENTS).forEach(function (attachment) {
+        if (!valuesEqual_(attachment.RelatedType, 'TrainingSignedPDF')) return;
+        var postId = cleanString_(attachment.RelatedID);
+        var uploadedAt = cleanString_(attachment.UploadedAt);
+        if (!postId || (signedTrainingPdfByPost[postId] && signedTrainingPdfByPost[postId].UploadedAt >= uploadedAt)) return;
+        signedTrainingPdfByPost[postId] = attachment;
+      });
+    }
     var quizSummaryCache = { sheetsReady: false, byDate: {}, byTrainingPostId: {} };
     var decorate = function (row) {
       var copy = sanitizeForClient_(row);
       copy.CanEdit = canEditMeetingPost_(user, row);
+      if (isTrainingMeetingPost_(row)) {
+        // Signed attendance lists can contain employee names and signatures.
+        // Only users permitted to edit the Training post can open its attachment.
+        var signedPdf = copy.CanEdit ? signedTrainingPdfByPost[cleanString_(row.PostID)] : null;
+        copy.SignedTrainingPDFURL = signedPdf ? cleanString_(signedPdf.DriveFileURL) : '';
+        copy.SignedTrainingPDFName = signedPdf ? cleanString_(signedPdf.FileName) : '';
+        copy.SignedTrainingPDFUploadedAt = signedPdf ? cleanString_(signedPdf.UploadedAt) : '';
+      }
       decorateMeetingAckSummary_(copy, row, ackByPost, user);
       // Keep the first board response lean. Detailed roster/progress state is
       // fetched asynchronously by getMeetingQuizStatus after the cards render.
