@@ -35,9 +35,20 @@ function fiveSDate_(value) {
 }
 
 function fiveSActiveShifts_() {
-  return getRowsAsObjects(SHEET_NAMES.LISTS).filter(function (row) {
+  var activeShifts = getRowsAsObjects(SHEET_NAMES.LISTS).filter(function (row) {
     return valuesEqual_(row.ListType, 'Shift') && isActive_(row.ActiveStatus);
-  }).sort(compareMasterListRows_).map(function (row) {
+  }).sort(compareMasterListRows_);
+  // Five-S checkpoints still need to be assignable if the Shift master list is
+  // empty or every row was accidentally disabled. Match the system defaults
+  // (A/B) so setup and inspection use the same shifts as the rest of the app.
+  if (!activeShifts.length) return [{ value: 'A', label: 'A' }, { value: 'B', label: 'B' }];
+  var seen = {};
+  return activeShifts.filter(function (row) {
+    var key = cleanString_(row.ListValue).toLowerCase();
+    if (!key || seen[key]) return false;
+    seen[key] = true;
+    return true;
+  }).map(function (row) {
     return { value: cleanString_(row.ListValue), label: cleanString_(row.DisplayText || row.ListValue) };
   });
 }
