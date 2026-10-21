@@ -5162,9 +5162,7 @@ function meetingTvQuizStatusContentHtml(dailyQuiz) {
       const started = Number(session.startedCount ?? session.participantCount ?? 0);
       const submitted = Number(session.submittedCount || 0);
       const stopControl = quiz.canManage && !session.examStopped
-        ? (started > 0 || submitted > 0
-          ? `<button type="button" class="mtg-tv-quiz-stop" data-tv-quiz-post="${escapeAttr(dailyQuiz?.post?.PostID || '')}" data-tv-quiz-stop="${escapeAttr(session.shift)}" title="หยุดได้ทันที อันดับคิดจากผู้ที่ส่งแล้ว">หยุดสอบและประกาศอันดับ</button>`
-          : '<span class="mtg-tv-quiz-not-started">ยังไม่มีผู้เริ่มสอบ</span>')
+        ? `<button type="button" class="mtg-tv-quiz-stop" data-tv-quiz-post="${escapeAttr(dailyQuiz?.post?.PostID || '')}" data-tv-quiz-stop="${escapeAttr(session.shift)}" title="หยุดได้ทันที แม้ยังไม่มีผู้เริ่มสอบ">หยุดสอบและประกาศอันดับ</button>`
         : (session.examStopped ? '<span class="mtg-tv-quiz-stopped">หยุดแล้ว</span>' : '');
       const retakeControl = quiz.canManage && session.examStopped
         ? `<button type="button" class="mtg-tv-quiz-retake" data-tv-quiz-post="${escapeAttr(dailyQuiz?.post?.PostID || '')}" data-tv-quiz-retake="${escapeAttr(session.shift)}">↻ สอบใหม่ · รอบ ${Number(session.attemptNo || 1) + 1}</button>` : '';
