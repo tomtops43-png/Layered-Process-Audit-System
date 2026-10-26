@@ -9,7 +9,7 @@
   <!-- The first API call happens seconds after load; warm the TLS connection now. -->
   <link rel="preconnect" href="https://script.google.com" crossorigin>
   <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
-  <link rel="stylesheet" href="style.css?v=20261026-meeting-multivideo-v1">
+  <link rel="stylesheet" href="style.css?v=20261026-meeting-video-fullscreen-v1">
 </head>
 <body>
   <div id="publicQuizView" class="login-view public-quiz-view hidden">
@@ -498,7 +498,7 @@
         <div class="form-field full-width meeting-video-editor">
           <span class="data-label">วิดีโอประกอบเนื้อหา (เพิ่มได้หลายคลิป)</span>
           <div class="meeting-video-add-row"><label>ลิงก์ YouTube / Google Drive / วิดีโอ<input id="meetingPostVideoUrl" type="url" maxlength="2000" placeholder="วางลิงก์ https://..."></label><button type="button" class="btn btn-outline btn-compact" id="addMeetingVideoUrl">＋ เพิ่มลิงก์</button></div>
-          <label>อัปโหลดคลิป (เลือกได้หลายไฟล์)<input id="meetingPostVideo" type="file" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" multiple><small class="field-help">รองรับ MP4, WebM, MOV ขนาดไม่เกิน 10 MB ต่อคลิป · เพิ่มได้ไม่เกิน 20 คลิป · ใช้ปุ่ม ◀ ▶ เพื่อจัดลำดับและ 🗑 เพื่อลบคลิป</small></label>
+          <label>อัปโหลดคลิป (เลือกได้หลายไฟล์)<input id="meetingPostVideo" type="file" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" multiple><small class="field-help">รองรับ MP4, WebM, MOV ขนาดไม่เกิน 10 MB ต่อคลิป · เพิ่มได้ไม่เกิน 20 คลิป · ใช้ปุ่ม ◀ ▶ เพื่อจัดลำดับและ 🗑 เพื่อลบคลิป · ความชัดสูงสุดขึ้นกับไฟล์ต้นฉบับ; วิดีโอออนไลน์ปรับ Quality ได้จากปุ่มเฟืองถ้ามีตัวเลือก</small></label>
           <div class="meeting-video-marker-row"><label>แทรกคลิปในรายละเอียด<select id="meetingVideoMarkerSelect" aria-label="เลือกวิดีโอ"></select></label><button type="button" class="btn btn-outline btn-compact" id="insertMeetingVideoMarker">แทรกตำแหน่งในรายละเอียด</button><small class="field-help">เลือกวิดีโอแล้วแทรก marker เช่น <b>[วิดีโอ1]</b> ในตำแหน่งที่ต้องการ หากไม่กำหนด ระบบจะแสดงทุกคลิปต่อท้ายรายละเอียด</small></div>
           <div id="meetingVideoManager" class="meeting-video-manager"></div>
         </div>
@@ -556,6 +556,6 @@
   <section id="trainingPrintRoot" class="hidden" aria-hidden="true"></section>
   <script src="config.js" defer></script>
   <script src="vendor/qrcode.js" defer></script>
-  <script src="app.js?v=20261026-meeting-multivideo-v1" defer></script>
+  <script src="app.js?v=20261026-meeting-video-fullscreen-v1" defer></script>
 </body>
 </html>

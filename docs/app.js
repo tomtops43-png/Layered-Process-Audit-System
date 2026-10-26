@@ -231,13 +231,28 @@ function bindEvents() {
   $('#printTrainingDraftButton').addEventListener('click', printTrainingDraftFromEditor);
   $('#meetingTvButton').addEventListener('click', openMeetingTv);
   document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && document.fullscreenElement?.classList.contains('meeting-video-shell')) return;
     if ($('#meetingTv').classList.contains('hidden') || document.querySelector('dialog[open]')) return;
     if (['ArrowRight', ' ', 'PageDown', 'Enter'].includes(event.key)) { event.preventDefault(); meetingTvStep(1); }
     else if (['ArrowLeft', 'PageUp'].includes(event.key)) { event.preventDefault(); meetingTvStep(-1); }
     else if (event.key === 'Escape') closeMeetingTv();
   });
   document.addEventListener('fullscreenchange', () => {
-    if (!document.fullscreenElement && !$('#meetingTv').classList.contains('hidden')) closeMeetingTv();
+    const videoShell = document.fullscreenElement?.classList.contains('meeting-video-shell');
+    if (videoShell) meetingTvVideoFullscreenActive = true;
+    else if (document.fullscreenElement === document.documentElement) meetingTvVideoFullscreenActive = false;
+    document.querySelectorAll('[data-video-fullscreen]').forEach(button => {
+      const active = document.fullscreenElement === button.closest('.meeting-video-shell');
+      button.textContent = active ? '↙ ย่อกลับ' : '⛶ เต็มจอ';
+      button.setAttribute('aria-label', active ? 'ย่อวิดีโอกลับ' : 'ขยายวิดีโอเต็มจอ');
+    });
+    if (!document.fullscreenElement && !$('#meetingTv').classList.contains('hidden')) {
+      const exitedVideoFullscreen = meetingTvVideoFullscreenActive;
+      meetingTvVideoFullscreenActive = false;
+      if (!exitedVideoFullscreen) closeMeetingTv();
+    } else if (!document.fullscreenElement) {
+      meetingTvVideoFullscreenActive = false;
+    }
   });
   window.addEventListener('afterprint', clearTrainingPrintView);
   $('#loadMeetingPostsButton').addEventListener('click', () => loadMeetingBoard());
@@ -251,6 +266,7 @@ function bindEvents() {
   $('#meetingPostVideo').addEventListener('change', handleMeetingVideoFileChange);
   $('#addMeetingVideoUrl').addEventListener('click', addMeetingVideoUrl);
   $('#insertMeetingVideoMarker').addEventListener('click', insertMeetingVideoMarker);
+  document.addEventListener('click', handleMeetingVideoFullscreenClick);
   $('#meetingBoard').addEventListener('click', handleMeetingQuizBoardClick);
   $('#closeMeetingQuizAdmin').addEventListener('click', () => $('#meetingQuizAdminDialog').close());
   $('#meetingQuizAdminDialog').addEventListener('close', stopMeetingQuizAdminPolling);
@@ -386,6 +402,29 @@ function bindEvents() {
   $('#deactivateUserButton').addEventListener('click', deactivateSelectedUser);
   $('#resetPasswordButton').addEventListener('click', resetSelectedUserPassword);
   document.addEventListener('visibilitychange', handleNotificationVisibilityChange);
+}
+
+let meetingTvVideoFullscreenActive = false;
+
+async function handleMeetingVideoFullscreenClick(event) {
+  const button = event.target.closest('[data-video-fullscreen]');
+  if (!button) return;
+  const shell = button.closest('.meeting-video-shell');
+  if (!shell) return;
+  try {
+    if (document.fullscreenElement === shell) {
+      if (document.exitFullscreen) await document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      return;
+    }
+    const request = shell.requestFullscreen || shell.webkitRequestFullscreen;
+    if (!request) throw new Error('เบราว์เซอร์นี้ไม่รองรับการแสดงผลเต็มจอ');
+    await request.call(shell);
+    if (!document.fullscreenElement) meetingTvVideoFullscreenActive = true;
+  } catch (error) {
+    meetingTvVideoFullscreenActive = false;
+    showToast(error.message || 'เปิดวิดีโอเต็มจอไม่สำเร็จ', 'warning');
+  }
 }
 
 function makeWorkerTimeout(ms) {
@@ -4811,9 +4850,10 @@ function meetingVideoPlayerHtml(url, fileName = '', className = 'mtg-inline-vide
   if (!['http:', 'https:'].includes(parsed.protocol)) return '';
   const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
   const driveId = meetingDriveFileId(rawUrl);
+  const wrapPlayer = media => `<div class="meeting-video-shell"><div class="${escapeAttr(className)}">${media}</div><button type="button" class="meeting-video-fullscreen" data-video-fullscreen aria-label="ขยายวิดีโอเต็มจอ" title="ขยายวิดีโอเต็มจอ">⛶ เต็มจอ</button></div>`;
   if (driveId && ['drive.google.com', 'docs.google.com'].includes(host)) {
     const src = `https://drive.google.com/file/d/${encodeURIComponent(driveId)}/preview`;
-    return `<div class="${escapeAttr(className)}"><iframe src="${escapeAttr(src)}" title="${escapeAttr(fileName || 'วิดีโอประกอบ Meeting')}" loading="lazy" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe></div>`;
+    return wrapPlayer(`<iframe src="${escapeAttr(src)}" title="${escapeAttr(fileName || 'วิดีโอประกอบ Meeting')}" loading="lazy" allow="autoplay; encrypted-media; picture-in-picture"></iframe>`);
   }
   let youtubeId = '';
   if (host === 'youtu.be') youtubeId = parsed.pathname.split('/').filter(Boolean)[0] || '';
@@ -4821,11 +4861,11 @@ function meetingVideoPlayerHtml(url, fileName = '', className = 'mtg-inline-vide
     youtubeId = parsed.searchParams.get('v') || (parsed.pathname.match(/^\/(?:embed|shorts|live)\/([\w-]+)/) || [])[1] || '';
   }
   if (/^[\w-]{6,}$/.test(youtubeId)) {
-    const src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(youtubeId)}`;
-    return `<div class="${escapeAttr(className)}"><iframe src="${escapeAttr(src)}" title="${escapeAttr(fileName || 'วิดีโอประกอบ Meeting')}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>`;
+    const src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(youtubeId)}?fs=0`;
+    return wrapPlayer(`<iframe src="${escapeAttr(src)}" title="${escapeAttr(fileName || 'วิดีโอประกอบ Meeting')}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"></iframe>`);
   }
   if (/\.(?:mp4|webm|ogg|mov)$/i.test(parsed.pathname)) {
-    return `<div class="${escapeAttr(className)}"><video controls playsinline preload="metadata" src="${escapeAttr(rawUrl)}">เบราว์เซอร์นี้ไม่รองรับการเล่นวิดีโอ</video></div>`;
+    return wrapPlayer(`<video controls controlsList="nofullscreen" playsinline preload="metadata" src="${escapeAttr(rawUrl)}">เบราว์เซอร์นี้ไม่รองรับการเล่นวิดีโอ</video>`);
   }
   return `<a class="meeting-video-link" href="${escapeAttr(rawUrl)}" target="_blank" rel="noopener">▶ เปิดวิดีโอ${fileName ? ` · ${escapeHtml(fileName)}` : ''}</a>`;
 }
