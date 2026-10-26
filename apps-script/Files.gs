@@ -22,6 +22,21 @@ function uploadFile(payload, currentUser) {
         throw new Error('กรุณาเลือกไฟล์ PDF เท่านั้น');
       }
     }
+    if (valuesEqual_(payload.relatedType, 'MeetingVideo')) {
+      if (fileType !== 'Attachment' && fileType !== 'BeforePhoto') throw new Error('วิดีโอ Meeting ต้องจัดเก็บเป็นไฟล์แนบเท่านั้น');
+      var meetingVideoPostId = cleanString_(payload.relatedId);
+      ensureMeetingPostsSheet_();
+      var meetingVideoPost = findById_(SHEET_NAMES.MEETING_POSTS, 'PostID', meetingVideoPostId);
+      if (!meetingVideoPost || valuesEqual_(meetingVideoPost.Status, 'Deleted')) throw new Error('ไม่พบหัวข้อประชุมสำหรับแนบวิดีโอ');
+      if (!canEditMeetingPost_(currentUser, meetingVideoPost)) throw new Error('คุณไม่มีสิทธิ์แนบวิดีโอในหัวข้อนี้');
+      var videoMimeType = cleanString_(payload.mimeType).toLowerCase().split(';')[0];
+      var videoFileName = cleanString_(payload.fileName);
+      var videoExtension = (videoFileName.match(/\.([^.]+)$/) || [])[1];
+      if (!videoExtension || !/^(mp4|webm|mov)$/i.test(videoExtension)) throw new Error('รองรับไฟล์วิดีโอ MP4, WebM และ MOV เท่านั้น');
+      if (videoMimeType && videoMimeType !== 'application/octet-stream' && !/^video\/(mp4|webm|quicktime)$/i.test(videoMimeType)) {
+        throw new Error('ชนิดไฟล์ไม่ใช่วิดีโอ MP4, WebM หรือ MOV');
+      }
+    }
     if (valuesEqual_(payload.relatedType, 'Finding')) {
       var relatedFinding = findById_(SHEET_NAMES.FINDINGS, 'FindingID', payload.relatedId);
       if (!relatedFinding || (!canUpdateFinding_(currentUser, relatedFinding) && !canVerifyFinding_(currentUser, relatedFinding))) {

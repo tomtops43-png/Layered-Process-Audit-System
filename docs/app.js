@@ -247,6 +247,9 @@ function bindEvents() {
   $('#deleteMeetingPostButton').addEventListener('click', deleteMeetingPostAction);
   $('#meetingAckSearch').addEventListener('input', filterMeetingAckUsers);
   $('#meetingPostPhoto').addEventListener('change', addMeetingPhotoFiles);
+  $('#meetingPostVideo').addEventListener('change', handleMeetingVideoFileChange);
+  $('#meetingPostVideoUrl').addEventListener('input', handleMeetingVideoUrlInput);
+  $('#insertMeetingVideoMarker').addEventListener('click', insertMeetingVideoMarker);
   $('#meetingBoard').addEventListener('click', handleMeetingQuizBoardClick);
   $('#closeMeetingQuizAdmin').addEventListener('click', () => $('#meetingQuizAdminDialog').close());
   $('#meetingQuizAdminDialog').addEventListener('close', stopMeetingQuizAdminPolling);
@@ -2958,7 +2961,7 @@ function trainingRecordSlidesHtml(row) {
   const filePreview = row.SlideFileURL
     ? `<div class="training-slide-file"><a href="${escapeAttr(row.SlideFileURL)}" target="_blank" rel="noopener">📊 เปิดไฟล์สไลด์ต้นฉบับ${row.SlideFileName ? ' · ' + escapeHtml(row.SlideFileName) : ''}</a>${!images.length && fileId ? `<iframe title="พรีวิวสไลด์ Training" src="https://drive.google.com/file/d/${escapeAttr(fileId)}/preview" loading="lazy" allowfullscreen></iframe>` : ''}</div>`
     : '';
-  return `${meetingDetailHtml(row.Detail, meetingPhotoList(row))}${meetingUnassignedPhotoGallery(row)}${imageSlides}${filePreview}`;
+  return `${meetingDetailHtml(row.Detail, meetingPhotoList(row), row.VideoURL, row.VideoFileName)}${meetingUnassignedPhotoGallery(row)}${imageSlides}${filePreview}`;
 }
 
 function trainingRecordCardHtml(row) {
@@ -3049,24 +3052,25 @@ function trainingPrintSlideHtml(slide, index, row) {
     return `<article class="training-print-slide"><p class="training-print-slide-label">ไฟล์สไลด์แนบ · ${escapeHtml(slide.docName || row.SlideFileName || 'เอกสารประกอบ')}</p><iframe title="ไฟล์สไลด์ Training" src="${escapeAttr(previewUrl)}"></iframe><a href="${escapeAttr(slide.docUrl)}" target="_blank" rel="noopener">เปิดไฟล์ต้นฉบับ</a></article>`;
   }
   const photoNumbers = slide.photoNumbers || (slide.photos || []).map((_, i) => i + 1);
-  const inlineContent = slide.hasPhotoMarkers
+  const inlineContent = slide.hasMediaMarkers
     ? `<div class="training-print-slide-text">${(slide.contentParts || []).map(part => part.type === 'photo'
       ? `<figure class="training-print-inline-photo"><img src="${escapeAttr(driveThumbnailUrl_(part.url, 1200))}" alt="รูปที่ ${part.number}"><figcaption>รูปที่ ${part.number}</figcaption></figure>`
-      : escapeHtml(part.text)).join('')}</div>`
+      : part.type === 'video' ? `<p><a href="${escapeAttr(part.url)}" target="_blank" rel="noopener">▶ เปิดวิดีโอประกอบ ${escapeHtml(part.fileName || 'Training')}</a></p>` : escapeHtml(part.text)).join('')}</div>${!slide.hasPhotoMarkers ? (slide.photos || []).map((url, i) => `<figure class="training-print-photo"><img src="${escapeAttr(driveThumbnailUrl_(url, 1200))}" alt="รูปที่ ${photoNumbers[i]}"><figcaption>รูปที่ ${photoNumbers[i]}</figcaption></figure>`).join('') : ''}`
     : `${slide.sectionText ? `<div class="training-print-slide-text">${escapeHtml(slide.sectionText)}</div>` : ''}${(slide.photos || []).map((url, i) => `<figure class="training-print-photo"><img src="${escapeAttr(driveThumbnailUrl_(url, 1200))}" alt="รูปที่ ${photoNumbers[i]}"><figcaption>รูปที่ ${photoNumbers[i]}</figcaption></figure>`).join('')}`;
   return `<article class="training-print-slide"><p class="training-print-slide-label">เนื้อหา Training · สไลด์ ${index + 1}</p>${inlineContent}</article>`;
 }
 
 // Use the same marker-to-photo mapping as TV so [รูปN] prints as its actual image.
 function trainingPrintDetailHtml(row) {
-  if (!String(row.Detail || '').trim() && !meetingPhotoList(row).length) return '-';
+  if (!String(row.Detail || '').trim() && !meetingPhotoList(row).length && !row.VideoURL) return '-';
   const slides = meetingTvPostSlides([{ row, carry: false }]).filter(slide => !slide.isPpt && !slide.isDoc);
   if (!slides.length) return escapeHtml(row.Detail || '-').replace(/\n/g, '<br>');
   return slides.map((slide, index) => {
-    const textHtml = slide.hasPhotoMarkers
+    const textHtml = slide.hasMediaMarkers
       ? (slide.contentParts || []).map(part => part.type === 'photo'
         ? `<figure class="training-print-inline-photo"><img src="${escapeAttr(driveThumbnailUrl_(part.url, 1200))}" alt="รูปที่ ${part.number}"><figcaption>รูปที่ ${part.number}</figcaption></figure>`
-        : escapeHtml(part.text).replace(/\n/g, '<br>')).join('')
+        : part.type === 'video' ? `<a href="${escapeAttr(part.url)}" target="_blank" rel="noopener">▶ เปิดวิดีโอประกอบ ${escapeHtml(part.fileName || 'Training')}</a>`
+          : escapeHtml(part.text).replace(/\n/g, '<br>')).join('')
       : escapeHtml(slide.sectionText || '').replace(/\n/g, '<br>');
     const loosePhotos = slide.hasPhotoMarkers ? [] : (slide.photos || []).map((url, photoIndex) => {
       const number = (slide.photoNumbers || [])[photoIndex] || photoIndex + 1;
@@ -3358,7 +3362,7 @@ function meetingPostCardHtml(row, isCarry, showQuizActions = true) {
       <span class="status-badge ${statusMeta.cls}">${statusMeta.label}</span>
     </div>
     <div class="mtg-topic">${escapeHtml(row.Topic || '-')}</div>
-    ${meetingDetailHtml(row.Detail, meetingPhotoList(row))}
+    ${meetingDetailHtml(row.Detail, meetingPhotoList(row), row.VideoURL, row.VideoFileName)}
     ${meetingUnassignedPhotoGallery(row)}
     ${(() => {
       const pptCount = String(row.SlideImageURLs || '').split(',').map(u => u.trim()).filter(Boolean).length;
@@ -4485,13 +4489,15 @@ $('#meetingQuizExamContent').addEventListener('click', handleMeetingQuizExamClic
 // Board card detail: --- separators become slide dividers and [รูปN] markers
 // are stripped (shown instead as a "📷 รูปที่ N" tag) so the card mirrors how
 // the topic will page in TV mode.
-function meetingDetailHtml(detail, photos = []) {
+function meetingDetailHtml(detail, photos = [], videoUrl = '', videoName = '') {
   const sections = meetingSlideSections(detail);
+  const hasVideoMarker = sections.some(meetingHasVideoRef);
   const render = (s, i, multi) => {
-    const parts = meetingPhotoContentParts(s, photos);
+    const parts = meetingMediaContentParts(s, photos, videoUrl, videoName);
+    if (videoUrl && !hasVideoMarker && i === sections.length - 1) parts.push({ type: 'video', url: videoUrl, fileName: videoName });
     const text = parts.map(part => part.type === 'photo'
       ? `<a href="${escapeAttr(part.url)}" data-photo-url="${escapeAttr(part.url)}" class="mtg-detail-inline-photo photo-link-trigger" rel="noopener"><img src="${escapeAttr(driveThumbnailUrl_(part.url, 480))}" alt="รูปที่ ${part.number}" loading="lazy"><span>รูปที่ ${part.number}</span></a>`
-      : escapeHtml(part.text)).join('');
+      : part.type === 'video' ? meetingVideoPlayerHtml(part.url, part.fileName) : escapeHtml(part.text)).join('');
     const tag = multi ? `<span class="mtg-detail-slide-tag">สไลด์ ${i + 1}</span>` : '';
     if (!text && !tag) return '';
     return multi ? `<div class="mtg-detail-slide">${tag}<div class="mtg-detail-slide-content">${text}</div></div>` : `<div class="mtg-detail-slide-content">${text}</div>`;
@@ -4555,6 +4561,9 @@ function openMeetingEditor(postId = '', defaultContentType = 'Meeting') {
   state.meetingPhotoItems = row ? meetingPhotoList(row).map(url => ({ id: ++meetingPhotoSeq, type: 'url', url })) : [];
   renderMeetingPhotoManager();
   $('#meetingPostSlideFile').value = '';
+  $('#meetingPostVideo').value = '';
+  $('#meetingPostVideoUrl').value = row ? (row.VideoURL || '') : '';
+  renderMeetingVideoCurrent(row);
   renderMeetingSlideFileCurrent(row);
   $('#deleteMeetingPostButton').classList.toggle('hidden', !row);
   syncMeetingEditorType();
@@ -4655,10 +4664,105 @@ function renderMeetingSlideFileCurrent(row) {
   }
 }
 
+function renderMeetingVideoCurrent(row) {
+  const el = $('#meetingVideoCurrent');
+  if (!el) return;
+  if (row && String(row.VideoURL || '').trim()) {
+    el.classList.remove('hidden');
+    el.innerHTML = `<span>วิดีโอปัจจุบัน: <a href="${escapeAttr(row.VideoURL)}" target="_blank" rel="noopener">▶ ${escapeHtml(row.VideoFileName || 'เปิดวิดีโอ')}</a></span><label class="check-label"><input id="meetingRemoveVideo" type="checkbox"> ลบวิดีโอที่แนบไว้</label>`;
+  } else {
+    el.classList.add('hidden');
+    el.innerHTML = '';
+  }
+}
+
+function insertMeetingVideoMarker() {
+  const detail = $('#meetingPostDetail');
+  if (!detail) return;
+  const marker = '[วิดีโอ]';
+  const start = Number.isFinite(detail.selectionStart) ? detail.selectionStart : detail.value.length;
+  const end = Number.isFinite(detail.selectionEnd) ? detail.selectionEnd : start;
+  const before = detail.value.slice(0, start);
+  const after = detail.value.slice(end);
+  const spacer = before && !/[\s\n]$/.test(before) ? '\n' : '';
+  detail.value = `${before}${spacer}${marker}${after}`;
+  const cursor = before.length + spacer.length + marker.length;
+  detail.focus();
+  detail.setSelectionRange(cursor, cursor);
+}
+
+function handleMeetingVideoFileChange(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const extension = (file.name.match(/\.([^.]+)$/) || [])[1] || '';
+  if (!/^(mp4|webm|mov)$/i.test(extension)) {
+    event.target.value = '';
+    showToast('รองรับไฟล์วิดีโอ MP4, WebM และ MOV เท่านั้น', 'warning');
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    event.target.value = '';
+    showToast('ไฟล์วิดีโอต้องมีขนาดไม่เกิน 10 MB', 'warning');
+    return;
+  }
+  $('#meetingPostVideoUrl').value = '';
+  const removeVideo = $('#meetingRemoveVideo');
+  if (removeVideo) removeVideo.checked = false;
+}
+
+function handleMeetingVideoUrlInput(event) {
+  if (event.target.value) {
+    if ($('#meetingPostVideo').files?.length) $('#meetingPostVideo').value = '';
+    const removeVideo = $('#meetingRemoveVideo');
+    if (removeVideo) removeVideo.checked = false;
+  }
+}
+
 function meetingDriveFileId(url) {
   const text = String(url || '');
   const m = text.match(/\/d\/([-\w]{20,})/) || text.match(/[?&]id=([-\w]{20,})/);
   return m ? m[1] : '';
+}
+
+function meetingVideoPlayerHtml(url, fileName = '', className = 'mtg-inline-video') {
+  const rawUrl = String(url || '').trim();
+  if (!rawUrl) return '';
+  let parsed;
+  try { parsed = new URL(rawUrl); } catch (_) { return `<a class="meeting-video-link" href="${escapeAttr(rawUrl)}" target="_blank" rel="noopener">▶ เปิดวิดีโอ ${escapeHtml(fileName)}</a>`; }
+  if (!['http:', 'https:'].includes(parsed.protocol)) return '';
+  const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+  const driveId = meetingDriveFileId(rawUrl);
+  if (driveId && ['drive.google.com', 'docs.google.com'].includes(host)) {
+    const src = `https://drive.google.com/file/d/${encodeURIComponent(driveId)}/preview`;
+    return `<div class="${escapeAttr(className)}"><iframe src="${escapeAttr(src)}" title="${escapeAttr(fileName || 'วิดีโอประกอบ Meeting')}" loading="lazy" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe></div>`;
+  }
+  let youtubeId = '';
+  if (host === 'youtu.be') youtubeId = parsed.pathname.split('/').filter(Boolean)[0] || '';
+  else if (['youtube.com', 'm.youtube.com', 'youtube-nocookie.com'].includes(host)) {
+    youtubeId = parsed.searchParams.get('v') || (parsed.pathname.match(/^\/(?:embed|shorts|live)\/([\w-]+)/) || [])[1] || '';
+  }
+  if (/^[\w-]{6,}$/.test(youtubeId)) {
+    const src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(youtubeId)}`;
+    return `<div class="${escapeAttr(className)}"><iframe src="${escapeAttr(src)}" title="${escapeAttr(fileName || 'วิดีโอประกอบ Meeting')}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>`;
+  }
+  if (/\.(?:mp4|webm|ogg|mov)$/i.test(parsed.pathname)) {
+    return `<div class="${escapeAttr(className)}"><video controls playsinline preload="metadata" src="${escapeAttr(rawUrl)}">เบราว์เซอร์นี้ไม่รองรับการเล่นวิดีโอ</video></div>`;
+  }
+  return `<a class="meeting-video-link" href="${escapeAttr(rawUrl)}" target="_blank" rel="noopener">▶ เปิดวิดีโอ${fileName ? ` · ${escapeHtml(fileName)}` : ''}</a>`;
+}
+
+async function uploadMeetingVideo(file, postId) {
+  const base64Data = await fileToBase64(file);
+  const payload = {
+    relatedType: 'MeetingVideo', relatedId: postId, fileType: 'Attachment',
+    fileName: file.name, mimeType: file.type || 'application/octet-stream', base64Data
+  };
+  try {
+    return await apiCall('uploadFile', payload);
+  } catch (error) {
+    if (/ATTACHMENT_FOLDER_ID/.test(error.message)) return apiCall('uploadFile', Object.assign({}, payload, { fileType: 'BeforePhoto' }));
+    throw error;
+  }
 }
 
 async function uploadMeetingDoc(file, postId) {
@@ -4704,6 +4808,20 @@ async function saveMeetingPostFromForm() {
   const topic = $('#meetingPostTopic').value.trim();
   if (!topic) return showToast('กรุณากรอกหัวข้อ', 'warning');
   const postId = $('#meetingPostId').value;
+  const videoFile = ($('#meetingPostVideo').files || [])[0];
+  const removeVideo = $('#meetingRemoveVideo') && $('#meetingRemoveVideo').checked;
+  const enteredVideoUrl = $('#meetingPostVideoUrl').value.trim();
+  if (videoFile && videoFile.size > 10 * 1024 * 1024) return showToast('ไฟล์วิดีโอต้องมีขนาดไม่เกิน 10 MB', 'warning');
+  if (enteredVideoUrl && !removeVideo) {
+    try {
+      const parsedVideoUrl = new URL(enteredVideoUrl);
+      if (!['http:', 'https:'].includes(parsedVideoUrl.protocol)) throw new Error('invalid scheme');
+    } catch (_) { return showToast('กรุณาระบุลิงก์วิดีโอที่ถูกต้อง โดยขึ้นต้นด้วย https://', 'warning'); }
+  }
+  const existingVideoUrl = state.editingMeetingPost?.VideoURL || '';
+  const videoUrlForSave = removeVideo ? '' : videoFile ? existingVideoUrl : enteredVideoUrl;
+  const videoNameForSave = removeVideo ? '' : videoFile ? (state.editingMeetingPost?.VideoFileName || '') :
+    enteredVideoUrl === existingVideoUrl ? (state.editingMeetingPost?.VideoFileName || '') : (enteredVideoUrl ? 'วิดีโอจากลิงก์' : '');
   const payload = {
     contentType: $('#meetingPostType').value,
     meetingDate: $('#meetingPostDate').value || localDateInput(new Date()),
@@ -4713,6 +4831,8 @@ async function saveMeetingPostFromForm() {
     priority: $('#meetingPostPriority').value,
     topic,
     detail: $('#meetingPostDetail').value.trim(),
+    videoUrl: videoUrlForSave,
+    videoFileName: videoNameForSave,
     trainingTime: $('#meetingTrainingTime').value,
     trainingPlace: $('#meetingTrainingPlace').value.trim(),
     trainingUnit: $('#meetingTrainingUnit').value.trim(),
@@ -4731,6 +4851,10 @@ async function saveMeetingPostFromForm() {
   try {
     const data = await apiCall('saveMeetingPost', payload);
     const savedId = data.post?.PostID || postId;
+    if (savedId && !postId) {
+      $('#meetingPostId').value = savedId;
+      state.editingMeetingPost = data.post || state.editingMeetingPost;
+    }
     // Rebuild PhotoURL from the managed list order so reordering + removals stick.
     const newFileCount = photoItems.filter(it => it.type === 'file').length;
     let uploaded = 0;
@@ -4768,6 +4892,12 @@ async function saveMeetingPostFromForm() {
       }
     } else if (removeSlide && savedId) {
       await apiCall('saveMeetingPost', { postId: savedId, slideFileUrl: '', slideFileName: '', slideImageUrls: '' });
+    }
+    if (videoFile && savedId) {
+      $('#loadingText').textContent = 'กำลังอัปโหลดวิดีโอ...';
+      const uploadedVideo = await uploadMeetingVideo(videoFile, savedId);
+      if (!uploadedVideo?.DriveFileURL) throw new Error('อัปโหลดวิดีโอไม่สำเร็จ กรุณาลองอีกครั้ง');
+      await apiCall('saveMeetingPost', { postId: savedId, videoUrl: uploadedVideo.DriveFileURL, videoFileName: videoFile.name });
     }
     clearMeetingPhotoItems();
     $('#meetingDialog').close();
@@ -4938,8 +5068,40 @@ function meetingPhotoContentParts(text, photos) {
   if (cursor < source.length) parts.push({ type: 'text', text: source.slice(cursor) });
   return parts;
 }
+const MEETING_VIDEO_MARKER = /\[\s*(?:วิดีโอ|video)\s*\]/gi;
+function meetingHasVideoRef(text) {
+  MEETING_VIDEO_MARKER.lastIndex = 0;
+  return MEETING_VIDEO_MARKER.test(String(text || ''));
+}
+function meetingMediaContentParts(text, photos, videoUrl = '', videoName = '') {
+  const source = String(text || '');
+  const parts = [];
+  const marker = /\[\s*(?:(?:รูปที่|รูป|ภาพ|pic|img|image)\s*(\d+)|(วิดีโอ|video))\s*\]/gi;
+  let cursor = 0;
+  let match;
+  while ((match = marker.exec(source))) {
+    if (match.index > cursor) parts.push({ type: 'text', text: source.slice(cursor, match.index) });
+    if (match[1]) {
+      const number = Number(match[1]);
+      const url = photos[number - 1];
+      if (url) parts.push({ type: 'photo', url, number });
+      else parts.push({ type: 'text', text: match[0] });
+    } else if (videoUrl) {
+      parts.push({ type: 'video', url: videoUrl, fileName: videoName });
+    } else {
+      parts.push({ type: 'text', text: match[0] });
+    }
+    cursor = match.index + match[0].length;
+  }
+  if (cursor < source.length) parts.push({ type: 'text', text: source.slice(cursor) });
+  return parts;
+}
 function meetingStripPhotoRefs(text) {
   return String(text || '').replace(MEETING_PHOTO_MARKER, '').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+}
+function meetingStripMediaRefs(text) {
+  MEETING_VIDEO_MARKER.lastIndex = 0;
+  return meetingStripPhotoRefs(String(text || '').replace(MEETING_VIDEO_MARKER, '')).trim();
 }
 
 // Flatten the deck into one entry per slide — a post with N sections yields N.
@@ -4950,13 +5112,18 @@ function meetingTvPostSlides(deck = meetingTvDeck()) {
   deck.forEach((item, deckPos) => {
     const rawSections = meetingSlideSections(item.row.Detail);
     const allPhotos = meetingPhotoList(item.row);
+    const allVideo = String(item.row.VideoURL || '').trim();
+    const allVideoName = String(item.row.VideoFileName || '').trim();
     const used = new Set();
     const perSection = rawSections.map(text => {
       const refs = meetingExtractPhotoRefs(text).filter(i => i >= 0 && i < allPhotos.length);
       refs.forEach(i => used.add(i));
-      return { text: meetingStripPhotoRefs(text), rawText: text, photoIdx: refs, hasPhotoMarkers: meetingExtractPhotoRefs(text).length > 0 };
+      const hasPhotoMarkers = meetingExtractPhotoRefs(text).length > 0;
+      const hasVideoMarkers = meetingHasVideoRef(text);
+      return { text: meetingStripMediaRefs(text), rawText: text, photoIdx: refs, hasPhotoMarkers: hasPhotoMarkers, hasVideoMarkers: hasVideoMarkers, hasMediaMarkers: hasPhotoMarkers || hasVideoMarkers, appendVideo: false };
     });
     const hasExplicitPhotoRefs = rawSections.some(text => meetingExtractPhotoRefs(text).length > 0);
+    const hasExplicitVideoRefs = rawSections.some(meetingHasVideoRef);
     const unused = allPhotos.map((_, i) => i).filter(i => !used.has(i));
     // Preserve the old “put all photos at the end” behavior when the author
     // has not placed any markers. Once markers exist, keep each slide strictly
@@ -4968,13 +5135,20 @@ function meetingTvPostSlides(deck = meetingTvDeck()) {
     } else if (perSection.length && unused.length) {
       perSection.push({ text: 'รูปที่ยังไม่ได้ระบุตำแหน่งในรายละเอียด', rawText: 'รูปที่ยังไม่ได้ระบุตำแหน่งในรายละเอียด', photoIdx: unused, isUnassignedPhotos: true });
     }
+    if (allVideo && !hasExplicitVideoRefs && perSection.length) {
+      const videoTarget = [...perSection].reverse().find(section => !section.isUnassignedPhotos) || perSection[perSection.length - 1];
+      videoTarget.appendVideo = true;
+      videoTarget.hasMediaMarkers = true;
+    }
     const postSlides = perSection.map(sec => {
       const seen = new Set();
       const dedup = sec.photoIdx.filter(i => !seen.has(i) && seen.add(i));
+      const contentParts = sec.hasMediaMarkers ? meetingMediaContentParts(sec.rawText, allPhotos, allVideo, allVideoName) : [];
+      if (sec.appendVideo) contentParts.push({ type: 'video', url: allVideo, fileName: allVideoName });
       return {
         row: item.row, carry: item.carry, deckPos, sectionText: sec.text, isDoc: false,
-        hasPhotoMarkers: Boolean(sec.hasPhotoMarkers),
-        contentParts: sec.hasPhotoMarkers ? meetingPhotoContentParts(sec.rawText, allPhotos) : [],
+        hasPhotoMarkers: Boolean(sec.hasPhotoMarkers), hasVideoMarkers: Boolean(sec.hasVideoMarkers), hasMediaMarkers: Boolean(sec.hasMediaMarkers),
+        contentParts: contentParts,
         isUnassignedPhotos: Boolean(sec.isUnassignedPhotos),
         photos: dedup.map(i => allPhotos[i]), photoNumbers: dedup.map(i => i + 1)
       };
@@ -5284,12 +5458,16 @@ function meetingTvPostSlideHtml(slide) {
       <div class="mtg-tv-embed-hint">📊 ${escapeHtml(slide.docName)} · เลื่อนสไลด์ในตัวพรีวิว · <a href="${escapeAttr(slide.docUrl)}" target="_blank" rel="noopener">เปิดเต็มจอ ↗</a></div>`;
   } else {
     const photoNumbers = slide.photoNumbers || photos.map((_, i) => i + 1);
-    if (slide.hasPhotoMarkers) {
+    if (slide.hasMediaMarkers) {
       const inlineParts = (slide.contentParts || []).map(part => part.type === 'photo'
         ? `<figure class="mtg-tv-inline-photo"><img src="${escapeAttr(driveThumbnailUrl_(part.url, 1200))}" data-photo-url="${escapeAttr(part.url)}" alt="รูปที่ ${part.number}" loading="lazy"><figcaption>รูปที่ ${part.number}</figcaption></figure>`
-        : escapeHtml(part.text)).join('');
+        : part.type === 'video' ? meetingVideoPlayerHtml(part.url, part.fileName, 'mtg-tv-video') : escapeHtml(part.text)).join('');
       const hasInlinePhoto = (slide.contentParts || []).some(part => part.type === 'photo');
-      mid = `${hasInlinePhoto ? '<div class="mtg-tv-photo-hint">🔍 รูปอยู่ตามตำแหน่งในเนื้อหา · คลิกรูปเพื่อขยายและซูม</div>' : ''}<div class="mtg-tv-detail mtg-tv-inline-content">${inlineParts}</div>`;
+      const hasInlineVideo = (slide.contentParts || []).some(part => part.type === 'video');
+      const loosePhotos = photos.length && !slide.hasPhotoMarkers
+        ? `<div class="mtg-tv-photos">${photos.map((url, i) => `<figure class="mtg-tv-photo-item"><img src="${escapeAttr(driveThumbnailUrl_(url, 1000))}" data-photo-url="${escapeAttr(url)}" alt="รูปที่ ${photoNumbers[i]}" loading="lazy"><figcaption>รูปที่ ${photoNumbers[i]}</figcaption></figure>`).join('')}</div>`
+        : '';
+      mid = `${hasInlinePhoto ? '<div class="mtg-tv-photo-hint">🔍 รูปอยู่ตามตำแหน่งในเนื้อหา · คลิกรูปเพื่อขยายและซูม</div>' : ''}${hasInlineVideo ? '<div class="mtg-tv-video-hint">▶ วิดีโออยู่ในเนื้อหาหัวข้อนี้</div>' : ''}<div class="mtg-tv-detail mtg-tv-inline-content">${inlineParts}${loosePhotos}</div>`;
     } else {
       mid = `${sectionText ? `<div class="mtg-tv-detail">${escapeHtml(sectionText)}</div>` : ''}
         ${photos.length ? `<div class="mtg-tv-photo-hint">🔍 คลิกรูปเพื่อขยาย แล้วใช้ + / − เพื่อซูม</div><div class="mtg-tv-photos">${photos.map((u, i) => `<figure class="mtg-tv-photo-item"><img src="${escapeAttr(driveThumbnailUrl_(u, 1000))}" data-photo-url="${escapeAttr(u)}" alt="รูปที่ ${photoNumbers[i]}" loading="lazy"><figcaption>รูปที่ ${photoNumbers[i]}</figcaption></figure>`).join('')}</div>` : ''}`;

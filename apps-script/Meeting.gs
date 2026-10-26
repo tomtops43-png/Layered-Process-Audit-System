@@ -260,6 +260,13 @@ function saveMeetingPost(payload, user) {
         if (!updates.Topic) return jsonResponse(false, 'Topic is required.', {});
       }
       if (payload.detail !== undefined) updates.Detail = cleanString_(payload.detail);
+      if (payload.videoUrl !== undefined) {
+        var videoUrl = cleanString_(payload.videoUrl);
+        if (videoUrl && !/^https?:\/\/[^\s]+$/i.test(videoUrl)) return jsonResponse(false, 'กรุณาระบุลิงก์วิดีโอที่ขึ้นต้นด้วย http:// หรือ https://', {});
+        if (videoUrl.length > 2000) return jsonResponse(false, 'ลิงก์วิดีโอยาวเกินไป', {});
+        updates.VideoURL = videoUrl;
+      }
+      if (payload.videoFileName !== undefined) updates.VideoFileName = cleanString_(payload.videoFileName);
       ['trainingTime', 'trainingPlace', 'trainingUnit', 'trainerName', 'trainingPlanned', 'trainingEffect'].forEach(function (key) {
         if (payload[key] !== undefined) {
           var field = key.charAt(0).toUpperCase() + key.slice(1);
@@ -311,6 +318,7 @@ function saveMeetingPost(payload, user) {
       AckRequiredUserIDs: resolvedAckCreate.ids, AckRequiredNames: resolvedAckCreate.names,
       SlideFileURL: cleanString_(payload.slideFileUrl), SlideFileName: cleanString_(payload.slideFileName),
       SlideImageURLs: cleanString_(payload.slideImageUrls),
+      VideoURL: cleanString_(payload.videoUrl), VideoFileName: cleanString_(payload.videoFileName),
       CreatedAt: timestamp, CreatedBy: user.UserID,
       CreatedByName: user.FullName || user.Username || user.UserID,
       UpdatedAt: timestamp, UpdatedBy: user.UserID
