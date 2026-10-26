@@ -9,7 +9,7 @@
   <!-- The first API call happens seconds after load; warm the TLS connection now. -->
   <link rel="preconnect" href="https://script.google.com" crossorigin>
   <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
-  <link rel="stylesheet" href="style.css?v=20261026-meeting-video-v1">
+  <link rel="stylesheet" href="style.css?v=20261026-meeting-multivideo-v1">
 </head>
 <body>
   <div id="publicQuizView" class="login-view public-quiz-view hidden">
@@ -496,11 +496,11 @@
         <label class="full-width">หัวข้อ *<input id="meetingPostTopic" required maxlength="200" placeholder="เช่น เครื่อง XX มีปัญหา / ประกาศเรื่อง..."></label>
         <label class="full-width">รายละเอียด<textarea id="meetingPostDetail" rows="5" placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)&#10;&#10;พิมพ์ --- คั่นบรรทัด เพื่อแยกเป็นหลายสไลด์ตอนฉายจอ TV"></textarea><small class="field-help">💡 พิมพ์ <b>---</b> (ขีดสามตัว) ไว้บรรทัดเดียว เพื่อแบ่งเนื้อหาเป็นหลายสไลด์ในโหมด TV — หัวข้อเดิมจะค้างทุกสไลด์<br>📷 อยากให้รูปไหนอยู่สไลด์ไหน พิมพ์ <b>[รูป1]</b> <b>[รูป2]</b> ในตำแหน่งเนื้อหาที่ต้องการแทรกรูป (ดูเลขรูปได้จากใต้ภาพหลังอัปโหลด) — รูปจะปรากฏตรง marker นั้นในสไลด์; รูปที่ยังไม่ได้กำหนดจุดจะแยกเป็นสไลด์ท้ายหัวข้อ; หากไม่ได้กำหนดรูปเลย จะรวมรูปไว้ท้ายหัวข้อ เมื่อเลื่อนรูปจะเปลี่ยนภาพตามลำดับเลขใหม่ ส่วนลบรูปจะปรับเลขอ้างอิงที่เหลือให้อัตโนมัติ</small></label>
         <div class="form-field full-width meeting-video-editor">
-          <span class="data-label">วิดีโอประกอบเนื้อหา (เลือกได้ 1 วิดีโอ)</span>
-          <label>ลิงก์วิดีโอ YouTube / Google Drive / ไฟล์ MP4<input id="meetingPostVideoUrl" type="url" maxlength="2000" placeholder="วางลิงก์ https://..."></label>
-          <label>หรืออัปโหลดคลิป<input id="meetingPostVideo" type="file" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime"><small class="field-help">รองรับ MP4, WebM, MOV ขนาดไม่เกิน 10 MB · วิดีโอจะเล่นในรายละเอียดและโหมด TV · พิมพ์ <b>[วิดีโอ]</b> ในรายละเอียดเพื่อกำหนดตำแหน่ง หากไม่ใส่ marker จะแสดงต่อท้ายรายละเอียด</small></label>
-          <div class="meeting-video-editor-actions"><button type="button" class="btn btn-outline btn-compact" id="insertMeetingVideoMarker">แทรกตำแหน่ง [วิดีโอ] ในรายละเอียด</button></div>
-          <div id="meetingVideoCurrent" class="meeting-video-current hidden"></div>
+          <span class="data-label">วิดีโอประกอบเนื้อหา (เพิ่มได้หลายคลิป)</span>
+          <div class="meeting-video-add-row"><label>ลิงก์ YouTube / Google Drive / วิดีโอ<input id="meetingPostVideoUrl" type="url" maxlength="2000" placeholder="วางลิงก์ https://..."></label><button type="button" class="btn btn-outline btn-compact" id="addMeetingVideoUrl">＋ เพิ่มลิงก์</button></div>
+          <label>อัปโหลดคลิป (เลือกได้หลายไฟล์)<input id="meetingPostVideo" type="file" accept=".mp4,.webm,.mov,video/mp4,video/webm,video/quicktime" multiple><small class="field-help">รองรับ MP4, WebM, MOV ขนาดไม่เกิน 10 MB ต่อคลิป · เพิ่มได้ไม่เกิน 20 คลิป · ใช้ปุ่ม ◀ ▶ เพื่อจัดลำดับและ 🗑 เพื่อลบคลิป</small></label>
+          <div class="meeting-video-marker-row"><label>แทรกคลิปในรายละเอียด<select id="meetingVideoMarkerSelect" aria-label="เลือกวิดีโอ"></select></label><button type="button" class="btn btn-outline btn-compact" id="insertMeetingVideoMarker">แทรกตำแหน่งในรายละเอียด</button><small class="field-help">เลือกวิดีโอแล้วแทรก marker เช่น <b>[วิดีโอ1]</b> ในตำแหน่งที่ต้องการ หากไม่กำหนด ระบบจะแสดงทุกคลิปต่อท้ายรายละเอียด</small></div>
+          <div id="meetingVideoManager" class="meeting-video-manager"></div>
         </div>
         <div id="trainingFields" class="training-editor-fields form-grid full-width hidden">
           <label>เวลา Training<input id="meetingTrainingTime" type="time"></label>
@@ -556,6 +556,6 @@
   <section id="trainingPrintRoot" class="hidden" aria-hidden="true"></section>
   <script src="config.js" defer></script>
   <script src="vendor/qrcode.js" defer></script>
-  <script src="app.js?v=20261026-meeting-video-v1" defer></script>
+  <script src="app.js?v=20261026-meeting-multivideo-v1" defer></script>
 </body>
 </html>

@@ -676,10 +676,26 @@ textarea{line-height:1.45}
 .meeting-video-editor{display:grid;gap:10px;padding:14px;border:1px solid var(--border);border-radius:12px;background:#f8fafb}
 .meeting-video-editor>label{display:grid;gap:6px;font-weight:700}
 .meeting-video-editor input[type=file]{padding:8px;border:1px solid var(--border);border-radius:8px;background:#fff}
-.meeting-video-editor-actions{display:flex;justify-content:flex-start}
-.meeting-video-current{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 12px;border:1px solid #d8e5ef;border-radius:9px;background:#fff;color:var(--muted);font-size:.84rem}
-.meeting-video-current a{color:var(--blue);font-weight:800;text-decoration:none}
-.meeting-video-current .check-label{margin:0}
+.meeting-video-add-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:10px}
+.meeting-video-add-row>label,.meeting-video-marker-row>label{display:grid;gap:6px;font-weight:700}
+.meeting-video-marker-row{display:grid;grid-template-columns:minmax(180px,260px) auto;align-items:end;gap:8px 10px}
+.meeting-video-marker-row small{grid-column:1/-1}
+.meeting-video-manager{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+.meeting-video-empty{padding:10px 4px;color:var(--muted);font-size:.85rem}
+.meeting-video-item{min-width:0;padding:10px 12px;border:1px solid #d8e5ef;border-radius:10px;background:#fff;display:grid;grid-template-columns:1fr auto;gap:5px 8px;align-items:center}
+.meeting-video-item-number{font-size:.75rem;font-weight:800;color:var(--navy)}
+.meeting-video-item-number span{margin-left:5px;padding:2px 7px;border-radius:99px;background:var(--green-bg);color:var(--green);font-size:.65rem}
+.meeting-video-item>a{grid-column:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--blue);font-size:.82rem;font-weight:700;text-decoration:none}
+.meeting-video-item-actions{grid-column:2;grid-row:1/3;display:flex;gap:4px}
+.meeting-video-item-actions button{width:32px;height:30px;border:1px solid var(--border);border-radius:7px;background:#fff;cursor:pointer}
+.meeting-video-item-actions button:hover:not(:disabled){background:var(--gray-bg)}
+.meeting-video-item-actions button:disabled{opacity:.35;cursor:default}
+.mtg-detail-video-item{display:block;margin:10px 0;color:var(--muted);font-size:.78rem;font-weight:800}
+.mtg-detail-video-item .mtg-inline-video{margin-top:5px}
+.meeting-video-gallery{padding:8px 22px 0}
+.mtg-tv-video-item{width:min(100%,1050px);margin:12px auto;color:#d7e6f5;font-size:clamp(.8rem,1.4vw,1rem);font-weight:800}
+.mtg-tv-video-item .mtg-tv-video{width:100%;margin-top:5px}
+@media(max-width:640px){.meeting-video-add-row,.meeting-video-marker-row{grid-template-columns:1fr}.meeting-video-marker-row small{grid-column:auto}.meeting-video-add-row>.btn,.meeting-video-marker-row>.btn{justify-self:start}}
 .meeting-card .finding-photos{padding:12px 22px 0}
 .mtg-meta{padding:10px 22px 14px;font-size:.78rem;color:var(--muted)}
 .mtg-actions{display:flex;gap:9px;justify-content:flex-end;padding:12px 22px;border-top:1px solid var(--border);background:#f8fafb;flex-wrap:wrap}

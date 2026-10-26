@@ -39,6 +39,32 @@ function isTrainingMeetingPost_(row) {
   return meetingContentType_(row) === 'Training';
 }
 
+function normalizeMeetingVideoItems_(value) {
+  var items = value;
+  if (typeof items === 'string') {
+    try { items = JSON.parse(items || '[]'); }
+    catch (error) { throw new Error('รายการวิดีโอไม่ถูกต้อง'); }
+  }
+  if (!Array.isArray(items)) throw new Error('รายการวิดีโอต้องเป็นชุดข้อมูล');
+  if (items.length > 20) throw new Error('เพิ่มวิดีโอได้ไม่เกิน 20 คลิปต่อหัวข้อ');
+  return items.map(function (item) {
+    var url = cleanString_(item && item.url);
+    var name = cleanString_(item && item.name);
+    if (!url || !/^https?:\/\/[^\s]+$/i.test(url)) throw new Error('พบลิงก์วิดีโอที่ไม่ถูกต้อง');
+    if (url.length > 2000) throw new Error('ลิงก์วิดีโอยาวเกินไป');
+    if (name.length > 255) throw new Error('ชื่อวิดีโอต้องไม่เกิน 255 ตัวอักษร');
+    return { url: url, name: name };
+  });
+}
+
+function meetingLegacyVideoItem_(urlValue, nameValue) {
+  var url = cleanString_(urlValue);
+  if (!url) return null;
+  if (!/^https?:\/\/[^\s]+$/i.test(url)) throw new Error('กรุณาระบุลิงก์วิดีโอที่ขึ้นต้นด้วย http:// หรือ https://');
+  if (url.length > 2000) throw new Error('ลิงก์วิดีโอยาวเกินไป');
+  return { url: url, name: cleanString_(nameValue) };
+}
+
 /** Latest-ack map keyed by PostID, deduped per user. */
 function getMeetingAcksByPost_() {
   var byPost = {};
@@ -261,12 +287,16 @@ function saveMeetingPost(payload, user) {
       }
       if (payload.detail !== undefined) updates.Detail = cleanString_(payload.detail);
       if (payload.videoUrl !== undefined) {
-        var videoUrl = cleanString_(payload.videoUrl);
-        if (videoUrl && !/^https?:\/\/[^\s]+$/i.test(videoUrl)) return jsonResponse(false, 'กรุณาระบุลิงก์วิดีโอที่ขึ้นต้นด้วย http:// หรือ https://', {});
-        if (videoUrl.length > 2000) return jsonResponse(false, 'ลิงก์วิดีโอยาวเกินไป', {});
-        updates.VideoURL = videoUrl;
+        var legacyVideo = meetingLegacyVideoItem_(payload.videoUrl, payload.videoFileName);
+        updates.VideoURL = legacyVideo ? legacyVideo.url : '';
+        if (payload.videoFileName !== undefined) updates.VideoFileName = legacyVideo ? legacyVideo.name : '';
       }
-      if (payload.videoFileName !== undefined) updates.VideoFileName = cleanString_(payload.videoFileName);
+      if (payload.videoItemsJson !== undefined) {
+        var videoItems = normalizeMeetingVideoItems_(payload.videoItemsJson);
+        updates.VideoItemsJSON = JSON.stringify(videoItems);
+        updates.VideoURL = videoItems.length ? videoItems[0].url : '';
+        updates.VideoFileName = videoItems.length ? videoItems[0].name : '';
+      }
       ['trainingTime', 'trainingPlace', 'trainingUnit', 'trainerName', 'trainingPlanned', 'trainingEffect'].forEach(function (key) {
         if (payload[key] !== undefined) {
           var field = key.charAt(0).toUpperCase() + key.slice(1);
@@ -299,6 +329,13 @@ function saveMeetingPost(payload, user) {
     if (!parseDate_(meetingDate)) return jsonResponse(false, 'Invalid meetingDate: ' + meetingDate, {});
     var lineId = cleanString_(payload.lineId);
     if (!isAllFilter_(lineId)) requireLineAccess_(user, lineId, 'view');
+    var createVideoItems = [];
+    if (payload.videoItemsJson !== undefined) {
+      createVideoItems = normalizeMeetingVideoItems_(payload.videoItemsJson);
+    } else {
+      var legacyCreateVideo = meetingLegacyVideoItem_(payload.videoUrl, payload.videoFileName);
+      if (legacyCreateVideo) createVideoItems = [legacyCreateVideo];
+    }
     var resolvedAckCreate = resolveMeetingAckUsers_(payload.ackUserIds);
     var newPostId = generateId('MTG', SHEET_NAMES.MEETING_POSTS, 'PostID', getPeriodMonth(new Date()));
     var post = {
@@ -318,7 +355,9 @@ function saveMeetingPost(payload, user) {
       AckRequiredUserIDs: resolvedAckCreate.ids, AckRequiredNames: resolvedAckCreate.names,
       SlideFileURL: cleanString_(payload.slideFileUrl), SlideFileName: cleanString_(payload.slideFileName),
       SlideImageURLs: cleanString_(payload.slideImageUrls),
-      VideoURL: cleanString_(payload.videoUrl), VideoFileName: cleanString_(payload.videoFileName),
+      VideoURL: createVideoItems.length ? createVideoItems[0].url : '',
+      VideoFileName: createVideoItems.length ? createVideoItems[0].name : '',
+      VideoItemsJSON: JSON.stringify(createVideoItems),
       CreatedAt: timestamp, CreatedBy: user.UserID,
       CreatedByName: user.FullName || user.Username || user.UserID,
       UpdatedAt: timestamp, UpdatedBy: user.UserID

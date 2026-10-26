@@ -73,6 +73,7 @@ const state = {
   meetingPendingAcks: [],
   meetingFindingDigest: null,
   meetingPhotoItems: [],
+  meetingVideoItems: [],
   editingMeetingPost: null,
   meetingQuizAdmin: null,
   meetingQuizExam: null,
@@ -248,7 +249,7 @@ function bindEvents() {
   $('#meetingAckSearch').addEventListener('input', filterMeetingAckUsers);
   $('#meetingPostPhoto').addEventListener('change', addMeetingPhotoFiles);
   $('#meetingPostVideo').addEventListener('change', handleMeetingVideoFileChange);
-  $('#meetingPostVideoUrl').addEventListener('input', handleMeetingVideoUrlInput);
+  $('#addMeetingVideoUrl').addEventListener('click', addMeetingVideoUrl);
   $('#insertMeetingVideoMarker').addEventListener('click', insertMeetingVideoMarker);
   $('#meetingBoard').addEventListener('click', handleMeetingQuizBoardClick);
   $('#closeMeetingQuizAdmin').addEventListener('click', () => $('#meetingQuizAdminDialog').close());
@@ -2961,7 +2962,7 @@ function trainingRecordSlidesHtml(row) {
   const filePreview = row.SlideFileURL
     ? `<div class="training-slide-file"><a href="${escapeAttr(row.SlideFileURL)}" target="_blank" rel="noopener">📊 เปิดไฟล์สไลด์ต้นฉบับ${row.SlideFileName ? ' · ' + escapeHtml(row.SlideFileName) : ''}</a>${!images.length && fileId ? `<iframe title="พรีวิวสไลด์ Training" src="https://drive.google.com/file/d/${escapeAttr(fileId)}/preview" loading="lazy" allowfullscreen></iframe>` : ''}</div>`
     : '';
-  return `${meetingDetailHtml(row.Detail, meetingPhotoList(row), row.VideoURL, row.VideoFileName)}${meetingUnassignedPhotoGallery(row)}${imageSlides}${filePreview}`;
+  return `${meetingDetailHtml(row.Detail, meetingPhotoList(row), meetingVideoList(row))}${meetingUnassignedPhotoGallery(row)}${meetingUnassignedVideoGallery(row)}${imageSlides}${filePreview}`;
 }
 
 function trainingRecordCardHtml(row) {
@@ -3062,14 +3063,14 @@ function trainingPrintSlideHtml(slide, index, row) {
 
 // Use the same marker-to-photo mapping as TV so [รูปN] prints as its actual image.
 function trainingPrintDetailHtml(row) {
-  if (!String(row.Detail || '').trim() && !meetingPhotoList(row).length && !row.VideoURL) return '-';
+  if (!String(row.Detail || '').trim() && !meetingPhotoList(row).length && !meetingVideoList(row).length) return '-';
   const slides = meetingTvPostSlides([{ row, carry: false }]).filter(slide => !slide.isPpt && !slide.isDoc);
   if (!slides.length) return escapeHtml(row.Detail || '-').replace(/\n/g, '<br>');
   return slides.map((slide, index) => {
     const textHtml = slide.hasMediaMarkers
       ? (slide.contentParts || []).map(part => part.type === 'photo'
         ? `<figure class="training-print-inline-photo"><img src="${escapeAttr(driveThumbnailUrl_(part.url, 1200))}" alt="รูปที่ ${part.number}"><figcaption>รูปที่ ${part.number}</figcaption></figure>`
-        : part.type === 'video' ? `<a href="${escapeAttr(part.url)}" target="_blank" rel="noopener">▶ เปิดวิดีโอประกอบ ${escapeHtml(part.fileName || 'Training')}</a>`
+        : part.type === 'video' ? `<a href="${escapeAttr(part.url)}" target="_blank" rel="noopener">▶ เปิดวิดีโอ ${part.number || ''} ${escapeHtml(part.fileName || 'Training')}</a>`
           : escapeHtml(part.text).replace(/\n/g, '<br>')).join('')
       : escapeHtml(slide.sectionText || '').replace(/\n/g, '<br>');
     const loosePhotos = slide.hasPhotoMarkers ? [] : (slide.photos || []).map((url, photoIndex) => {
@@ -3077,7 +3078,7 @@ function trainingPrintDetailHtml(row) {
       return `<figure class="training-print-photo"><img src="${escapeAttr(driveThumbnailUrl_(url, 1200))}" alt="รูปที่ ${number}"><figcaption>รูปที่ ${number}</figcaption></figure>`;
     });
     const sectionLabel = slide.sectionCount > 1
-      ? `<p class="training-print-detail-label">${slide.isUnassignedPhotos ? 'รูปที่ยังไม่ได้ระบุตำแหน่งในรายละเอียด' : `สไลด์ ${index + 1}`}</p>`
+      ? `<p class="training-print-detail-label">${slide.isUnassignedPhotos ? 'รูปที่ยังไม่ได้ระบุตำแหน่งในรายละเอียด' : slide.isUnassignedVideos ? 'วิดีโอที่ยังไม่ได้ระบุตำแหน่งในรายละเอียด' : `สไลด์ ${index + 1}`}</p>`
       : '';
     return `<div class="training-print-detail-section">${sectionLabel}<div class="training-print-detail-text">${textHtml}</div>${loosePhotos.join('')}</div>`;
   }).join('');
@@ -3362,8 +3363,9 @@ function meetingPostCardHtml(row, isCarry, showQuizActions = true) {
       <span class="status-badge ${statusMeta.cls}">${statusMeta.label}</span>
     </div>
     <div class="mtg-topic">${escapeHtml(row.Topic || '-')}</div>
-    ${meetingDetailHtml(row.Detail, meetingPhotoList(row), row.VideoURL, row.VideoFileName)}
+    ${meetingDetailHtml(row.Detail, meetingPhotoList(row), meetingVideoList(row))}
     ${meetingUnassignedPhotoGallery(row)}
+    ${meetingUnassignedVideoGallery(row)}
     ${(() => {
       const pptCount = String(row.SlideImageURLs || '').split(',').map(u => u.trim()).filter(Boolean).length;
       if (pptCount) return `<div class="mtg-doc"><span class="mtg-doc-badge">📊 สไลด์ PPT ${pptCount} หน้า · ฉายในโหมด TV</span>${row.SlideFileURL ? ` <a href="${escapeAttr(row.SlideFileURL)}" target="_blank" rel="noopener" class="btn btn-outline btn-compact">เปิดไฟล์ต้นฉบับ</a>` : ''}</div>`;
@@ -4489,15 +4491,18 @@ $('#meetingQuizExamContent').addEventListener('click', handleMeetingQuizExamClic
 // Board card detail: --- separators become slide dividers and [รูปN] markers
 // are stripped (shown instead as a "📷 รูปที่ N" tag) so the card mirrors how
 // the topic will page in TV mode.
-function meetingDetailHtml(detail, photos = [], videoUrl = '', videoName = '') {
+function meetingDetailHtml(detail, photos = [], videos = []) {
   const sections = meetingSlideSections(detail);
   const hasVideoMarker = sections.some(meetingHasVideoRef);
+  let genericVideoIndex = 0;
   const render = (s, i, multi) => {
-    const parts = meetingMediaContentParts(s, photos, videoUrl, videoName);
-    if (videoUrl && !hasVideoMarker && i === sections.length - 1) parts.push({ type: 'video', url: videoUrl, fileName: videoName });
+    const genericStart = genericVideoIndex;
+    genericVideoIndex += meetingGenericVideoRefCount(s);
+    const parts = meetingMediaContentParts(s, photos, videos, genericStart);
+    if (videos.length && !hasVideoMarker && i === sections.length - 1) videos.forEach((video, index) => parts.push({ type: 'video', url: video.url, fileName: video.name, number: index + 1 }));
     const text = parts.map(part => part.type === 'photo'
       ? `<a href="${escapeAttr(part.url)}" data-photo-url="${escapeAttr(part.url)}" class="mtg-detail-inline-photo photo-link-trigger" rel="noopener"><img src="${escapeAttr(driveThumbnailUrl_(part.url, 480))}" alt="รูปที่ ${part.number}" loading="lazy"><span>รูปที่ ${part.number}</span></a>`
-      : part.type === 'video' ? meetingVideoPlayerHtml(part.url, part.fileName) : escapeHtml(part.text)).join('');
+      : part.type === 'video' ? `<div class="mtg-detail-video-item"><span>วิดีโอ ${part.number}${part.fileName ? ` · ${escapeHtml(part.fileName)}` : ''}</span>${meetingVideoPlayerHtml(part.url, part.fileName)}</div>` : escapeHtml(part.text)).join('');
     const tag = multi ? `<span class="mtg-detail-slide-tag">สไลด์ ${i + 1}</span>` : '';
     if (!text && !tag) return '';
     return multi ? `<div class="mtg-detail-slide">${tag}<div class="mtg-detail-slide-content">${text}</div></div>` : `<div class="mtg-detail-slide-content">${text}</div>`;
@@ -4525,6 +4530,21 @@ function meetingUnassignedPhotoGallery(row) {
   const urls = photos.filter((_, index) => !referenced.has(index));
   const numbers = photos.map((_, index) => index + 1).filter((_, index) => !referenced.has(index));
   return meetingPhotoGallery(urls, numbers);
+}
+
+function meetingUnassignedVideoGallery(row) {
+  const videos = meetingVideoList(row);
+  if (!videos.length) return '';
+  const sections = meetingSlideSections(row.Detail);
+  if (!sections.some(meetingHasVideoRef)) return '';
+  let genericOffset = 0;
+  const referenced = new Set(sections.flatMap(section => {
+    const refs = meetingExtractVideoRefs(section, genericOffset);
+    genericOffset += meetingGenericVideoRefCount(section);
+    return refs;
+  }).filter(index => index >= 0 && index < videos.length));
+  const unassigned = videos.map((video, index) => ({ video, index })).filter(item => !referenced.has(item.index));
+  return unassigned.length ? `<div class="meeting-video-gallery">${unassigned.map(({ video, index }) => `<div class="mtg-detail-video-item"><span>วิดีโอ ${index + 1}${video.name ? ` · ${escapeHtml(video.name)}` : ''}</span>${meetingVideoPlayerHtml(video.url, video.name)}</div>`).join('')}</div>` : '';
 }
 
 function findMeetingPost(postId) {
@@ -4563,7 +4583,9 @@ function openMeetingEditor(postId = '', defaultContentType = 'Meeting') {
   $('#meetingPostSlideFile').value = '';
   $('#meetingPostVideo').value = '';
   $('#meetingPostVideoUrl').value = row ? (row.VideoURL || '') : '';
-  renderMeetingVideoCurrent(row);
+  clearMeetingVideoItems();
+  state.meetingVideoItems = row ? meetingVideoList(row).map(item => ({ id: ++meetingVideoSeq, type: 'url', url: item.url, name: item.name })) : [];
+  renderMeetingVideoManager();
   renderMeetingSlideFileCurrent(row);
   $('#deleteMeetingPostButton').classList.toggle('hidden', !row);
   syncMeetingEditorType();
@@ -4664,22 +4686,104 @@ function renderMeetingSlideFileCurrent(row) {
   }
 }
 
-function renderMeetingVideoCurrent(row) {
-  const el = $('#meetingVideoCurrent');
-  if (!el) return;
-  if (row && String(row.VideoURL || '').trim()) {
-    el.classList.remove('hidden');
-    el.innerHTML = `<span>วิดีโอปัจจุบัน: <a href="${escapeAttr(row.VideoURL)}" target="_blank" rel="noopener">▶ ${escapeHtml(row.VideoFileName || 'เปิดวิดีโอ')}</a></span><label class="check-label"><input id="meetingRemoveVideo" type="checkbox"> ลบวิดีโอที่แนบไว้</label>`;
-  } else {
-    el.classList.add('hidden');
-    el.innerHTML = '';
+let meetingVideoSeq = 0;
+
+function clearMeetingVideoItems() {
+  (state.meetingVideoItems || []).forEach(item => { if (item.objectUrl) URL.revokeObjectURL(item.objectUrl); });
+  state.meetingVideoItems = [];
+}
+
+function renderMeetingVideoManager() {
+  const wrap = $('#meetingVideoManager');
+  const markerSelect = $('#meetingVideoMarkerSelect');
+  if (!wrap) return;
+  const items = state.meetingVideoItems || [];
+  if (markerSelect) {
+    markerSelect.innerHTML = items.map((item, index) => `<option value="${index + 1}">วิดีโอ ${index + 1}${item.name ? ` · ${escapeHtml(item.name)}` : ''}</option>`).join('');
+    markerSelect.disabled = !items.length;
   }
+  if (!items.length) {
+    wrap.innerHTML = '<div class="meeting-video-empty">ยังไม่มีวิดีโอ — เพิ่มลิงก์หรือเลือกไฟล์ด้านบน</div>';
+    return;
+  }
+  wrap.innerHTML = items.map((item, index) => {
+    const href = item.type === 'file' ? item.objectUrl : item.url;
+    const name = item.name || (item.type === 'file' ? item.file?.name : '') || 'เปิดวิดีโอ';
+    return `<div class="meeting-video-item" data-vidx="${index}">
+      <div class="meeting-video-item-number">วิดีโอ ${index + 1}${item.type === 'file' ? ' <span>ไฟล์ใหม่</span>' : ''}</div>
+      <a href="${escapeAttr(href)}" target="_blank" rel="noopener" title="${escapeAttr(href)}">▶ ${escapeHtml(name)}</a>
+      <div class="meeting-video-item-actions"><button type="button" data-vmove="-1" ${index === 0 ? 'disabled' : ''} aria-label="เลื่อนขึ้น">▲</button><button type="button" data-vdel aria-label="ลบวิดีโอ">🗑</button><button type="button" data-vmove="1" ${index === items.length - 1 ? 'disabled' : ''} aria-label="เลื่อนลง">▼</button></div>
+    </div>`;
+  }).join('');
+  $$('[data-vmove]', wrap).forEach(button => button.addEventListener('click', () => moveMeetingVideo(Number(button.closest('[data-vidx]').dataset.vidx), Number(button.dataset.vmove))));
+  $$('[data-vdel]', wrap).forEach(button => button.addEventListener('click', () => removeMeetingVideo(Number(button.closest('[data-vidx]').dataset.vidx))));
+}
+
+function addMeetingVideoUrl() {
+  const input = $('#meetingPostVideoUrl');
+  const url = input.value.trim();
+  if (!url) return showToast('วางลิงก์วิดีโอก่อนเพิ่ม', 'warning');
+  if ((state.meetingVideoItems || []).length >= 20) return showToast('เพิ่มได้ไม่เกิน 20 คลิปต่อหัวข้อ', 'warning');
+  try {
+    const parsed = new URL(url);
+    if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('invalid scheme');
+  } catch (_) { return showToast('กรุณาระบุลิงก์วิดีโอที่ขึ้นต้นด้วย https://', 'warning'); }
+  state.meetingVideoItems.push({ id: ++meetingVideoSeq, type: 'url', url, name: 'วิดีโอจากลิงก์' });
+  input.value = '';
+  renderMeetingVideoManager();
+}
+
+function handleMeetingVideoFileChange(event) {
+  const selectedFiles = Array.from(event.target.files || []);
+  event.target.value = '';
+  const items = state.meetingVideoItems || (state.meetingVideoItems = []);
+  selectedFiles.forEach(file => {
+    if (items.length >= 20) { showToast('เพิ่มได้ไม่เกิน 20 คลิปต่อหัวข้อ', 'warning'); return; }
+    const extension = (file.name.match(/\.([^.]+)$/) || [])[1] || '';
+    if (!/^(mp4|webm|mov)$/i.test(extension)) { showToast(`ไม่รองรับไฟล์ ${file.name} · เลือก MP4, WebM หรือ MOV`, 'warning'); return; }
+    if (file.size > 10 * 1024 * 1024) { showToast(`ไฟล์ ${file.name} มีขนาดเกิน 10 MB`, 'warning'); return; }
+    items.push({ id: ++meetingVideoSeq, type: 'file', file, name: file.name, objectUrl: URL.createObjectURL(file) });
+  });
+  renderMeetingVideoManager();
+}
+
+function moveMeetingVideo(idx, dir) {
+  const items = state.meetingVideoItems || [];
+  const next = idx + dir;
+  if (next < 0 || next >= items.length) return;
+  [items[idx], items[next]] = [items[next], items[idx]];
+  renderMeetingVideoManager();
+}
+
+function remapMeetingVideoReferences(previousItems, nextItems) {
+  const detail = $('#meetingPostDetail');
+  if (!detail) return;
+  const oldIdByNumber = new Map(previousItems.map((item, index) => [index + 1, item.id]));
+  const nextNumberById = new Map(nextItems.map((item, index) => [item.id, index + 1]));
+  let genericIndex = 0;
+  detail.value = detail.value.replace(/\[\s*(?:วิดีโอ|video)\s*(\d*)\s*\]/gi, (marker, rawNumber) => {
+    const number = rawNumber ? Number(rawNumber) : ++genericIndex;
+    const videoId = oldIdByNumber.get(number);
+    if (!videoId) return marker;
+    const nextNumber = nextNumberById.get(videoId);
+    return nextNumber ? `[วิดีโอ${nextNumber}]` : '';
+  });
+}
+
+function removeMeetingVideo(idx) {
+  const previousItems = state.meetingVideoItems.slice();
+  const item = state.meetingVideoItems[idx];
+  if (item?.objectUrl) URL.revokeObjectURL(item.objectUrl);
+  state.meetingVideoItems.splice(idx, 1);
+  remapMeetingVideoReferences(previousItems, state.meetingVideoItems);
+  renderMeetingVideoManager();
 }
 
 function insertMeetingVideoMarker() {
   const detail = $('#meetingPostDetail');
   if (!detail) return;
-  const marker = '[วิดีโอ]';
+  const number = Number($('#meetingVideoMarkerSelect')?.value || 1);
+  const marker = `[วิดีโอ${number}]`;
   const start = Number.isFinite(detail.selectionStart) ? detail.selectionStart : detail.value.length;
   const end = Number.isFinite(detail.selectionEnd) ? detail.selectionEnd : start;
   const before = detail.value.slice(0, start);
@@ -4689,33 +4793,6 @@ function insertMeetingVideoMarker() {
   const cursor = before.length + spacer.length + marker.length;
   detail.focus();
   detail.setSelectionRange(cursor, cursor);
-}
-
-function handleMeetingVideoFileChange(event) {
-  const file = event.target.files?.[0];
-  if (!file) return;
-  const extension = (file.name.match(/\.([^.]+)$/) || [])[1] || '';
-  if (!/^(mp4|webm|mov)$/i.test(extension)) {
-    event.target.value = '';
-    showToast('รองรับไฟล์วิดีโอ MP4, WebM และ MOV เท่านั้น', 'warning');
-    return;
-  }
-  if (file.size > 10 * 1024 * 1024) {
-    event.target.value = '';
-    showToast('ไฟล์วิดีโอต้องมีขนาดไม่เกิน 10 MB', 'warning');
-    return;
-  }
-  $('#meetingPostVideoUrl').value = '';
-  const removeVideo = $('#meetingRemoveVideo');
-  if (removeVideo) removeVideo.checked = false;
-}
-
-function handleMeetingVideoUrlInput(event) {
-  if (event.target.value) {
-    if ($('#meetingPostVideo').files?.length) $('#meetingPostVideo').value = '';
-    const removeVideo = $('#meetingRemoveVideo');
-    if (removeVideo) removeVideo.checked = false;
-  }
 }
 
 function meetingDriveFileId(url) {
@@ -4808,20 +4885,19 @@ async function saveMeetingPostFromForm() {
   const topic = $('#meetingPostTopic').value.trim();
   if (!topic) return showToast('กรุณากรอกหัวข้อ', 'warning');
   const postId = $('#meetingPostId').value;
-  const videoFile = ($('#meetingPostVideo').files || [])[0];
-  const removeVideo = $('#meetingRemoveVideo') && $('#meetingRemoveVideo').checked;
-  const enteredVideoUrl = $('#meetingPostVideoUrl').value.trim();
-  if (videoFile && videoFile.size > 10 * 1024 * 1024) return showToast('ไฟล์วิดีโอต้องมีขนาดไม่เกิน 10 MB', 'warning');
-  if (enteredVideoUrl && !removeVideo) {
-    try {
-      const parsedVideoUrl = new URL(enteredVideoUrl);
-      if (!['http:', 'https:'].includes(parsedVideoUrl.protocol)) throw new Error('invalid scheme');
-    } catch (_) { return showToast('กรุณาระบุลิงก์วิดีโอที่ถูกต้อง โดยขึ้นต้นด้วย https://', 'warning'); }
+  const videoItems = state.meetingVideoItems || [];
+  if ($('#meetingPostVideoUrl').value.trim()) return showToast('กด “เพิ่มลิงก์” ก่อนบันทึก เพื่อเก็บวิดีโอไว้ในรายการ', 'warning');
+  if (videoItems.length > 20) return showToast('เพิ่มได้ไม่เกิน 20 คลิปต่อหัวข้อ', 'warning');
+  const newVideoItems = videoItems.filter(item => item.type === 'file');
+  for (const item of videoItems) {
+    if (item.type === 'file' && item.file?.size > 10 * 1024 * 1024) return showToast(`ไฟล์ ${item.file.name} มีขนาดเกิน 10 MB`, 'warning');
+    if (item.type === 'url') {
+      try {
+        const parsedVideoUrl = new URL(item.url);
+        if (!['http:', 'https:'].includes(parsedVideoUrl.protocol)) throw new Error('invalid scheme');
+      } catch (_) { return showToast('พบลิงก์วิดีโอไม่ถูกต้อง กรุณาลบแล้วเพิ่มลิงก์ใหม่', 'warning'); }
+    }
   }
-  const existingVideoUrl = state.editingMeetingPost?.VideoURL || '';
-  const videoUrlForSave = removeVideo ? '' : videoFile ? existingVideoUrl : enteredVideoUrl;
-  const videoNameForSave = removeVideo ? '' : videoFile ? (state.editingMeetingPost?.VideoFileName || '') :
-    enteredVideoUrl === existingVideoUrl ? (state.editingMeetingPost?.VideoFileName || '') : (enteredVideoUrl ? 'วิดีโอจากลิงก์' : '');
   const payload = {
     contentType: $('#meetingPostType').value,
     meetingDate: $('#meetingPostDate').value || localDateInput(new Date()),
@@ -4831,8 +4907,6 @@ async function saveMeetingPostFromForm() {
     priority: $('#meetingPostPriority').value,
     topic,
     detail: $('#meetingPostDetail').value.trim(),
-    videoUrl: videoUrlForSave,
-    videoFileName: videoNameForSave,
     trainingTime: $('#meetingTrainingTime').value,
     trainingPlace: $('#meetingTrainingPlace').value.trim(),
     trainingUnit: $('#meetingTrainingUnit').value.trim(),
@@ -4842,6 +4916,9 @@ async function saveMeetingPostFromForm() {
     pinned: $('#meetingPostPinned').checked,
     ackUserIds: $$('#meetingAckUserGroup input:checked').map(input => input.value)
   };
+  // Save all URL entries with the post immediately. When local files are
+  // present, upload those first and persist the full ordered list afterward.
+  if (!newVideoItems.length) payload.videoItemsJson = JSON.stringify(videoItems.map(item => ({ url: item.url, name: item.name || '' })));
   if (postId) payload.postId = postId;
   const photoItems = state.meetingPhotoItems || [];
   const slideFile = ($('#meetingPostSlideFile').files || [])[0];
@@ -4893,13 +4970,23 @@ async function saveMeetingPostFromForm() {
     } else if (removeSlide && savedId) {
       await apiCall('saveMeetingPost', { postId: savedId, slideFileUrl: '', slideFileName: '', slideImageUrls: '' });
     }
-    if (videoFile && savedId) {
-      $('#loadingText').textContent = 'กำลังอัปโหลดวิดีโอ...';
-      const uploadedVideo = await uploadMeetingVideo(videoFile, savedId);
-      if (!uploadedVideo?.DriveFileURL) throw new Error('อัปโหลดวิดีโอไม่สำเร็จ กรุณาลองอีกครั้ง');
-      await apiCall('saveMeetingPost', { postId: savedId, videoUrl: uploadedVideo.DriveFileURL, videoFileName: videoFile.name });
+    if (newVideoItems.length && savedId) {
+      const finalVideoItems = [];
+      let uploadedCount = 0;
+      for (const item of videoItems) {
+        if (item.type === 'url') {
+          finalVideoItems.push({ url: item.url, name: item.name || '' });
+          continue;
+        }
+        $('#loadingText').textContent = `กำลังอัปโหลดวิดีโอ ${++uploadedCount}/${newVideoItems.length}...`;
+        const uploadedVideo = await uploadMeetingVideo(item.file, savedId);
+        if (!uploadedVideo?.DriveFileURL) throw new Error(`อัปโหลด ${item.file.name} ไม่สำเร็จ กรุณาลองบันทึกอีกครั้ง`);
+        finalVideoItems.push({ url: uploadedVideo.DriveFileURL, name: item.file.name });
+      }
+      await apiCall('saveMeetingPost', { postId: savedId, videoItemsJson: JSON.stringify(finalVideoItems) });
     }
     clearMeetingPhotoItems();
+    clearMeetingVideoItems();
     $('#meetingDialog').close();
     showToast(contentType === 'Training' ? (postId ? 'บันทึกการแก้ไข Training แล้ว' : 'บันทึกหัวข้อ Training แล้ว') : (postId ? 'แก้ไขหัวข้อแล้ว' : 'เพิ่มหัวข้อลงบอร์ดแล้ว'), 'success');
     await loadMeetingBoard();
@@ -5044,6 +5131,22 @@ function meetingPhotoList(row) {
   return String(row.PhotoURL || '').split(',').map(u => u.trim()).filter(Boolean);
 }
 
+function meetingVideoList(row) {
+  if (!row) return [];
+  const rawItems = row.VideoItemsJSON;
+  if (String(rawItems || '').trim()) {
+    try {
+      const parsed = Array.isArray(rawItems) ? rawItems : JSON.parse(rawItems);
+      if (Array.isArray(parsed)) {
+        const items = parsed.map(item => ({ url: String(item?.url || '').trim(), name: String(item?.name || '').trim() })).filter(item => item.url);
+        if (items.length || !String(row.VideoURL || '').trim()) return items;
+      }
+    } catch (_) { /* fall back to the legacy single-video columns */ }
+  }
+  const legacyUrl = String(row.VideoURL || '').trim();
+  return legacyUrl ? [{ url: legacyUrl, name: String(row.VideoFileName || '').trim() }] : [];
+}
+
 // A [รูป1] / [ภาพ2] / [pic3] marker in a section pins that photo to that slide.
 const MEETING_PHOTO_MARKER = /\[\s*(?:รูปที่|รูป|ภาพ|pic|img|image)\s*(\d+)\s*\]/gi;
 function meetingExtractPhotoRefs(text) {
@@ -5068,16 +5171,31 @@ function meetingPhotoContentParts(text, photos) {
   if (cursor < source.length) parts.push({ type: 'text', text: source.slice(cursor) });
   return parts;
 }
-const MEETING_VIDEO_MARKER = /\[\s*(?:วิดีโอ|video)\s*\]/gi;
+const MEETING_VIDEO_MARKER = /\[\s*(?:วิดีโอ|video)\s*(\d*)\s*\]/gi;
 function meetingHasVideoRef(text) {
   MEETING_VIDEO_MARKER.lastIndex = 0;
   return MEETING_VIDEO_MARKER.test(String(text || ''));
 }
-function meetingMediaContentParts(text, photos, videoUrl = '', videoName = '') {
+function meetingGenericVideoRefCount(text) {
+  let count = 0;
+  String(text || '').replace(MEETING_VIDEO_MARKER, (_, number) => { if (!number) count += 1; return ''; });
+  return count;
+}
+function meetingExtractVideoRefs(text, genericStart = 0) {
+  const indexes = [];
+  let genericIndex = genericStart;
+  String(text || '').replace(MEETING_VIDEO_MARKER, (_, number) => {
+    indexes.push(number ? Number(number) - 1 : genericIndex++);
+    return '';
+  });
+  return indexes;
+}
+function meetingMediaContentParts(text, photos, videos = [], genericStart = 0) {
   const source = String(text || '');
   const parts = [];
-  const marker = /\[\s*(?:(?:รูปที่|รูป|ภาพ|pic|img|image)\s*(\d+)|(วิดีโอ|video))\s*\]/gi;
+  const marker = /\[\s*(?:(?:รูปที่|รูป|ภาพ|pic|img|image)\s*(\d+)|(วิดีโอ|video)\s*(\d*))\s*\]/gi;
   let cursor = 0;
+  let genericVideoIndex = genericStart;
   let match;
   while ((match = marker.exec(source))) {
     if (match.index > cursor) parts.push({ type: 'text', text: source.slice(cursor, match.index) });
@@ -5086,10 +5204,11 @@ function meetingMediaContentParts(text, photos, videoUrl = '', videoName = '') {
       const url = photos[number - 1];
       if (url) parts.push({ type: 'photo', url, number });
       else parts.push({ type: 'text', text: match[0] });
-    } else if (videoUrl) {
-      parts.push({ type: 'video', url: videoUrl, fileName: videoName });
     } else {
-      parts.push({ type: 'text', text: match[0] });
+      const videoIndex = match[3] ? Number(match[3]) - 1 : genericVideoIndex++;
+      const video = videos[videoIndex];
+      if (video) parts.push({ type: 'video', url: video.url, fileName: video.name, number: videoIndex + 1 });
+      else parts.push({ type: 'text', text: match[0] });
     }
     cursor = match.index + match[0].length;
   }
@@ -5112,15 +5231,20 @@ function meetingTvPostSlides(deck = meetingTvDeck()) {
   deck.forEach((item, deckPos) => {
     const rawSections = meetingSlideSections(item.row.Detail);
     const allPhotos = meetingPhotoList(item.row);
-    const allVideo = String(item.row.VideoURL || '').trim();
-    const allVideoName = String(item.row.VideoFileName || '').trim();
+    const allVideos = meetingVideoList(item.row);
     const used = new Set();
+    const usedVideos = new Set();
+    let genericVideoOffset = 0;
     const perSection = rawSections.map(text => {
       const refs = meetingExtractPhotoRefs(text).filter(i => i >= 0 && i < allPhotos.length);
       refs.forEach(i => used.add(i));
       const hasPhotoMarkers = meetingExtractPhotoRefs(text).length > 0;
       const hasVideoMarkers = meetingHasVideoRef(text);
-      return { text: meetingStripMediaRefs(text), rawText: text, photoIdx: refs, hasPhotoMarkers: hasPhotoMarkers, hasVideoMarkers: hasVideoMarkers, hasMediaMarkers: hasPhotoMarkers || hasVideoMarkers, appendVideo: false };
+      const videoRefs = meetingExtractVideoRefs(text, genericVideoOffset).filter(i => i >= 0 && i < allVideos.length);
+      videoRefs.forEach(i => usedVideos.add(i));
+      const genericStart = genericVideoOffset;
+      genericVideoOffset += meetingGenericVideoRefCount(text);
+      return { text: meetingStripMediaRefs(text), rawText: text, photoIdx: refs, videoMarkerOffset: genericStart, videoIdx: [], hasPhotoMarkers: hasPhotoMarkers, hasVideoMarkers: hasVideoMarkers, hasMediaMarkers: hasPhotoMarkers || hasVideoMarkers };
     });
     const hasExplicitPhotoRefs = rawSections.some(text => meetingExtractPhotoRefs(text).length > 0);
     const hasExplicitVideoRefs = rawSections.some(meetingHasVideoRef);
@@ -5135,21 +5259,25 @@ function meetingTvPostSlides(deck = meetingTvDeck()) {
     } else if (perSection.length && unused.length) {
       perSection.push({ text: 'รูปที่ยังไม่ได้ระบุตำแหน่งในรายละเอียด', rawText: 'รูปที่ยังไม่ได้ระบุตำแหน่งในรายละเอียด', photoIdx: unused, isUnassignedPhotos: true });
     }
-    if (allVideo && !hasExplicitVideoRefs && perSection.length) {
+    const unusedVideos = allVideos.map((_, i) => i).filter(i => !usedVideos.has(i));
+    if (unusedVideos.length && !hasExplicitVideoRefs && perSection.length) {
       const videoTarget = [...perSection].reverse().find(section => !section.isUnassignedPhotos) || perSection[perSection.length - 1];
-      videoTarget.appendVideo = true;
+      videoTarget.videoIdx = videoTarget.videoIdx.concat(unusedVideos);
       videoTarget.hasMediaMarkers = true;
+    } else if (unusedVideos.length) {
+      perSection.push({ text: 'วิดีโอที่ยังไม่ได้ระบุตำแหน่งในรายละเอียด', rawText: '', photoIdx: [], videoIdx: unusedVideos, hasPhotoMarkers: false, hasVideoMarkers: false, hasMediaMarkers: true, isUnassignedVideos: true });
     }
     const postSlides = perSection.map(sec => {
       const seen = new Set();
       const dedup = sec.photoIdx.filter(i => !seen.has(i) && seen.add(i));
-      const contentParts = sec.hasMediaMarkers ? meetingMediaContentParts(sec.rawText, allPhotos, allVideo, allVideoName) : [];
-      if (sec.appendVideo) contentParts.push({ type: 'video', url: allVideo, fileName: allVideoName });
+      const contentParts = sec.hasMediaMarkers && sec.rawText ? meetingMediaContentParts(sec.rawText, allPhotos, allVideos, sec.videoMarkerOffset) : [];
+      (sec.videoIdx || []).forEach(i => contentParts.push({ type: 'video', url: allVideos[i].url, fileName: allVideos[i].name, number: i + 1 }));
       return {
         row: item.row, carry: item.carry, deckPos, sectionText: sec.text, isDoc: false,
         hasPhotoMarkers: Boolean(sec.hasPhotoMarkers), hasVideoMarkers: Boolean(sec.hasVideoMarkers), hasMediaMarkers: Boolean(sec.hasMediaMarkers),
         contentParts: contentParts,
         isUnassignedPhotos: Boolean(sec.isUnassignedPhotos),
+        isUnassignedVideos: Boolean(sec.isUnassignedVideos),
         photos: dedup.map(i => allPhotos[i]), photoNumbers: dedup.map(i => i + 1)
       };
     });
@@ -5461,7 +5589,7 @@ function meetingTvPostSlideHtml(slide) {
     if (slide.hasMediaMarkers) {
       const inlineParts = (slide.contentParts || []).map(part => part.type === 'photo'
         ? `<figure class="mtg-tv-inline-photo"><img src="${escapeAttr(driveThumbnailUrl_(part.url, 1200))}" data-photo-url="${escapeAttr(part.url)}" alt="รูปที่ ${part.number}" loading="lazy"><figcaption>รูปที่ ${part.number}</figcaption></figure>`
-        : part.type === 'video' ? meetingVideoPlayerHtml(part.url, part.fileName, 'mtg-tv-video') : escapeHtml(part.text)).join('');
+        : part.type === 'video' ? `<div class="mtg-tv-video-item"><span>วิดีโอ ${part.number}${part.fileName ? ` · ${escapeHtml(part.fileName)}` : ''}</span>${meetingVideoPlayerHtml(part.url, part.fileName, 'mtg-tv-video')}</div>` : escapeHtml(part.text)).join('');
       const hasInlinePhoto = (slide.contentParts || []).some(part => part.type === 'photo');
       const hasInlineVideo = (slide.contentParts || []).some(part => part.type === 'video');
       const loosePhotos = photos.length && !slide.hasPhotoMarkers
@@ -5478,6 +5606,7 @@ function meetingTvPostSlideHtml(slide) {
         ${isMeetingPinned(row) ? '<span class="mtg-tv-chip">📌 ปักหมุด</span>' : ''}
         ${isTraining ? '<span class="mtg-tv-chip mtg-tv-training-chip">🎓 TRAINING</span>' : ''}
         ${slide.isUnassignedPhotos ? '<span class="mtg-tv-chip mtg-tv-sectionchip">⚠️ รูปที่ยังไม่ได้กำหนดจุด</span>' : ''}
+        ${slide.isUnassignedVideos ? '<span class="mtg-tv-chip mtg-tv-sectionchip">⚠️ วิดีโอที่ยังไม่ได้กำหนดจุด</span>' : ''}
         <span class="mtg-tv-chip mtg-tv-cat ${cat.cls}">${cat.icon} ${escapeHtml(row.Category || 'ทั่วไป')}</span>
         ${priority === 'ด่วน' ? '<span class="mtg-tv-chip mtg-tv-urgent">ด่วน</span>' : priority === 'สำคัญ' ? '<span class="mtg-tv-chip mtg-tv-important">สำคัญ</span>' : ''}
         ${carry ? `<span class="mtg-tv-chip mtg-tv-carrychip">⏳ ค้างจาก ${formatDate(row.MeetingDate)}</span>` : ''}
