@@ -4582,7 +4582,9 @@ function openMeetingEditor(postId = '', defaultContentType = 'Meeting') {
   renderMeetingPhotoManager();
   $('#meetingPostSlideFile').value = '';
   $('#meetingPostVideo').value = '';
-  $('#meetingPostVideoUrl').value = row ? (row.VideoURL || '') : '';
+  // Existing links are represented in the ordered manager below; leave the
+  // add-link input empty so editing a post never treats an old URL as pending.
+  $('#meetingPostVideoUrl').value = '';
   clearMeetingVideoItems();
   state.meetingVideoItems = row ? meetingVideoList(row).map(item => ({ id: ++meetingVideoSeq, type: 'url', url: item.url, name: item.name })) : [];
   renderMeetingVideoManager();
