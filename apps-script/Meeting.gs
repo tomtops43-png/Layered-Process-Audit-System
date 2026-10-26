@@ -50,10 +50,12 @@ function normalizeMeetingVideoItems_(value) {
   return items.map(function (item) {
     var url = cleanString_(item && item.url);
     var name = cleanString_(item && item.name);
+    var downloadUrl = cleanString_(item && item.downloadUrl);
     if (!url || !/^https?:\/\/[^\s]+$/i.test(url)) throw new Error('พบลิงก์วิดีโอที่ไม่ถูกต้อง');
     if (url.length > 2000) throw new Error('ลิงก์วิดีโอยาวเกินไป');
     if (name.length > 255) throw new Error('ชื่อวิดีโอต้องไม่เกิน 255 ตัวอักษร');
-    return { url: url, name: name };
+    if (downloadUrl && (!/^https?:\/\/[^\s]+$/i.test(downloadUrl) || downloadUrl.length > 2000)) throw new Error('ลิงก์ไฟล์วิดีโอต้นฉบับไม่ถูกต้อง');
+    return { url: url, name: name, downloadUrl: downloadUrl };
   });
 }
 

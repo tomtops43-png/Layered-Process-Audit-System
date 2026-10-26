@@ -91,6 +91,11 @@ function uploadFile(payload, currentUser) {
       try { file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); }
       catch (sharingError) { console.warn('Drive sharing could not be changed: ' + sharingError.message); }
     }
+    var downloadUrl = '';
+    if (valuesEqual_(payload.relatedType, 'MeetingVideo')) {
+      try { downloadUrl = file.getDownloadUrl(); }
+      catch (downloadUrlError) { console.warn('Direct video URL is unavailable: ' + downloadUrlError.message); }
+    }
 
     var timestamp = formatDateTimeBangkok(now);
     var periodMonth = getPeriodMonth(now);
@@ -104,7 +109,7 @@ function uploadFile(payload, currentUser) {
     });
     return jsonResponse(true, 'File uploaded successfully.', {
       AttachmentID: attachmentId, DriveFileID: file.getId(), DriveFileURL: fileUrl,
-      FileName: safeName, MimeType: payload.mimeType, FileSize: bytes.length
+      DriveFileDownloadURL: downloadUrl, FileName: safeName, MimeType: payload.mimeType, FileSize: bytes.length
     });
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
