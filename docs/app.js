@@ -4632,6 +4632,7 @@ function openMeetingEditor(postId = '', defaultContentType = 'Meeting') {
   state.meetingPhotoItems = row ? meetingPhotoList(row).map(url => ({ id: ++meetingPhotoSeq, type: 'url', url })) : [];
   renderMeetingPhotoManager();
   $('#meetingPostSlideFile').value = '';
+  $('#meetingPostSlideAnimationUrl').value = String(row?.SlideAnimationURL || '');
   $('#meetingPostVideo').value = '';
   // Existing links are represented in the ordered manager below; leave the
   // add-link input empty so editing a post never treats an old URL as pending.
@@ -4854,6 +4855,24 @@ function meetingDriveFileId(url) {
   return m ? m[1] : '';
 }
 
+function meetingAnimationEmbedUrl(value) {
+  let raw = String(value || '').trim().replace(/&amp;/gi, '&');
+  const iframeMatch = raw.match(/<iframe\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i);
+  if (iframeMatch) raw = iframeMatch[1];
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:') return '';
+    if (url.hostname === 'docs.google.com') {
+      const match = url.pathname.match(/^\/presentation\/d\/([\w-]+)\/(?:edit|present|embed)(?:\/.*)?$/i);
+      return match ? `https://docs.google.com/presentation/d/${encodeURIComponent(match[1])}/embed?start=false&loop=false` : '';
+    }
+    if (url.hostname === 'onedrive.live.com' && /^\/embed\/?$/i.test(url.pathname)) return url.href;
+    if (url.hostname === 'view.officeapps.live.com' && /^\/op\/embed\.aspx$/i.test(url.pathname)) return url.href;
+    if (/^[a-z0-9-]+\.sharepoint\.com$/i.test(url.hostname) && /\/_layouts\/15\/doc\.aspx$/i.test(url.pathname) && /[?&]action=embedview(?:&|$)/i.test(url.search)) return url.href;
+  } catch (_) {}
+  return '';
+}
+
 function meetingDriveVideoDownloadUrl(url) {
   const rawUrl = String(url || '').trim();
   let parsed;
@@ -4973,6 +4992,7 @@ async function saveMeetingPostFromForm() {
     priority: $('#meetingPostPriority').value,
     topic,
     detail: $('#meetingPostDetail').value.trim(),
+    slideAnimationUrl: $('#meetingPostSlideAnimationUrl').value.trim(),
     trainingTime: $('#meetingTrainingTime').value,
     trainingPlace: $('#meetingTrainingPlace').value.trim(),
     trainingUnit: $('#meetingTrainingUnit').value.trim(),
@@ -5022,19 +5042,19 @@ async function saveMeetingPostFromForm() {
       const up = await uploadMeetingDoc(slideFile, savedId);
       if (up?.DriveFileURL) {
         await apiCall('saveMeetingPost', { postId: savedId, slideFileUrl: up.DriveFileURL, slideFileName: slideFile.name, slideImageUrls: '' });
-        // PPT/PPTX get converted to one image per slide server-side; PDF stays as an embed.
+        // PPT/PPTX static images are a fallback; use the optional hosted embed URL for animations.
         if (/\.pptx?$/i.test(slideFile.name) && up.DriveFileID) {
           $('#loadingText').textContent = 'กำลังแปลงสไลด์ PPT เป็นรูป... (อาจใช้เวลาสักครู่)';
           try {
             const conv = await apiCall('convertMeetingSlideFile', { postId: savedId, driveFileId: up.DriveFileID });
-            if (conv && conv.converted === false) showToast('แนบไฟล์แล้ว (ฝังตัวพรีวิว) — แปลงเป็นรูปได้เฉพาะ PPT/PPTX', 'info', 6000);
+            if (conv && conv.converted === false) showToast('แนบไฟล์แล้ว (ใช้พรีวิวต้นฉบับ) — ภาพนิ่งสำรองยังไม่พร้อม', 'info', 6000);
           } catch (convErr) {
-            showToast('แนบไฟล์แล้ว แต่แปลงเป็นรูปไม่สำเร็จ: ' + convErr.message + ' — จะฝังตัวพรีวิวแทน', 'warning', 9000);
+            showToast('แนบไฟล์แล้ว แต่สร้างภาพนิ่งสำรองไม่สำเร็จ: ' + convErr.message + ' — ยังใช้ลิงก์ Animation ที่ระบุได้', 'warning', 9000);
           }
         }
       }
     } else if (removeSlide && savedId) {
-      await apiCall('saveMeetingPost', { postId: savedId, slideFileUrl: '', slideFileName: '', slideImageUrls: '' });
+      await apiCall('saveMeetingPost', { postId: savedId, slideFileUrl: '', slideFileName: '', slideImageUrls: '', slideAnimationUrl: '' });
     }
     if (newVideoItems.length && savedId) {
       const finalVideoItems = [];
@@ -5352,7 +5372,11 @@ function meetingTvPostSlides(deck = meetingTvDeck()) {
     });
     const pptImages = String(item.row.SlideImageURLs || '').split(',').map(u => u.trim()).filter(Boolean);
     const docUrl = String(item.row.SlideFileURL || '').trim();
-    if (pptImages.length) {
+    const animationUrl = String(item.row.SlideAnimationURL || '').trim();
+    const animationEmbedUrl = meetingAnimationEmbedUrl(animationUrl);
+    if (animationEmbedUrl) {
+      postSlides.push({ row: item.row, carry: item.carry, deckPos, isAnimatedPpt: true, animationUrl: animationEmbedUrl, pptTotal: pptImages.length || 1 });
+    } else if (pptImages.length) {
       // Converted PPT: one native image slide per page.
       pptImages.forEach((url, pi) => postSlides.push({ row: item.row, carry: item.carry, deckPos, isPpt: true, pptUrl: url, pptPage: pi + 1, pptTotal: pptImages.length }));
     } else if (docUrl) {
@@ -5646,7 +5670,13 @@ function meetingTvPostSlideHtml(slide) {
   if (isLast && state.meetingCanCreate && st === 'open') actions.push(`<button class="mtg-tv-action mtg-tv-action-primary" data-mtg-status="Discussed" data-mtg-id="${escapeAttr(row.PostID)}">✓ ${completionLabel} — ไปหัวข้อถัดไป</button>`);
   if (isLast && state.meetingCanCreate && st === 'discussed') actions.push(`<button class="mtg-tv-action" data-mtg-status="Closed" data-mtg-id="${escapeAttr(row.PostID)}">${isTraining ? 'ปิด Training' : 'จบเรื่อง'}</button>`);
   let mid;
-  if (slide.isPpt) {
+  if (slide.isAnimatedPpt) {
+    const embedUrl = meetingAnimationEmbedUrl(slide.animationUrl);
+    mid = embedUrl
+      ? `<div class="mtg-tv-embed mtg-tv-animated-ppt"><iframe src="${escapeAttr(embedUrl)}" loading="lazy" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe></div>
+        <div class="mtg-tv-embed-hint">📊 ${escapeHtml(slide.row.SlideFileName || 'PPT')} · คลิกในสไลด์หรือกด Space/→ เพื่อเล่น Animation ทีละขั้น แล้วกด “ถัดไป” ของหน้าประชุมเมื่อพร้อม · <a href="${escapeAttr(embedUrl)}" target="_blank" rel="noopener">เปิดเต็มจอ ↗</a></div>`
+      : `<div class="mtg-tv-embed-hint">ลิงก์ Animation ใช้ไม่ได้ · กรุณาแก้ Embed URL ในหัวข้อประชุม</div>`;
+  } else if (slide.isPpt) {
     mid = `<div class="mtg-tv-photo-hint">🔍 คลิกรูปเพื่อขยาย แล้วใช้ + / − เพื่อซูม</div><div class="mtg-tv-ppt"><img src="${escapeAttr(driveThumbnailUrl_(slide.pptUrl, 1600))}" data-photo-url="${escapeAttr(slide.pptUrl)}" alt="สไลด์ PPT ${slide.pptPage}" loading="lazy"></div>`;
   } else if (slide.isDoc) {
     const fileId = meetingDriveFileId(slide.docUrl);
@@ -5679,6 +5709,7 @@ function meetingTvPostSlideHtml(slide) {
         <span class="mtg-tv-chip mtg-tv-cat ${cat.cls}">${cat.icon} ${escapeHtml(row.Category || 'ทั่วไป')}</span>
         ${priority === 'ด่วน' ? '<span class="mtg-tv-chip mtg-tv-urgent">ด่วน</span>' : priority === 'สำคัญ' ? '<span class="mtg-tv-chip mtg-tv-important">สำคัญ</span>' : ''}
         ${carry ? `<span class="mtg-tv-chip mtg-tv-carrychip">⏳ ค้างจาก ${formatDate(row.MeetingDate)}</span>` : ''}
+        ${slide.isAnimatedPpt ? '<span class="mtg-tv-chip mtg-tv-sectionchip">📊 PPT · Animation ทีละขั้น</span>' : ''}
         ${slide.isPpt ? `<span class="mtg-tv-chip mtg-tv-sectionchip">📊 PPT ${slide.pptPage}/${slide.pptTotal}</span>` : ''}
         ${slide.isDoc ? '<span class="mtg-tv-chip mtg-tv-sectionchip">📊 สไลด์ PPT</span>' : ''}
         ${sectionCount > 1 ? `<span class="mtg-tv-chip mtg-tv-sectionchip">สไลด์ ${sectionIndex + 1}/${sectionCount}</span>` : ''}

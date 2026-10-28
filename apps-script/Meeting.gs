@@ -317,10 +317,14 @@ function saveMeetingPost(payload, user) {
       if (payload.slideFileUrl !== undefined) {
         updates.SlideFileURL = cleanString_(payload.slideFileUrl);
         // Clearing the file also drops any converted slide images.
-        if (!updates.SlideFileURL) updates.SlideImageURLs = '';
+        if (!updates.SlideFileURL) {
+          updates.SlideImageURLs = '';
+          updates.SlideAnimationURL = '';
+        }
       }
       if (payload.slideFileName !== undefined) updates.SlideFileName = cleanString_(payload.slideFileName);
       if (payload.slideImageUrls !== undefined) updates.SlideImageURLs = cleanString_(payload.slideImageUrls);
+      if (payload.slideAnimationUrl !== undefined) updates.SlideAnimationURL = normalizeMeetingAnimationUrl_(payload.slideAnimationUrl);
       var updated = updateObjectById(SHEET_NAMES.MEETING_POSTS, 'PostID', postId, updates);
       return jsonResponse(true, 'Meeting post updated.', { post: sanitizeForClient_(updated) });
     }
@@ -357,6 +361,7 @@ function saveMeetingPost(payload, user) {
       AckRequiredUserIDs: resolvedAckCreate.ids, AckRequiredNames: resolvedAckCreate.names,
       SlideFileURL: cleanString_(payload.slideFileUrl), SlideFileName: cleanString_(payload.slideFileName),
       SlideImageURLs: cleanString_(payload.slideImageUrls),
+      SlideAnimationURL: normalizeMeetingAnimationUrl_(payload.slideAnimationUrl),
       VideoURL: createVideoItems.length ? createVideoItems[0].url : '',
       VideoFileName: createVideoItems.length ? createVideoItems[0].name : '',
       VideoItemsJSON: JSON.stringify(createVideoItems),
@@ -369,6 +374,29 @@ function saveMeetingPost(payload, user) {
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
+}
+
+/** Accept only HTTPS embed links from common presentation hosts. Raw iframe
+ * embed code is allowed as input, but only its validated src is persisted. */
+function normalizeMeetingAnimationUrl_(value) {
+  var raw = cleanString_(value).replace(/&amp;/gi, '&');
+  if (!raw) return '';
+  var iframeMatch = raw.match(/<iframe\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/i);
+  if (iframeMatch) raw = iframeMatch[1];
+  if (raw.length > 3000) throw new Error('ลิงก์ Animation ยาวเกินกำหนด กรุณาวางเฉพาะลิงก์ Embed');
+  var match = raw.match(/^https:\/\/([^\/?#]+)(\/[^?#]*)?(\?[^#]*)?(?:#.*)?$/i);
+  if (!match) throw new Error('กรุณาวาง HTTPS Embed URL จาก PowerPoint Web, OneDrive, SharePoint หรือ Google Slides');
+  var host = match[1].toLowerCase().replace(/:\d+$/, '');
+  var path = match[2] || '/';
+  var query = match[3] || '';
+  if (host === 'docs.google.com') {
+    var googleMatch = path.match(/^\/presentation\/d\/([\w-]+)\/(?:edit|present|embed)(?:\/.*)?$/i);
+    if (googleMatch) return 'https://docs.google.com/presentation/d/' + encodeURIComponent(googleMatch[1]) + '/embed?start=false&loop=false';
+  }
+  if (host === 'onedrive.live.com' && /^\/embed\/?$/i.test(path)) return raw;
+  if (host === 'view.officeapps.live.com' && /^\/op\/embed\.aspx$/i.test(path)) return raw;
+  if (/^[a-z0-9-]+\.sharepoint\.com$/i.test(host) && /\/_layouts\/15\/doc\.aspx$/i.test(path) && /[?&]action=embedview(?:&|$)/i.test(query)) return raw;
+  throw new Error('ลิงก์นี้ยังไม่รองรับ กรุณาคัดลอก Embed URL จาก PowerPoint Web/OneDrive, SharePoint หรือ Google Slides');
 }
 
 /** Soft delete so the board keeps an audit trail in the sheet. */
