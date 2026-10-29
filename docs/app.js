@@ -5702,13 +5702,14 @@ function meetingTvPostSlideHtml(slide) {
     const parsedActivityUrl = new URL(activityUrlRaw);
     if (/^https:\/\//i.test(activityUrlRaw) && parsedActivityUrl.protocol === 'https:' && !parsedActivityUrl.username && !parsedActivityUrl.password) activityUrl = activityUrlRaw;
   } catch (_) {}
-  if (isLast && activityUrl) actions.push(`<a class="mtg-tv-action mtg-tv-action-link" href="${escapeAttr(activityUrl)}" target="_blank" rel="noopener noreferrer">🌐 เปิดลิงก์กิจกรรมในแท็บใหม่ ↗</a>`);
+  if (isLast && activityUrl && !slide.isKahootActivity) actions.push(`<a class="mtg-tv-action mtg-tv-action-link" href="${escapeAttr(activityUrl)}" target="_blank" rel="noopener noreferrer">🌐 เปิดลิงก์กิจกรรมในแท็บใหม่ ↗</a>`);
   if (isLast && state.meetingCanCreate && st === 'open') actions.push(`<button class="mtg-tv-action mtg-tv-action-primary" data-mtg-status="Discussed" data-mtg-id="${escapeAttr(row.PostID)}">✓ ${completionLabel} — ไปหัวข้อถัดไป</button>`);
   if (isLast && state.meetingCanCreate && st === 'discussed') actions.push(`<button class="mtg-tv-action" data-mtg-status="Closed" data-mtg-id="${escapeAttr(row.PostID)}">${isTraining ? 'ปิด Training' : 'จบเรื่อง'}</button>`);
   let mid;
   if (slide.isKahootActivity) {
+    const kahootFallback = activityUrl ? `<div class="mtg-tv-actions mtg-tv-kahoot-fallback"><a class="mtg-tv-action mtg-tv-action-link" href="${escapeAttr(activityUrl)}" target="_blank" rel="noopener noreferrer">↗ เปิด Kahoot ในแท็บใหม่</a><span>ถ้าเกมเป็น Private ให้ลงชื่อเข้าใช้บัญชีเจ้าของในแท็บนี้</span></div>` : '';
     mid = `<div class="mtg-tv-embed mtg-tv-kahoot-embed"><iframe src="${escapeAttr(slide.kahootEmbedUrl)}" title="Kahoot activity" loading="lazy" allow="autoplay; fullscreen; clipboard-write; encrypted-media" allowfullscreen></iframe></div>
-      <div class="mtg-tv-embed-hint">🎮 Kahoot แบบฝัง · หากเกมไม่แสดง ให้ตรวจว่าเกมเป็น Public หรือ Unlisted แล้วใช้ปุ่มเปิดแท็บใหม่เพื่อสำรอง</div>`;
+      <div class="mtg-tv-embed-hint">🎮 เกม Private ฝังในหน้านี้ไม่ได้ · เกม Public/Unlisted จึงจะแสดงในกรอบ</div>${kahootFallback}`;
   } else if (slide.isAnimatedPpt) {
     const embedUrl = meetingAnimationEmbedUrl(slide.animationUrl);
     mid = embedUrl
