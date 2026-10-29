@@ -325,6 +325,7 @@ function saveMeetingPost(payload, user) {
       if (payload.slideFileName !== undefined) updates.SlideFileName = cleanString_(payload.slideFileName);
       if (payload.slideImageUrls !== undefined) updates.SlideImageURLs = cleanString_(payload.slideImageUrls);
       if (payload.slideAnimationUrl !== undefined) updates.SlideAnimationURL = normalizeMeetingAnimationUrl_(payload.slideAnimationUrl);
+      if (payload.activityUrl !== undefined) updates.ActivityURL = normalizeMeetingActivityUrl_(payload.activityUrl);
       var updated = updateObjectById(SHEET_NAMES.MEETING_POSTS, 'PostID', postId, updates);
       return jsonResponse(true, 'Meeting post updated.', { post: sanitizeForClient_(updated) });
     }
@@ -362,6 +363,7 @@ function saveMeetingPost(payload, user) {
       SlideFileURL: cleanString_(payload.slideFileUrl), SlideFileName: cleanString_(payload.slideFileName),
       SlideImageURLs: cleanString_(payload.slideImageUrls),
       SlideAnimationURL: normalizeMeetingAnimationUrl_(payload.slideAnimationUrl),
+      ActivityURL: normalizeMeetingActivityUrl_(payload.activityUrl),
       VideoURL: createVideoItems.length ? createVideoItems[0].url : '',
       VideoFileName: createVideoItems.length ? createVideoItems[0].name : '',
       VideoItemsJSON: JSON.stringify(createVideoItems),
@@ -374,6 +376,21 @@ function saveMeetingPost(payload, user) {
   } catch (error) {
     return jsonResponse(false, safeErrorMessage_(error), {});
   }
+}
+
+/** Accept standard HTTPS activity links (e.g. Kahoot) and open them outside the TV embed. */
+function normalizeMeetingActivityUrl_(value) {
+  var raw = cleanString_(value);
+  if (!raw) return '';
+  if (raw.length > 2000) throw new Error('ลิงก์กิจกรรมยาวเกิน 2,000 ตัวอักษร');
+  var match = raw.match(/^https:\/\/([a-z0-9.-]+)(?::(\d{1,5}))?(?:[\/?#][^\s]*)?$/i);
+  if (!match) throw new Error('กรุณาระบุลิงก์กิจกรรมที่ขึ้นต้นด้วย https://');
+  var labels = match[1].split('.');
+  if (labels.some(function (label) { return !label || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label); })) {
+    throw new Error('ลิงก์กิจกรรมไม่ถูกต้อง กรุณาตรวจสอบ URL อีกครั้ง');
+  }
+  if (match[2] && Number(match[2]) > 65535) throw new Error('ลิงก์กิจกรรมไม่ถูกต้อง กรุณาตรวจสอบ URL อีกครั้ง');
+  return raw;
 }
 
 /** Accept only HTTPS embed links from common presentation hosts. Raw iframe

@@ -914,6 +914,8 @@ body.mtg-tv-open{overflow:hidden}
 .mtg-tv-actions{display:flex;gap:12px;flex-wrap:wrap}
 .mtg-tv-action{border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:12px;padding:14px 28px;font-size:clamp(1rem,1.9vw,1.3rem);font-weight:800;cursor:pointer}
 .mtg-tv-action:hover{background:rgba(255,255,255,.22)}
+.mtg-tv-action-link{display:inline-flex;align-items:center;background:#176cb0;border-color:#7ec3ff;text-decoration:none}
+.mtg-tv-action-link:hover{background:#2182ce}
 .mtg-tv-action-primary{background:var(--green);border-color:var(--green)}
 .mtg-tv-action-primary:hover{background:#1a9a59}
 .mtg-tv-nav{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 28px;border-top:1px solid rgba(255,255,255,.14)}

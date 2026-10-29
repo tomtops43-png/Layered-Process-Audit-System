@@ -4620,6 +4620,7 @@ function openMeetingEditor(postId = '', defaultContentType = 'Meeting') {
   $('#meetingPostPinned').checked = row ? isMeetingPinned(row) : false;
   $('#meetingPostTopic').value = row ? (row.Topic || '') : '';
   $('#meetingPostDetail').value = row ? (row.Detail || '') : '';
+  $('#meetingPostActivityUrl').value = String(row?.ActivityURL || '');
   $('#meetingTrainingTime').value = row ? (row.TrainingTime || '') : '';
   $('#meetingTrainingPlace').value = row ? (row.TrainingPlace || '') : '';
   $('#meetingTrainingUnit').value = row ? (row.TrainingUnit || '') : '';
@@ -4992,6 +4993,7 @@ async function saveMeetingPostFromForm() {
     priority: $('#meetingPostPriority').value,
     topic,
     detail: $('#meetingPostDetail').value.trim(),
+    activityUrl: $('#meetingPostActivityUrl').value.trim(),
     slideAnimationUrl: $('#meetingPostSlideAnimationUrl').value.trim(),
     trainingTime: $('#meetingTrainingTime').value,
     trainingPlace: $('#meetingTrainingPlace').value.trim(),
@@ -5002,6 +5004,12 @@ async function saveMeetingPostFromForm() {
     pinned: $('#meetingPostPinned').checked,
     ackUserIds: $$('#meetingAckUserGroup input:checked').map(input => input.value)
   };
+  if (payload.activityUrl) {
+    try {
+      const activityUrl = new URL(payload.activityUrl);
+      if (activityUrl.protocol !== 'https:' || activityUrl.username || activityUrl.password) throw new Error('invalid URL');
+    } catch (_) { return showToast('กรุณากรอกลิงก์กิจกรรมที่ถูกต้อง โดยขึ้นต้นด้วย https://', 'warning'); }
+  }
   // Save all URL entries with the post immediately. When local files are
   // present, upload those first and persist the full ordered list afterward.
   if (!newVideoItems.length) payload.videoItemsJson = JSON.stringify(videoItems.map(item => ({ url: item.url, name: item.name || '' })));
@@ -5667,6 +5675,13 @@ function meetingTvPostSlideHtml(slide) {
   const completionLabel = isTraining ? 'Training แล้ว' : 'คุยแล้ว';
   const photos = slide.photos || [];
   const actions = [];
+  const activityUrlRaw = String(row.ActivityURL || '').trim();
+  let activityUrl = '';
+  try {
+    const parsedActivityUrl = new URL(activityUrlRaw);
+    if (/^https:\/\//i.test(activityUrlRaw) && parsedActivityUrl.protocol === 'https:' && !parsedActivityUrl.username && !parsedActivityUrl.password) activityUrl = activityUrlRaw;
+  } catch (_) {}
+  if (isLast && activityUrl) actions.push(`<a class="mtg-tv-action mtg-tv-action-link" href="${escapeAttr(activityUrl)}" target="_blank" rel="noopener noreferrer">🌐 เปิดลิงก์กิจกรรมในแท็บใหม่ ↗</a>`);
   if (isLast && state.meetingCanCreate && st === 'open') actions.push(`<button class="mtg-tv-action mtg-tv-action-primary" data-mtg-status="Discussed" data-mtg-id="${escapeAttr(row.PostID)}">✓ ${completionLabel} — ไปหัวข้อถัดไป</button>`);
   if (isLast && state.meetingCanCreate && st === 'discussed') actions.push(`<button class="mtg-tv-action" data-mtg-status="Closed" data-mtg-id="${escapeAttr(row.PostID)}">${isTraining ? 'ปิด Training' : 'จบเรื่อง'}</button>`);
   let mid;
