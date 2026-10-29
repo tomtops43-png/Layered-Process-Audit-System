@@ -1,0 +1,100 @@
+name: Deploy to Apps Script
+
+# push โค้ดในโฟลเดอร์ apps-script/ ขึ้น Google Apps Script อัตโนมัติทุกครั้งที่โค้ดเข้า main
+# ตั้งค่าครั้งเดียวตาม DEPLOYMENT.md (secret CLASPRC_JSON / SCRIPT_ID / DEPLOYMENT_ID)
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps-script/**'
+      - '.github/workflows/deploy-appsscript.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# กัน deploy ซ้อนกัน — ตัวใหม่รอตัวเก่าเสร็จก่อน (ไม่ยกเลิกกลางทาง เดี๋ยวโค้ดบน Apps Script ค้างครึ่งๆ)
+concurrency:
+  group: deploy-appsscript
+  cancel-in-progress: false
+
+env:
+  TZ: Asia/Bangkok
+  GAS_DIR: apps-script
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # หน้าเว็บบน GitHub Pages เรียก /exec โดยไม่ได้ล็อกอิน Google → web app ต้องเปิด "Anyone"
+      # ถ้าตั้งเป็นค่าอื่น request จะโดนเด้งไปหน้า login แล้วเบราว์เซอร์รายงานเป็น CORS error
+      - name: Verify web app stays public
+        run: |
+          node -e '
+            const m = JSON.parse(require("fs").readFileSync(process.env.GAS_DIR + "/appsscript.json", "utf8"));
+            const w = m.webapp || {};
+            const errs = [];
+            if (w.access !== "ANYONE_ANONYMOUS") errs.push("webapp.access ต้องเป็น ANYONE_ANONYMOUS (ตอนนี้: " + w.access + ")");
+            if (w.executeAs !== "USER_DEPLOYING") errs.push("webapp.executeAs ต้องเป็น USER_DEPLOYING (ตอนนี้: " + w.executeAs + ")");
+            if (errs.length) { errs.forEach(e => console.error("::error::" + e)); process.exit(1); }
+            console.log("webapp: access=" + w.access + ", executeAs=" + w.executeAs + " ✓");
+          '
+
+      - name: Check secrets
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+        run: |
+          missing=0
+          if [ -z "$CLASPRC_JSON" ]; then
+            echo "::error::ยังไม่ได้ใส่ secret CLASPRC_JSON — ทำตามขั้นตอนใน DEPLOYMENT.md ก่อน"
+            missing=1
+          fi
+          # apps-script/.clasp.json ถูก .gitignore ไว้ จึงต้องส่ง Script ID ผ่าน secret
+          if [ -z "$SCRIPT_ID" ]; then
+            echo "::error::ยังไม่ได้ใส่ secret SCRIPT_ID — ทำตามขั้นตอนใน DEPLOYMENT.md ก่อน"
+            missing=1
+          fi
+          exit $missing
+
+      - name: Install clasp
+        # ตรึงแค่ major — clasp คนละ major เขียน ~/.clasprc.json คนละรูปแบบ
+        run: npm install -g @google/clasp@3
+
+      - name: Write clasp credentials
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+        run: |
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          chmod 600 "$HOME/.clasprc.json"
+          printf '{"scriptId":"%s"}' "$SCRIPT_ID" > "$GAS_DIR/.clasp.json"
+
+      - name: Push code to Apps Script
+        working-directory: ${{ env.GAS_DIR }}
+        run: clasp push --force
+
+      - name: Update web app deployment
+        working-directory: ${{ env.GAS_DIR }}
+        env:
+          DEPLOYMENT_ID: ${{ secrets.DEPLOYMENT_ID }}
+        run: |
+          if [ -z "$DEPLOYMENT_ID" ]; then
+            echo "::notice::ไม่ได้ใส่ DEPLOYMENT_ID — push ขึ้น HEAD อย่างเดียว (URL /exec จะยังเป็นโค้ดเวอร์ชันเก่า)"
+            exit 0
+          fi
+          clasp deploy --deploymentId "$DEPLOYMENT_ID" --description "GitHub Actions ${GITHUB_SHA::7}"
+
+      - name: Remove credentials
+        if: always()
+        run: rm -f "$HOME/.clasprc.json" "$GAS_DIR/.clasp.json"
