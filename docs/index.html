@@ -9,7 +9,7 @@
   <!-- The first API call happens seconds after load; warm the TLS connection now. -->
   <link rel="preconnect" href="https://script.google.com" crossorigin>
   <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
-  <link rel="stylesheet" href="style.css?v=20261029-tv-kahoot-fallback-v1">
+  <link rel="stylesheet" href="style.css?v=20261029-tv-kahoot-newtab-v1">
 </head>
 <body>
   <div id="publicQuizView" class="login-view public-quiz-view hidden">
@@ -495,7 +495,7 @@
         <label class="check-label hidden" id="meetingPostPinnedField"><input id="meetingPostPinned" type="checkbox"> 📌 ปักหมุด (แสดงทุกวันจนกว่าจะจบเรื่อง)</label>
         <label class="full-width">หัวข้อ *<input id="meetingPostTopic" required maxlength="200" placeholder="เช่น เครื่อง XX มีปัญหา / ประกาศเรื่อง..."></label>
         <label class="full-width">รายละเอียด<textarea id="meetingPostDetail" rows="5" placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)&#10;&#10;พิมพ์ --- คั่นบรรทัด เพื่อแยกเป็นหลายสไลด์ตอนฉายจอ TV"></textarea><small class="field-help">💡 พิมพ์ <b>---</b> (ขีดสามตัว) ไว้บรรทัดเดียว เพื่อแบ่งเนื้อหาเป็นหลายสไลด์ในโหมด TV — หัวข้อเดิมจะค้างทุกสไลด์<br>📷 อยากให้รูปไหนอยู่สไลด์ไหน พิมพ์ <b>[รูป1]</b> <b>[รูป2]</b> ในตำแหน่งเนื้อหาที่ต้องการแทรกรูป (ดูเลขรูปได้จากใต้ภาพหลังอัปโหลด) — รูปจะปรากฏตรง marker นั้นในสไลด์; รูปที่ยังไม่ได้กำหนดจุดจะแยกเป็นสไลด์ท้ายหัวข้อ; หากไม่ได้กำหนดรูปเลย จะรวมรูปไว้ท้ายหัวข้อ เมื่อเลื่อนรูปจะเปลี่ยนภาพตามลำดับเลขใหม่ ส่วนลบรูปจะปรับเลขอ้างอิงที่เหลือให้อัตโนมัติ</small></label>
-        <label class="full-width">ลิงก์กิจกรรม / เว็บไซต์ (ไม่บังคับ)<input id="meetingPostActivityUrl" type="url" inputmode="url" maxlength="2000" placeholder="วางลิงก์ Kahoot หรือเว็บไซต์ https://..."><small class="field-help">🔗 Kahoot จะเปิดเป็นสไลด์ภายในโหมด TV อัตโนมัติ (เกมต้องเป็น Public หรือ Unlisted); ยังมีปุ่มเปิดแท็บใหม่ไว้สำรอง · ลิงก์เว็บไซต์อื่นเปิดในแท็บใหม่</small></label>
+        <label class="full-width">ลิงก์กิจกรรม / เว็บไซต์ (ไม่บังคับ)<input id="meetingPostActivityUrl" type="url" inputmode="url" maxlength="2000" placeholder="วางลิงก์ Kahoot หรือเว็บไซต์ https://..."><small class="field-help">🔗 ลิงก์จะแสดงเป็นปุ่มท้ายสไลด์และเปิดในแท็บใหม่ เพื่อใช้งานเว็บไซต์ตามปกติ จากนั้นกลับมาแท็บ TV เพื่อประชุมต่อ</small></label>
         <div class="form-field full-width meeting-video-editor">
           <span class="data-label">วิดีโอประกอบเนื้อหา (เพิ่มได้หลายคลิป)</span>
           <div class="meeting-video-add-row"><label>ลิงก์ YouTube / Google Drive / วิดีโอ<input id="meetingPostVideoUrl" type="url" maxlength="2000" placeholder="วางลิงก์ https://..."></label><button type="button" class="btn btn-outline btn-compact" id="addMeetingVideoUrl">＋ เพิ่มลิงก์</button></div>
@@ -558,6 +558,6 @@
   <section id="trainingPrintRoot" class="hidden" aria-hidden="true"></section>
   <script src="config.js" defer></script>
   <script src="vendor/qrcode.js" defer></script>
-  <script src="app.js?v=20261029-tv-kahoot-fallback-v1" defer></script>
+  <script src="app.js?v=20261029-tv-kahoot-newtab-v1" defer></script>
 </body>
 </html>

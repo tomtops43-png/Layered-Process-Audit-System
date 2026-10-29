@@ -4990,8 +4990,6 @@ function meetingTvPostSlides(deck = meetingTvDeck()) {
       // PDF / unconverted: fall back to the embedded Drive preview.
       postSlides.push({ row: item.row, carry: item.carry, deckPos, isDoc: true, docUrl, docName: String(item.row.SlideFileName || '').trim() || 'สไลด์ PPT' });
     }
-    const kahootEmbedUrl = meetingKahootEmbedUrl(item.row.ActivityURL);
-    if (kahootEmbedUrl) postSlides.push({ row: item.row, carry: item.carry, deckPos, isKahootActivity: true, kahootEmbedUrl });
     postSlides.forEach((s, sectionIndex) => {
       s.sectionIndex = sectionIndex;
       s.sectionCount = postSlides.length;
@@ -5282,15 +5280,14 @@ function meetingTvPostSlideHtml(slide) {
     const parsedActivityUrl = new URL(activityUrlRaw);
     if (/^https:\/\//i.test(activityUrlRaw) && parsedActivityUrl.protocol === 'https:' && !parsedActivityUrl.username && !parsedActivityUrl.password) activityUrl = activityUrlRaw;
   } catch (_) {}
-  if (isLast && activityUrl && !slide.isKahootActivity) actions.push(`<a class="mtg-tv-action mtg-tv-action-link" href="${escapeAttr(activityUrl)}" target="_blank" rel="noopener noreferrer">🌐 เปิดลิงก์กิจกรรมในแท็บใหม่ ↗</a>`);
+  if (isLast && activityUrl) {
+    const kahootLink = Boolean(meetingKahootEmbedUrl(activityUrl));
+    actions.push(`<a class="mtg-tv-action mtg-tv-action-link" href="${escapeAttr(activityUrl)}" target="_blank" rel="noopener noreferrer">${kahootLink ? '🎮 เปิด Kahoot ในแท็บใหม่ ↗' : '🌐 เปิดลิงก์กิจกรรมในแท็บใหม่ ↗'}</a>`);
+  }
   if (isLast && state.meetingCanCreate && st === 'open') actions.push(`<button class="mtg-tv-action mtg-tv-action-primary" data-mtg-status="Discussed" data-mtg-id="${escapeAttr(row.PostID)}">✓ ${completionLabel} — ไปหัวข้อถัดไป</button>`);
   if (isLast && state.meetingCanCreate && st === 'discussed') actions.push(`<button class="mtg-tv-action" data-mtg-status="Closed" data-mtg-id="${escapeAttr(row.PostID)}">${isTraining ? 'ปิด Training' : 'จบเรื่อง'}</button>`);
   let mid;
-  if (slide.isKahootActivity) {
-    const kahootFallback = activityUrl ? `<div class="mtg-tv-actions mtg-tv-kahoot-fallback"><a class="mtg-tv-action mtg-tv-action-link" href="${escapeAttr(activityUrl)}" target="_blank" rel="noopener noreferrer">↗ เปิด Kahoot ในแท็บใหม่</a><span>ถ้าเกมเป็น Private ให้ลงชื่อเข้าใช้บัญชีเจ้าของในแท็บนี้</span></div>` : '';
-    mid = `<div class="mtg-tv-embed mtg-tv-kahoot-embed"><iframe src="${escapeAttr(slide.kahootEmbedUrl)}" title="Kahoot activity" loading="lazy" allow="autoplay; fullscreen; clipboard-write; encrypted-media" allowfullscreen></iframe></div>
-      <div class="mtg-tv-embed-hint">🎮 เกม Private ฝังในหน้านี้ไม่ได้ · เกม Public/Unlisted จึงจะแสดงในกรอบ</div>${kahootFallback}`;
-  } else if (slide.isAnimatedPpt) {
+  if (slide.isAnimatedPpt) {
     const embedUrl = meetingAnimationEmbedUrl(slide.animationUrl);
     mid = embedUrl
       ? `<div class="mtg-tv-embed mtg-tv-animated-ppt"><iframe src="${escapeAttr(embedUrl)}" loading="lazy" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe></div>
@@ -5325,7 +5322,6 @@ function meetingTvPostSlideHtml(slide) {
         ${priority === 'ด่วน' ? '<span class="mtg-tv-chip mtg-tv-urgent">ด่วน</span>' : priority === 'สำคัญ' ? '<span class="mtg-tv-chip mtg-tv-important">สำคัญ</span>' : ''}
         ${carry ? `<span class="mtg-tv-chip mtg-tv-carrychip">⏳ ค้างจาก ${formatDate(row.MeetingDate)}</span>` : ''}
         ${slide.isAnimatedPpt ? '<span class="mtg-tv-chip mtg-tv-sectionchip">📊 PPT · Animation ทีละขั้น</span>' : ''}
-        ${slide.isKahootActivity ? '<span class="mtg-tv-chip mtg-tv-sectionchip">🎮 Kahoot · เล่นในโหมด TV</span>' : ''}
         ${slide.isPpt ? `<span class="mtg-tv-chip mtg-tv-sectionchip">📊 PPT ${slide.pptPage}/${slide.pptTotal}</span>` : ''}
         ${slide.isDoc ? '<span class="mtg-tv-chip mtg-tv-sectionchip">📊 สไลด์ PPT</span>' : ''}
         ${sectionCount > 1 ? `<span class="mtg-tv-chip mtg-tv-sectionchip">สไลด์ ${sectionIndex + 1}/${sectionCount}</span>` : ''}
