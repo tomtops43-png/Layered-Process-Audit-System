@@ -4884,6 +4884,25 @@ function meetingTvDeck(posts = state.meetingPosts, carryOver = state.meetingCarr
 
 // A line of --- (3+ dashes) in the Detail splits a post into multiple TV slides,
 // so one topic can span several slides. Empty sections are dropped.
+// Kahoot permits embedding only for public/unlisted games; retain the original
+// activity link as a fallback in TV mode when the embedded player is unavailable.
+function meetingKahootEmbedUrl(activityUrl) {
+  try {
+    const url = new URL(String(activityUrl || ''));
+    const host = url.hostname.toLowerCase();
+    if (!['create.kahoot.it', 'kahoot.it', 'www.kahoot.it', 'embed.kahoot.it'].includes(host)) return '';
+    const segments = url.pathname.split('/').filter(Boolean);
+    let id = '';
+    if (host === 'embed.kahoot.it') id = segments[0] || '';
+    else if (segments[0] === 'details' || segments[0] === 'quiz') id = segments[1] || '';
+    else if (segments[0] === 'share') id = segments[segments.length - 1] || '';
+    if (!/^[a-z0-9-]{8,64}$/i.test(id)) return '';
+    return `https://embed.kahoot.it/${encodeURIComponent(id)}`;
+  } catch (_) {
+    return '';
+  }
+}
+
 function meetingSlideSections(detail) {
   const parts = String(detail || '').split(/(?:^|\n)\s*-{3,}\s*(?:\n|$)/).map(s => s.trim()).filter(Boolean);
   return parts.length ? parts : [''];
@@ -4971,6 +4990,8 @@ function meetingTvPostSlides(deck = meetingTvDeck()) {
       // PDF / unconverted: fall back to the embedded Drive preview.
       postSlides.push({ row: item.row, carry: item.carry, deckPos, isDoc: true, docUrl, docName: String(item.row.SlideFileName || '').trim() || 'สไลด์ PPT' });
     }
+    const kahootEmbedUrl = meetingKahootEmbedUrl(item.row.ActivityURL);
+    if (kahootEmbedUrl) postSlides.push({ row: item.row, carry: item.carry, deckPos, isKahootActivity: true, kahootEmbedUrl });
     postSlides.forEach((s, sectionIndex) => {
       s.sectionIndex = sectionIndex;
       s.sectionCount = postSlides.length;
@@ -5265,7 +5286,10 @@ function meetingTvPostSlideHtml(slide) {
   if (isLast && state.meetingCanCreate && st === 'open') actions.push(`<button class="mtg-tv-action mtg-tv-action-primary" data-mtg-status="Discussed" data-mtg-id="${escapeAttr(row.PostID)}">✓ ${completionLabel} — ไปหัวข้อถัดไป</button>`);
   if (isLast && state.meetingCanCreate && st === 'discussed') actions.push(`<button class="mtg-tv-action" data-mtg-status="Closed" data-mtg-id="${escapeAttr(row.PostID)}">${isTraining ? 'ปิด Training' : 'จบเรื่อง'}</button>`);
   let mid;
-  if (slide.isAnimatedPpt) {
+  if (slide.isKahootActivity) {
+    mid = `<div class="mtg-tv-embed mtg-tv-kahoot-embed"><iframe src="${escapeAttr(slide.kahootEmbedUrl)}" title="Kahoot activity" loading="lazy" allow="autoplay; fullscreen; clipboard-write; encrypted-media" allowfullscreen></iframe></div>
+      <div class="mtg-tv-embed-hint">🎮 Kahoot แบบฝัง · หากเกมไม่แสดง ให้ตรวจว่าเกมเป็น Public หรือ Unlisted แล้วใช้ปุ่มเปิดแท็บใหม่เพื่อสำรอง</div>`;
+  } else if (slide.isAnimatedPpt) {
     const embedUrl = meetingAnimationEmbedUrl(slide.animationUrl);
     mid = embedUrl
       ? `<div class="mtg-tv-embed mtg-tv-animated-ppt"><iframe src="${escapeAttr(embedUrl)}" loading="lazy" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe></div>
@@ -5300,6 +5324,7 @@ function meetingTvPostSlideHtml(slide) {
         ${priority === 'ด่วน' ? '<span class="mtg-tv-chip mtg-tv-urgent">ด่วน</span>' : priority === 'สำคัญ' ? '<span class="mtg-tv-chip mtg-tv-important">สำคัญ</span>' : ''}
         ${carry ? `<span class="mtg-tv-chip mtg-tv-carrychip">⏳ ค้างจาก ${formatDate(row.MeetingDate)}</span>` : ''}
         ${slide.isAnimatedPpt ? '<span class="mtg-tv-chip mtg-tv-sectionchip">📊 PPT · Animation ทีละขั้น</span>' : ''}
+        ${slide.isKahootActivity ? '<span class="mtg-tv-chip mtg-tv-sectionchip">🎮 Kahoot · เล่นในโหมด TV</span>' : ''}
         ${slide.isPpt ? `<span class="mtg-tv-chip mtg-tv-sectionchip">📊 PPT ${slide.pptPage}/${slide.pptTotal}</span>` : ''}
         ${slide.isDoc ? '<span class="mtg-tv-chip mtg-tv-sectionchip">📊 สไลด์ PPT</span>' : ''}
         ${sectionCount > 1 ? `<span class="mtg-tv-chip mtg-tv-sectionchip">สไลด์ ${sectionIndex + 1}/${sectionCount}</span>` : ''}
