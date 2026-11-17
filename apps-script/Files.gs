@@ -66,8 +66,11 @@ function uploadFile(payload, currentUser) {
       }
       if (pdfSignature !== '%PDF-') throw new Error('ไฟล์ที่เลือกไม่ใช่เอกสาร PDF ที่ถูกต้อง');
     }
-    var maximumBytes = 10 * 1024 * 1024;
-    if (bytes.length > maximumBytes) throw new Error('File exceeds the 10 MB upload limit.');
+    var isPresentationUpload = valuesEqual_(payload.relatedType, 'MeetingPost') && /\.(ppt|pptx|pdf)$/i.test(cleanString_(payload.fileName));
+    var maximumBytes = (isPresentationUpload ? 20 : 10) * 1024 * 1024;
+    if (bytes.length > maximumBytes) {
+      throw new Error(isPresentationUpload ? 'Presentation file exceeds the 20 MB upload limit.' : 'File exceeds the 10 MB upload limit.');
+    }
 
     // Build filename: {RelatedID}_{FileType}_{YYYYMMDD_HHMMSS}.{ext}
     var now = new Date();

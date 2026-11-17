@@ -162,7 +162,7 @@ A session row and all record rows are created. Every `NG` record creates a findi
 
 ## File upload
 
-Upload payloads carry raw base64 **without** a data-URL prefix. The API decodes the content, writes the file to the configured Drive folder, and stores only the template attachment fields, including `DriveFileID`, `DriveFileURL`, and `FolderID`, in `Attachments`. The backend enforces a 10 MB decoded-file limit.
+Upload payloads carry raw base64 **without** a data-URL prefix. The API decodes the content, writes the file to the configured Drive folder, and stores only the template attachment fields, including `DriveFileID`, `DriveFileURL`, and `FolderID`, in `Attachments`. The backend enforces a 10 MB decoded-file limit for ordinary uploads and a 20 MB limit for Meeting PPT/PPTX/PDF slides.
 
 ```json
 {

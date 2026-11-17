@@ -455,7 +455,7 @@ function releaseApiSlot() {
 }
 
 async function apiCall(action, payload = {}, options = {}) {
-  const TIMEOUT_MS = (action === 'uploadFile' || action === 'uploadFiveSCheckpointReferencePhoto' || action === 'uploadMeetingQuizQuestionImage' || action === 'saveAudit' || action === 'convertMeetingSlideFile' || action === 'generateMeetingQuiz' || action === 'translateMeetingQuizQuestionToMyanmar') ? 90000 : 45000;
+  const TIMEOUT_MS = options.timeoutMs || ((action === 'uploadFile' || action === 'uploadFiveSCheckpointReferencePhoto' || action === 'uploadMeetingQuizQuestionImage' || action === 'saveAudit' || action === 'convertMeetingSlideFile' || action === 'generateMeetingQuiz' || action === 'translateMeetingQuizQuestionToMyanmar') ? 90000 : 45000);
   // Writes are always something a user is standing in front of; reads are only
   // urgent when the caller says so (background refreshes pass priority 'normal').
   const priority = options.priority || (WRITE_ACTIONS.includes(action) ? 'high' : 'normal');
@@ -4650,13 +4650,17 @@ function meetingAnimationEmbedUrl(value) {
 }
 
 async function uploadMeetingDoc(file, postId) {
+  const maxBytes = 20 * 1024 * 1024;
+  if (file.size > maxBytes) throw new Error('ไฟล์สไลด์ต้องมีขนาดไม่เกิน 20 MB');
+  const mimeByExtension = { ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', pdf: 'application/pdf' };
+  const extension = (file.name.match(/\.([^.]+)$/) || [])[1]?.toLowerCase();
   const base64Data = await fileToBase64(file);
-  const payload = { relatedType: 'MeetingPost', relatedId: postId, fileType: 'Attachment', fileName: file.name, mimeType: file.type || 'application/octet-stream', base64Data };
+  const payload = { relatedType: 'MeetingPost', relatedId: postId, fileType: 'Attachment', fileName: file.name, mimeType: mimeByExtension[extension] || file.type || 'application/octet-stream', base64Data };
   try {
-    return await apiCall('uploadFile', payload);
+    return await apiCall('uploadFile', payload, { timeoutMs: 180000 });
   } catch (error) {
     // Fall back to the always-configured Before Photo folder when ATTACHMENT_FOLDER_ID is unset
-    if (/FOLDER_ID/.test(error.message)) return apiCall('uploadFile', Object.assign({}, payload, { fileType: 'BeforePhoto' }));
+    if (/FOLDER_ID/.test(error.message)) return apiCall('uploadFile', Object.assign({}, payload, { fileType: 'BeforePhoto' }), { timeoutMs: 180000 });
     throw error;
   }
 }
@@ -4704,6 +4708,8 @@ async function saveMeetingPostFromForm() {
   if (postId) payload.postId = postId;
   const photoItems = state.meetingPhotoItems || [];
   const slideFile = ($('#meetingPostSlideFile').files || [])[0];
+  if (slideFile && slideFile.size > 20 * 1024 * 1024) return showToast('ไฟล์สไลด์ต้องมีขนาดไม่เกิน 20 MB', 'warning');
+  if (slideFile && !/\.(ppt|pptx|pdf)$/i.test(slideFile.name)) return showToast('กรุณาเลือกไฟล์ PPT, PPTX หรือ PDF', 'warning');
   const removeSlide = $('#meetingRemoveSlideFile') && $('#meetingRemoveSlideFile').checked;
   const contentType = payload.contentType;
   showLoading(contentType === 'Training' ? 'กำลังบันทึก Training...' : 'กำลังบันทึกหัวข้อประชุม...');
@@ -4730,7 +4736,7 @@ async function saveMeetingPostFromForm() {
     }
     // PPT / PDF slide file: upload a new one, or clear the existing one.
     if (slideFile && savedId) {
-      $('#loadingText').textContent = 'กำลังอัปโหลดไฟล์สไลด์...';
+      $('#loadingText').textContent = `กำลังอัปโหลดไฟล์สไลด์ (${(slideFile.size / (1024 * 1024)).toFixed(1)} MB)...`;
       const up = await uploadMeetingDoc(slideFile, savedId);
       if (up?.DriveFileURL) {
         await apiCall('saveMeetingPost', { postId: savedId, slideFileUrl: up.DriveFileURL, slideFileName: slideFile.name, slideImageUrls: '' });
@@ -7888,6 +7894,7 @@ const API_MESSAGE_EXACT = {
   'You do not have permission to upload to this finding.': 'คุณไม่มีสิทธิ์อัปโหลดไฟล์ใน Finding นี้',
   'Topic is required.': 'กรุณากรอกหัวข้อ',
   'File exceeds the 10 MB upload limit.': 'ไฟล์ใหญ่เกิน 10 MB กรุณาย่อรูปหรือเลือกไฟล์ใหม่',
+  'Presentation file exceeds the 20 MB upload limit.': 'ไฟล์ PowerPoint/PDF ต้องมีขนาดไม่เกิน 20 MB',
   'Uploaded file is empty.': 'ไฟล์ที่อัปโหลดว่างเปล่า กรุณาเลือกไฟล์ใหม่',
   'base64Data is invalid.': 'ไฟล์เสียหาย กรุณาลองอัปโหลดใหม่',
   'Unexpected server error.': 'เกิดข้อผิดพลาดที่เซิร์ฟเวอร์ กรุณาลองใหม่อีกครั้ง',
